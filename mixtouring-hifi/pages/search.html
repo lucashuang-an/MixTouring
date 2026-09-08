@@ -477,6 +477,14 @@
       </button>
     </section>
 
+    <!-- 问问 AI 入口（Phase 2 触点③：grounded 问答，只基于方案库数据） -->
+    <div class="flex justify-center" style="margin-top: 12px;">
+      <button id="btnAsk" class="flex items-center gap-1.5 rounded-full" style="background: transparent; border: none; padding: 6px 14px; cursor: pointer; font-family: inherit; color: var(--mixtouring-muted-foreground, #7C8089); font-size: 13px;">
+        <svg class="w-3.5 h-3.5" style="color: var(--mixtouring-ring, #C86A4B);"><use href="#hero-sparkles"></use></svg>
+        <span>不确定怎么选？问问 AI</span>
+      </button>
+    </div>
+
     <!-- Section 3: Section Title -->
     <h2 class="mx-4 text-[13px]" style="color: var(--mixtouring-muted-foreground, #7C8089); letter-spacing: 0.08em; margin-top: 22px; margin-bottom: 4px;">热门远途</h2>
 
@@ -533,6 +541,24 @@
         <button class="cal-nav-btn" id="cityClose" aria-label="关闭"><svg class="w-4 h-4" style="color: var(--mixtouring-foreground, #1E2022);"><use href="#hero-x-mark"></use></svg></button>
       </div>
       <div class="city-grid no-scrollbar" id="cityGrid"></div>
+    </div>
+  </div>
+
+  <!-- 问问 AI 底册（Phase 2 触点③：grounded 问答） -->
+  <div class="cal-overlay" id="qaOverlay">
+    <div class="cal-panel" style="padding-bottom: 24px;">
+      <div class="cal-handle"></div>
+      <div class="cal-header">
+        <div class="cal-title">问问 <span>AI</span></div>
+        <button class="cal-nav-btn" id="qaClose" aria-label="关闭"><svg class="w-4 h-4" style="color: var(--mixtouring-foreground, #1E2022);"><use href="#hero-x-mark"></use></svg></button>
+      </div>
+      <div id="qaAnswer" class="text-[13.5px]" style="color: var(--mixtouring-foreground, #1E2022); line-height: 1.7; white-space: pre-line; min-height: 72px; max-height: 40vh; overflow-y: auto;">答案只基于方案库真实数据：问库里有哪条线、哪个最省、衔接要注意什么。例：「北京去喀什哪个方案最省？」</div>
+      <div id="qaRefs" class="flex flex-wrap gap-2" style="margin-top: 10px;"></div>
+      <div class="flex items-center gap-2" style="margin-top: 14px;">
+        <input id="qaInput" class="flex-1 min-w-0" type="text" placeholder="例如：北京去喀什哪个方案最省" aria-label="问问 AI"
+               style="border: 0.5px solid var(--mixtouring-border, #E8E9EB); outline: none; background: var(--mixtouring-input, #FFFFFF); border-radius: var(--r-pill, 9999px); padding: 10px 16px; font-size: 14px; font-family: inherit; color: var(--mixtouring-foreground, #1E2022);" />
+        <button id="qaGo" class="shrink-0 rounded-full" style="background: var(--mixtouring-primary, #111111); color: var(--mixtouring-primary-foreground, #FFFFFF); border: none; padding: 10px 16px; font-size: 13px; font-family: inherit; cursor: pointer;">提问</button>
+      </div>
     </div>
   </div>
 
@@ -594,6 +620,42 @@
 
     btnParse.addEventListener('click', doParse);
     nlInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); doParse(); } });
+
+    /* ---------- 问问 AI 底册（Phase 2 · 触点③：grounded 问答，refs 跳方案详情） ---------- */
+    var qaOverlay = document.getElementById('qaOverlay');
+    var qaInput = document.getElementById('qaInput');
+    var qaGo = document.getElementById('qaGo');
+    var qaAnswer = document.getElementById('qaAnswer');
+    var qaRefs = document.getElementById('qaRefs');
+
+    document.getElementById('btnAsk').addEventListener('click', function () { qaOverlay.classList.add('active'); });
+    document.getElementById('qaClose').addEventListener('click', function () { qaOverlay.classList.remove('active'); });
+    qaOverlay.addEventListener('click', function (e) { if (e.target === qaOverlay) qaOverlay.classList.remove('active'); });
+
+    function doAsk() {
+      var q = (qaInput.value || '').trim();
+      if (!q) { MT.toast('先输入你的问题'); return; }
+      qaGo.disabled = true; qaGo.style.opacity = '0.5'; qaGo.textContent = '…';
+      qaAnswer.textContent = '思考中…'; qaRefs.innerHTML = '';
+      API.askQ(q).then(function (res) {
+        if (!res || res.code !== 0 || !res.data) {
+          qaAnswer.textContent = (res && res.msg) || '问答服务暂时不可用';
+          return;
+        }
+        qaAnswer.textContent = res.data.answer || '没答上来，换个问法试试';
+        (res.data.refs || []).forEach(function (id) {
+          var b = document.createElement('button');
+          b.className = 'rounded-full';
+          b.style.cssText = 'background: var(--mixtouring-muted, #F4F5F7); border: none; padding: 6px 12px; font-size: 12px; font-family: inherit; cursor: pointer; color: var(--mixtouring-ring, #C86A4B);';
+          b.textContent = '查看 ' + id;
+          b.addEventListener('click', function () { location.href = 'detail.html?id=' + encodeURIComponent(id); });
+          qaRefs.appendChild(b);
+        });
+      }).catch(function () { qaAnswer.textContent = '问答服务暂时不可用'; })
+        .finally(function () { qaGo.disabled = false; qaGo.style.opacity = ''; qaGo.textContent = '提问'; });
+    }
+    qaGo.addEventListener('click', doAsk);
+    qaInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); doAsk(); } });
 
     /* ---------- 城市选择底册 ---------- */
     var cityOverlay = document.getElementById('cityOverlay');

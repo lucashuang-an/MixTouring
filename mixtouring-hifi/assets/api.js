@@ -158,6 +158,18 @@
     });
   }
 
+  /* GET /api/ask?q= → { code, data: { answer, refs, engine, model } }
+   * Phase 2 触点③：站内 grounded 问答（答案只基于方案库数据）。问答必须走服务端（LLM key 在服务端），
+   * 后端不可达时返回 code:1，本地不编造答案 */
+  function askQ(q) {
+    return probe().then(function (ok) {
+      if (!ok) return { code: 1, msg: '问问 AI 需要启动后端服务' };
+      return getEnvelope('/api/ask?q=' + encodeURIComponent(q)).catch(function () {
+        return { code: 1, msg: '问答服务暂时不可用' };
+      });
+    });
+  }
+
   /* POST /api/feedback { id, cost, time, note } → { code }
    * 反馈以 localStorage（MT.addFeedback）为权威；后端可达时同步上报一份，失败静默（无账号体系） */
   function postFeedback(rec) {
@@ -180,6 +192,7 @@
     fetchTemplates: fetchTemplates,
     fetchItem: fetchItem,
     parseNaturalLanguage: parseNaturalLanguage,
+    askQ: askQ,
     postFeedback: postFeedback
   };
 })();

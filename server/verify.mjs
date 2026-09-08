@@ -89,6 +89,25 @@ async function main() {
   const p3 = await getJSON('/api/parse?q=' + encodeURIComponent('去玩吧'));
   diff('/api/parse 去玩吧（无城市不编造）', p3, { from: null, to: null, date: null, conf: 0.4, engine: 'rule', note: '部分字段未识别，请手动补全', llm: false, model: 'rule' });
 
+  /* GET /api/ask · Phase 2 触点③ grounded 问答：库内路线必须锚定真实方案 id；库外问题如实说没有 */
+  const askRoute = await getJSON('/api/ask?q=' + encodeURIComponent('北京去喀什哪个方案最省钱'));
+  if (askRoute && typeof askRoute.answer === 'string' && askRoute.answer.trim() &&
+      Array.isArray(askRoute.refs) && askRoute.refs.length > 0 &&
+      askRoute.refs.every((id) => id.startsWith('p-bjks-'))) {
+    console.log('✓ /api/ask 库内路线（refs 锚定方案 id，engine=' + askRoute.engine + '）');
+  } else {
+    failed++;
+    console.error('✗ /api/ask 库内路线异常：' + JSON.stringify(askRoute).slice(0, 200));
+  }
+  const askNone = await getJSON('/api/ask?q=' + encodeURIComponent('附近有什么好吃的'));
+  if (askNone && typeof askNone.answer === 'string' && askNone.answer.trim() &&
+      Array.isArray(askNone.refs) && askNone.refs.length === 0) {
+    console.log('✓ /api/ask 库外问题如实兜底（refs 为空，engine=' + askNone.engine + '）');
+  } else {
+    failed++;
+    console.error('✗ /api/ask 库外问题应无 refs：' + JSON.stringify(askNone).slice(0, 200));
+  }
+
   console.log(failed ? `\n✗ ${failed} 项不一致` : '\n✓ 全部接口与 mock.js 派生结果一致');
   process.exit(failed ? 1 : 0);
 }
