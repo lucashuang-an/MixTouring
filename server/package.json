@@ -1,0 +1,14 @@
+{
+  "name": "mixtouring-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MixTouring Phase 1 · 薄后端读接口（原生 Koa + derive.mjs 服务层）",
+  "scripts": {
+    "start": "node index.mjs",
+    "verify": "node verify.mjs"
+  },
+  "dependencies": {
+    "koa": "^2.15.3"
+  }
+}

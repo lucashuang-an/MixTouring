@@ -1409,8 +1409,8 @@
       "ai": {
         "summary": "早班机到{transfer_city_1}转午班机，比直飞省 {saved}，用时更短",
         "fit": "适合想省时间、能接受早起的背包客；行李多慎选两段托运",
-        "notice": "同航站楼 T5 中转，衔接窗口 {wait_min_1}，下机后先确认第二程登机口",
-        "play_intro": "中转时间足够吃碗油泼面，T5 航站楼里有陕西小吃街",
+        "notice": "同一航站楼内中转，衔接窗口 {wait_min_1}，下机后先确认第二程登机口",
+        "play_intro": "中转时间足够吃碗油泼面，航站楼里有陕西小吃街",
         "model": "claude-realtime-experiment-20260908"
       }
     }
