@@ -79,12 +79,18 @@ app.use(async (ctx, next) => {
   }
 });
 
-/* ---------- API 路由 ---------- */
+/* ---------- API 路由（含 /healthz 健康检查） ---------- */
 app.use(async (ctx, next) => {
-  if (!ctx.path.startsWith('/api/')) return next();
+  if (!ctx.path.startsWith('/api/') && ctx.path !== '/healthz') return next();
   ctx.type = 'application/json; charset=utf-8';
   const path = ctx.path;
   const q = ctx.query;
+
+  /* GET /healthz → 部署平台健康检查（不触发重载，只探活） */
+  if (path === '/healthz') {
+    ctx.body = { status: 'ok', wishes: listWishes().length };
+    return;
+  }
 
   /* GET /api/bootstrap → 全量服务层 DB（api.js 预取后原地改写 window.DB） */
   if (path === '/api/bootstrap') {

@@ -1,0 +1,21 @@
+# render.yaml · Render Blueprint（部署即代码）
+# 使用：Render 控制台 → New → Blueprint → 选本仓库，自动按本文件创建服务。
+# 免费档说明：实例 15 分钟无流量会休眠（首次访问冷启动约 30s）；磁盘为临时盘，
+# 重新部署会重置 wishlist.json（方案库 plans.json 以 git 仓库为准，不受影响）。
+services:
+  - type: web
+    name: mixtouring
+    runtime: node
+    plan: free
+    rootDir: server          # 依赖与启动都以 server/ 为根（koa 装在 server/node_modules）
+    buildCommand: npm install
+    startCommand: npm start  # node index.mjs，监听 Render 注入的 PORT
+    healthCheckPath: /healthz
+    envVars:
+      # 以下三项可选：配置后 Phase 2 三触点自动切真模型；不配则走规则版闭环
+      - key: LLM_API_KEY
+        sync: false          # 部署时在控制台手工填入，不落仓库
+      - key: LLM_BASE_URL
+        sync: false
+      - key: LLM_MODEL
+        sync: false
