@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>搜索首页</title>
+    <style id="theme-vars">
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Noto+Sans+SC:wght@400;500&display=swap');
+/* MixTouring HiFi — colors_and_type.css */
+/* Brand prefix: mixtouring */
+/* Design system: Warm Modern Minimalist (from travel-app-hifi) applied to MixTouring product */
+
+:root {
+  /* === Core Color Tokens === */
+  --color-canvas: #F8F9FA;
+  --color-surface: #FFFFFF;
+  --color-primary-dark: #111111;
+  --color-brand-accent: #C86A4B;
+  --color-text-main: #1E2022;
+  --color-text-muted: #7C8089;
+  --color-badge-rating: #FBBF24;
+  --color-accent-heart: #E11D48;
+  --color-surface-2: #F4F5F7;
+  --color-border-soft: #E8E9EB;
+
+  /* === Semantic Aliases === */
+  --mixtouring-background: #F8F9FA;
+  --mixtouring-foreground: #1E2022;
+  --mixtouring-card: #FFFFFF;
+  --mixtouring-card-foreground: #1E2022;
+  --mixtouring-popover: #FFFFFF;
+  --mixtouring-popover-foreground: #1E2022;
+  --mixtouring-primary: #111111;
+  --mixtouring-primary-foreground: #FFFFFF;
+  --mixtouring-muted: #F4F5F7;
+  --mixtouring-muted-foreground: #7C8089;
+  --mixtouring-border: #E8E9EB;
+  --mixtouring-input: #FFFFFF;
+  --mixtouring-ring: #C86A4B;
+
+  /* === Radius Scale === */
+  --mixtouring-radius-sm: 8px;
+  --mixtouring-radius-md: 16px;
+  --mixtouring-radius-lg: 24px;
+
+  /* === Typography === */
+  --mixtouring-font-sans: "Inter", "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+
+  /* === Shadows === */
+  --shadow-dock: 0 10px 30px -5px rgba(0, 0, 0, 0.08);
+  --shadow-card-soft: 0 4px 20px -2px rgba(0, 0, 0, 0.04);
+
+  /* === Spacing (8pt grid) === */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+
+  /* === Radii === */
+  --r-sheet: 32px;
+  --r-card: 24px;
+  --r-pill: 9999px;
+
+  /* === State colors === */
+  --state-warning: #FBBF24;
+  --state-error: #E11D48;
+  --state-success: #34c759;
+}
+
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.1/dist/index.global.js"></script>
+    <style type="text/tailwindcss">
+  @theme inline {
+    --color-background: var(--mixtouring-background);
+    --color-foreground: var(--mixtouring-foreground);
+    --color-card: var(--mixtouring-card);
+    --color-card-foreground: var(--mixtouring-card-foreground);
+    --color-popover: var(--mixtouring-popover);
+    --color-popover-foreground: var(--mixtouring-popover-foreground);
+    --color-primary: var(--mixtouring-primary);
+    --color-primary-foreground: var(--mixtouring-primary-foreground);
+    --color-muted: var(--mixtouring-muted);
+    --color-muted-foreground: var(--mixtouring-muted-foreground);
+    --color-border: var(--mixtouring-border);
+    --color-input: var(--mixtouring-input);
+    --color-ring: var(--mixtouring-ring);
+    --radius-sm: var(--mixtouring-radius-sm);
+    --radius-md: var(--mixtouring-radius-md);
+    --radius-lg: var(--mixtouring-radius-lg);
+  }
+  @layer base {
+    body { background: var(--mixtouring-background); color: var(--mixtouring-foreground); }
+    td, th { @apply break-words; word-break: break-all; word-break: auto-phrase; }
+    th { @apply whitespace-nowrap; }
+  }
+    </style>
+    <style id="semantic-token-fallback">
+      .bg-background { background-color: var(--mixtouring-background); }
+      .bg-card { background-color: var(--mixtouring-card); }
+      .bg-primary { background-color: var(--mixtouring-primary); }
+      .bg-muted { background-color: var(--mixtouring-muted); }
+      .text-foreground { color: var(--mixtouring-foreground); }
+      .text-primary-foreground { color: var(--mixtouring-primary-foreground); }
+      .text-muted-foreground { color: var(--mixtouring-muted-foreground); }
+    </style>
+    <style>
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body style="margin:0;padding:0;background:var(--mixtouring-background,#F8F9FA);font-family:var(--mixtouring-font-sans,'Inter','Noto Sans SC',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,system-ui,sans-serif);color:var(--mixtouring-foreground,#1E2022);-webkit-font-smoothing:antialiased;">
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;" aria-hidden="true">
+  <defs>
+    <!-- Outline icons (1.5px stroke) -->
+    <symbol id="hero-magnifying-glass" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+    </symbol>
+    <symbol id="hero-map-pin" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" />
+    </symbol>
+    <symbol id="hero-user" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+    </symbol>
+    <symbol id="hero-arrows-right-left" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+    </symbol>
+    <symbol id="hero-calendar" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
+    </symbol>
+    <symbol id="hero-chevron-left" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15.75 19.5 8.25 12l7.5-7.5" />
+    </symbol>
+    <symbol id="hero-chevron-right" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+    </symbol>
+    <symbol id="hero-sparkles" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423 1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" />
+    </symbol>
+    <symbol id="hero-heart" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z" />
+    </symbol>
+    <symbol id="hero-heart-solid" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z" />
+    </symbol>
+    <symbol id="hero-x-mark" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 18 18 6M6 6l12 12" />
+    </symbol>
+    <!-- Solid icons -->
+    <symbol id="hero-star-solid" viewBox="0 0 24 24">
+      <path fill="currentColor" fill-rule="evenodd" d="M10.788 3.21c.448-1.077 1.976-1.077 2.424 0l2.082 5.006 5.404.434c1.164.093 1.636 1.545.749 2.305l-4.117 3.527 1.257 5.273c.271 1.136-.964 2.033-1.96 1.425L12 18.354 7.373 21.18c-.996.608-2.231-.29-1.96-1.425l1.257-5.273-4.117-3.527c-.887-.76-.415-2.212.749-2.305l5.404-.434 2.082-5.005Z" clip-rule="evenodd" />
+    </symbol>
+  </defs>
+</svg>
+
+  <style id="critical-layout">
+    * { font-weight: 400 !important; }
+    b, strong { font-weight: 400 !important; }
+    html, body { background: var(--mixtouring-background, #F8F9FA); }
+    body { overflow-x: hidden; }
+    .app-shell {
+      max-width: 430px;
+      margin: 0 auto;
+      min-height: 100vh;
+      position: relative;
+      padding: 0 0 112px 0;
+      background: var(--mixtouring-background, #F8F9FA);
+    }
+    .search-input {
+      width: 100%;
+      border: none;
+      border-radius: var(--r-pill, 9999px);
+      padding: 11px 16px;
+      text-align: center;
+      font-size: 16px;
+      background: var(--mixtouring-input, #FFFFFF);
+      color: var(--mixtouring-foreground, #1E2022);
+      outline: none;
+      font-family: inherit;
+      box-shadow: 0 2px 12px -2px rgba(0, 0, 0, 0.06);
+      transition: box-shadow 0.2s ease;
+      cursor: pointer;
+    }
+    .search-input:focus {
+      box-shadow: 0 2px 16px -2px rgba(200, 106, 75, 0.18);
+    }
+    .date-display {
+      width: 100%;
+      border: none;
+      border-radius: var(--r-pill, 9999px);
+      padding: 11px 16px;
+      text-align: center;
+      font-size: 16px;
+      background: var(--mixtouring-input, #FFFFFF);
+      color: var(--mixtouring-foreground, #1E2022);
+      outline: none;
+      font-family: inherit;
+      box-shadow: 0 2px 12px -2px rgba(0, 0, 0, 0.06);
+      appearance: none;
+      -webkit-appearance: none;
+      cursor: pointer;
+      transition: box-shadow 0.2s ease;
+    }
+    .date-display:hover {
+      box-shadow: 0 2px 16px -2px rgba(200, 106, 75, 0.15);
+    }
+
+    /* === Bottom Sheet（日历 / 城市选择共用） === */
+    .cal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.25);
+      z-index: 100;
+      display: none;
+      align-items: flex-end;
+      justify-content: center;
+      animation: calFadeIn 0.2s ease;
+    }
+    .cal-overlay.active { display: flex; }
+    @keyframes calFadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes calSlideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+    .cal-panel {
+      width: 100%;
+      max-width: 430px;
+      background: var(--mixtouring-card, #FFFFFF);
+      border-radius: 28px 28px 0 0;
+      padding: 20px 20px 32px;
+      box-shadow: 0 -8px 40px -4px rgba(0, 0, 0, 0.12);
+      animation: calSlideUp 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .cal-handle {
+      width: 36px;
+      height: 4px;
+      border-radius: 9999px;
+      background: var(--mixtouring-border, #E8E9EB);
+      margin: 0 auto 16px;
+    }
+    .cal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .cal-title {
+      font-size: 17px;
+      color: var(--mixtouring-foreground, #1E2022);
+      letter-spacing: -0.01em;
+    }
+    .cal-title span { color: var(--mixtouring-ring, #C86A4B); }
+    .cal-nav { display: flex; gap: 4px; }
+    .cal-nav-btn {
+      width: 32px;
+      height: 32px;
+      border-radius: 9999px;
+      border: none;
+      background: var(--mixtouring-muted, #F4F5F7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+    .cal-nav-btn:active { background: var(--mixtouring-border, #E8E9EB); }
+    .cal-nav-btn svg { width: 16px; height: 16px; color: var(--mixtouring-foreground, #1E2022); }
+
+    .cal-weekdays {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      margin-bottom: 8px;
+    }
+    .cal-weekday {
+      text-align: center;
+      font-size: 12px;
+      color: var(--mixtouring-muted-foreground, #7C8089);
+      padding: 6px 0;
+    }
+    .cal-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 2px;
+    }
+    .cal-cell {
+      aspect-ratio: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      color: var(--mixtouring-foreground, #1E2022);
+      border-radius: 9999px;
+      cursor: pointer;
+      transition: background 0.12s ease, color 0.12s ease;
+      border: none;
+      background: transparent;
+      font-family: inherit;
+    }
+    .cal-cell:active { background: var(--mixtouring-muted, #F4F5F7); }
+    .cal-cell.out-month { color: var(--mixtouring-border, #C8C9CB); }
+    .cal-cell.today {
+      color: var(--mixtouring-ring, #C86A4B);
+    }
+    .cal-cell.selected {
+      background: var(--mixtouring-primary, #111111);
+      color: var(--mixtouring-primary-foreground, #FFFFFF);
+    }
+    .cal-cell.selected:active {
+      background: var(--mixtouring-primary, #111111);
+    }
+
+    .cal-actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 0.5px solid var(--mixtouring-border, #E8E9EB);
+    }
+    .cal-action-btn {
+      border: none;
+      background: transparent;
+      font-size: 15px;
+      font-family: inherit;
+      cursor: pointer;
+      padding: 8px 12px;
+      border-radius: 9999px;
+      transition: background 0.15s ease;
+    }
+    .cal-action-btn:active { background: var(--mixtouring-muted, #F4F5F7); }
+    .cal-clear { color: var(--mixtouring-muted-foreground, #7C8089); }
+    .cal-today { color: var(--mixtouring-ring, #C86A4B); }
+
+    /* === 城市选择网格 === */
+    .city-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      max-height: 46vh;
+      overflow-y: auto;
+    }
+    .city-cell {
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      color: var(--mixtouring-foreground, #1E2022);
+      border-radius: 9999px;
+      cursor: pointer;
+      border: none;
+      background: var(--mixtouring-muted, #F4F5F7);
+      font-family: inherit;
+      transition: background 0.12s ease, color 0.12s ease;
+    }
+    .city-cell:active { background: var(--mixtouring-border, #E8E9EB); }
+    .city-cell.selected {
+      background: var(--mixtouring-primary, #111111);
+      color: var(--mixtouring-primary-foreground, #FFFFFF);
+    }
+
+    .desc-clamp-2 {
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .hot-card { transition: transform 0.15s ease; cursor: pointer; }
+    .hot-card:active { transform: scale(0.98); }
+    .cta-btn { transition: transform 0.15s ease; }
+    .cta-btn:active { transform: scale(0.98); }
+    .route-img-wrap {
+      position: relative;
+      width: 100%;
+      height: 160px;
+      overflow: hidden;
+      border-radius: 16px 16px 0 0;
+    }
+    .route-img-wrap img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .route-badge {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      background: rgba(255,255,255,0.92);
+      backdrop-filter: blur(8px);
+      border-radius: 9999px;
+      padding: 4px 10px;
+      font-size: 12px;
+      color: #1E2022;
+    }
+    .route-heart {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      width: 32px;
+      height: 32px;
+      border-radius: 9999px;
+      background: rgba(255,255,255,0.92);
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: none;
+      cursor: pointer;
+    }
+    @media (max-width: 430px) {
+      .app-shell { width: 100%; }
+    }
+  </style>
+
+  <main class="app-shell">
+    <!-- Section 1: Brand Header -->
+    <header class="flex items-center justify-center gap-2 pt-10 pb-1">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="MixTouring">
+        <defs>
+          <linearGradient id="mt-logo-grad" x1="0" y1="0" x2="24" y2="24" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#111111" />
+            <stop offset="100%" stop-color="#C86A4B" />
+          </linearGradient>
+        </defs>
+        <rect width="24" height="24" rx="6" fill="url(#mt-logo-grad)" />
+        <path d="M5 16.5 C 8 9, 12 17, 19 7.5" stroke="#FFFFFF" stroke-width="1.4" stroke-linecap="round" fill="none" />
+        <circle cx="5" cy="16.5" r="1.6" fill="#FFFFFF" />
+        <circle cx="10.5" cy="12.75" r="1.6" fill="#FFFFFF" />
+        <circle cx="19" cy="7.5" r="1.6" fill="#FFFFFF" />
+      </svg>
+      <span class="text-[20px]" style="letter-spacing: -0.02em; color: var(--mixtouring-foreground, #1E2022);">
+        Mix<span style="color: var(--mixtouring-ring, #C86A4B);">Touring</span>
+      </span>
+    </header>
+
+    <!-- Section 2: Trip Search Card -->
+    <section class="mx-4 mt-4 px-4 pt-5 pb-[18px]" style="background: var(--mixtouring-card, #FFFFFF); border-radius: var(--r-card, 24px); box-shadow: var(--shadow-card-soft, 0 4px 20px -2px rgba(0,0,0,0.04));">
+      <!-- Origin-Destination labels row -->
+      <div class="flex items-center gap-2.5 mb-1.5">
+        <span class="flex-1 text-center text-[13px]" style="color: var(--mixtouring-muted-foreground, #7C8089);">出发地</span>
+        <span class="w-9 shrink-0"></span>
+        <span class="flex-1 text-center text-[13px]" style="color: var(--mixtouring-muted-foreground, #7C8089);">目的地</span>
+      </div>
+      <!-- Origin-Destination inputs row -->
+      <div class="flex items-center gap-2.5">
+        <input class="search-input" id="fromInput" value="北京" readonly aria-label="出发地" />
+        <button id="btnSwap" class="shrink-0 w-9 h-9 rounded-full flex items-center justify-center" style="background: var(--mixtouring-card, #FFFFFF); box-shadow: 0 2px 12px -2px rgba(0,0,0,0.06); border: none; cursor: pointer;" aria-label="交换出发地和目的地">
+          <svg class="w-4 h-4" style="color: var(--mixtouring-ring, #C86A4B);"><use href="#hero-arrows-right-left"></use></svg>
+        </button>
+        <input class="search-input" id="toInput" value="喀什" readonly aria-label="目的地" />
+      </div>
+      <!-- Date field -->
+      <div class="mt-4">
+        <div class="text-center text-[13px] mb-1.5" style="color: var(--mixtouring-muted-foreground, #7C8089);">出发日期</div>
+        <div class="relative">
+          <div class="date-display" role="button" tabindex="0" aria-label="出发日期">2026/10/01</div>
+          <svg class="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style="color: var(--mixtouring-muted-foreground, #7C8089);"><use href="#hero-calendar"></use></svg>
+        </div>
+      </div>
+      <!-- CTA button -->
+      <button id="btnGo" class="cta-btn w-full mt-5 rounded-full flex items-center justify-center gap-1.5" style="background: var(--mixtouring-primary, #111111); color: var(--mixtouring-primary-foreground, #FFFFFF); font-size: 16px; padding: 11px 16px; border: none; cursor: pointer; font-family: inherit;">
+        <svg class="w-4 h-4" style="color: var(--mixtouring-ring, #C86A4B);"><use href="#hero-sparkles"></use></svg>
+        <span>出发!</span>
+      </button>
+    </section>
+
+    <!-- Section 3: Section Title -->
+    <h2 class="mx-4 text-[13px]" style="color: var(--mixtouring-muted-foreground, #7C8089); letter-spacing: 0.08em; margin-top: 22px; margin-bottom: 4px;">热门远途</h2>
+
+    <!-- Section 4: Hot Route Cards（数据驱动） -->
+    <section class="flex flex-col gap-3 px-4" id="hotList"></section>
+  </main>
+
+  <!-- Section 5: Bottom Navigation -->
+  <nav data-mobile-nav="global" class="fixed bottom-4 left-1/2 -translate-x-1/2 w-[calc(100%-32px)] max-w-md h-[52px] rounded-full bg-white z-50" style="box-shadow: var(--shadow-dock);">
+    <div class="flex items-center justify-between w-full h-full px-1">
+      <button data-nav-key="search" data-active="true" data-dom-id="nav-search" class="flex flex-col justify-center gap-0.5 w-[52px] h-[52px] items-center rounded-full shrink-0" style="background: var(--mixtouring-primary); color: var(--mixtouring-primary-foreground);">
+        <svg class="w-[18px] h-[18px] shrink-0"><use href="#hero-magnifying-glass"></use></svg>
+        <span class="text-[10px] leading-none whitespace-nowrap">搜索</span>
+      </button>
+      <button data-nav-key="library" data-dom-id="nav-library" class="flex flex-col justify-center gap-0.5 px-4 h-full items-center shrink-0" style="color: var(--mixtouring-muted-foreground);">
+        <svg class="w-[18px] h-[18px] shrink-0"><use href="#hero-map-pin"></use></svg>
+        <span class="text-[10px] leading-none whitespace-nowrap">路线库</span>
+      </button>
+      <button data-nav-key="me" data-dom-id="nav-me" class="flex flex-col justify-center gap-0.5 px-4 h-full items-center shrink-0" style="color: var(--mixtouring-muted-foreground);">
+        <svg class="w-[18px] h-[18px] shrink-0"><use href="#hero-user"></use></svg>
+        <span class="text-[10px] leading-none whitespace-nowrap">我的</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Custom Calendar Popup -->
+  <div class="cal-overlay" id="calOverlay">
+    <div class="cal-panel">
+      <div class="cal-handle"></div>
+      <div class="cal-header">
+        <div class="cal-title" id="calMonthLabel">2026年 <span>10月</span></div>
+        <div class="cal-nav">
+          <button class="cal-nav-btn" id="calPrev" aria-label="上个月"><svg class="w-4 h-4" style="color: var(--mixtouring-foreground, #1E2022);"><use href="#hero-chevron-left"></use></svg></button>
+          <button class="cal-nav-btn" id="calNext" aria-label="下个月"><svg class="w-4 h-4" style="color: var(--mixtouring-foreground, #1E2022);"><use href="#hero-chevron-right"></use></svg></button>
+        </div>
+      </div>
+      <div class="cal-weekdays">
+        <div class="cal-weekday">一</div><div class="cal-weekday">二</div><div class="cal-weekday">三</div><div class="cal-weekday">四</div><div class="cal-weekday">五</div><div class="cal-weekday">六</div><div class="cal-weekday">日</div>
+      </div>
+      <div class="cal-grid" id="calGrid"></div>
+      <div class="cal-actions">
+        <button class="cal-action-btn cal-clear" id="calClear">清除</button>
+        <button class="cal-action-btn cal-today" id="calToday">今天</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- City Picker Sheet -->
+  <div class="cal-overlay" id="cityOverlay">
+    <div class="cal-panel">
+      <div class="cal-handle"></div>
+      <div class="cal-header">
+        <div class="cal-title" id="cityTitle">选择<span>出发地</span></div>
+        <button class="cal-nav-btn" id="cityClose" aria-label="关闭"><svg class="w-4 h-4" style="color: var(--mixtouring-foreground, #1E2022);"><use href="#hero-x-mark"></use></svg></button>
+      </div>
+      <div class="city-grid no-scrollbar" id="cityGrid"></div>
+    </div>
+  </div>
+
+  <script src="../assets/mock.js"></script>
+  <script src="../assets/app.js"></script>
+  <script>
+  (function () {
+    var fromInput = document.getElementById('fromInput');
+    var toInput = document.getElementById('toInput');
+    var dateDisplay = document.querySelector('.date-display');
+
+    /* URL 预填（模板「一键复用」入口：只复用起终点，日期由用户重选） */
+    var preFrom = MT.qs('from');
+    var preTo = MT.qs('to');
+    if (preFrom) fromInput.value = preFrom;
+    if (preTo) toInput.value = preTo;
+
+    MT.wireNav();
+
+    /* ---------- 交换起终点 ---------- */
+    document.getElementById('btnSwap').addEventListener('click', function () {
+      var a = fromInput.value;
+      fromInput.value = toInput.value;
+      toInput.value = a;
+    });
+
+    /* ---------- CTA：去生成方案 ---------- */
+    document.getElementById('btnGo').addEventListener('click', function () {
+      var from = fromInput.value.trim();
+      var to = toInput.value.trim();
+      var date = dateDisplay.textContent.trim();
+      if (!from || !to) { MT.toast('先选好出发地和目的地'); return; }
+      if (from === to) { MT.toast('出发地和目的地不能相同'); return; }
+      if (!/^\d{4}\/\d{2}\/\d{2}$/.test(date)) { MT.toast('先选一个出发日期'); return; }
+      var q = new URLSearchParams({ from: from, to: to, date: date });
+      location.href = 'loading.html?' + q.toString();
+    });
+
+    /* ---------- 城市选择底册 ---------- */
+    var cityOverlay = document.getElementById('cityOverlay');
+    var cityGrid = document.getElementById('cityGrid');
+    var cityTitle = document.getElementById('cityTitle');
+    var picking = null; /* 'from' | 'to' */
+
+    function renderCities() {
+      var current = picking === 'from' ? fromInput.value : toInput.value;
+      cityGrid.innerHTML = '';
+      DB.cities.forEach(function (c) {
+        var b = document.createElement('button');
+        b.className = 'city-cell' + (c === current ? ' selected' : '');
+        b.textContent = c;
+        b.addEventListener('click', function () {
+          if (picking === 'from') fromInput.value = c; else toInput.value = c;
+          closeCity();
+        });
+        cityGrid.appendChild(b);
+      });
+    }
+    function openCity(which) {
+      picking = which;
+      cityTitle.innerHTML = '选择<span>' + (which === 'from' ? '出发地' : '目的地') + '</span>';
+      renderCities();
+      cityOverlay.classList.add('active');
+    }
+    function closeCity() { cityOverlay.classList.remove('active'); }
+
+    fromInput.addEventListener('click', function () { openCity('from'); });
+    toInput.addEventListener('click', function () { openCity('to'); });
+    document.getElementById('cityClose').addEventListener('click', closeCity);
+    cityOverlay.addEventListener('click', function (e) { if (e.target === cityOverlay) closeCity(); });
+
+    /* ---------- 热门远途（数据驱动：路线库 TOP3 模板） ---------- */
+    function hotCardHtml(t) {
+      var fav = MT.isFav(t.id);
+      return '<article class="hot-card overflow-hidden" data-tpl-id="' + MT.esc(t.id) + '" role="button" tabindex="0" style="background: var(--mixtouring-card, #FFFFFF); border-radius: var(--mixtouring-radius-md, 16px); box-shadow: var(--shadow-card-soft, 0 4px 20px -2px rgba(0,0,0,0.04));">' +
+        '<div class="route-img-wrap">' +
+          '<img src="' + MT.esc(t.img) + '" alt="' + MT.esc(t.to) + '风光" loading="lazy" />' +
+          '<span class="route-badge">' +
+            '<svg class="w-3 h-3" style="color: var(--state-warning, #FBBF24);"><use href="#hero-star-solid"></use></svg>' + t.rating +
+          '</span>' +
+          '<button class="route-heart" data-heart="' + MT.esc(t.id) + '" aria-label="' + (fav ? '取消收藏' : '收藏') + '">' +
+            '<svg class="w-4 h-4" style="color: ' + (fav ? 'var(--color-accent-heart, #E11D48)' : 'var(--mixtouring-foreground, #1E2022)') + ';"><use href="' + (fav ? '#hero-heart-solid' : '#hero-heart') + '"></use></svg>' +
+          '</button>' +
+        '</div>' +
+        '<div class="px-4 py-3 flex flex-col gap-1">' +
+          '<div class="flex items-center justify-between gap-2">' +
+            '<span class="text-[15px]" style="color: var(--mixtouring-foreground, #1E2022);">' + MT.esc(t.from) + ' → ' + MT.esc(t.to) + ' · ' + MT.esc(t.totalTime.replace('总 ', '')) + '</span>' +
+            '<span class="text-[12px] shrink-0" style="color: var(--mixtouring-ring, #C86A4B);">' + MT.esc(t.contributor) + '</span>' +
+          '</div>' +
+          '<p class="text-[12.5px] desc-clamp-2" style="color: var(--mixtouring-muted-foreground, #7C8089); line-height: 1.5;">' + MT.esc(t.desc) + '</p>' +
+        '</div>' +
+      '</article>';
+    }
+
+    var hotList = document.getElementById('hotList');
+    hotList.innerHTML = DB.templates.slice(0, 3).map(hotCardHtml).join('');
+
+    hotList.querySelectorAll('.hot-card').forEach(function (card) {
+      var tplId = card.getAttribute('data-tpl-id');
+      function open() { location.href = 'detail.html?tpl=' + tplId; }
+      card.addEventListener('click', open);
+      card.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+    });
+
+    hotList.querySelectorAll('[data-heart]').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var tplId = btn.getAttribute('data-heart');
+        var t = DB.findTemplate(tplId);
+        if (!t) return;
+        var on = MT.toggleFav(MT.favSnapshot(t));
+        btn.setAttribute('aria-label', on ? '取消收藏' : '收藏');
+        btn.innerHTML = '<svg class="w-4 h-4" style="color: ' + (on ? 'var(--color-accent-heart, #E11D48)' : 'var(--mixtouring-foreground, #1E2022)') + ';"><use href="' + (on ? '#hero-heart-solid' : '#hero-heart') + '"></use></svg>';
+        MT.toast(on ? '已收藏，可在「我的」查看' : '已取消收藏');
+      });
+    });
+  })();
+  </script>
+
+  <script>
+  (function() {
+    var overlay = document.getElementById('calOverlay');
+    var dateDisplay = document.querySelector('.date-display');
+    var grid = document.getElementById('calGrid');
+    var label = document.getElementById('calMonthLabel');
+    var btnPrev = document.getElementById('calPrev');
+    var btnNext = document.getElementById('calNext');
+    var btnClear = document.getElementById('calClear');
+    var btnToday = document.getElementById('calToday');
+
+    var viewYear = 2026;
+    var viewMonth = 9;
+    var selectedDate = new Date(2026, 9, 1);
+    var today = new Date();
+
+    var monthNames = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+
+    function pad(n) { return n < 10 ? '0' + n : '' + n; }
+    function fmtDate(d) { return d.getFullYear() + '/' + pad(d.getMonth()+1) + '/' + pad(d.getDate()); }
+    function isSameDay(a, b) { return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate(); }
+
+    function render() {
+      label.innerHTML = viewYear + '年 <span>' + monthNames[viewMonth] + '</span>';
+      var first = new Date(viewYear, viewMonth, 1);
+      var last = new Date(viewYear, viewMonth + 1, 0);
+      var startOffset = (first.getDay() + 6) % 7;
+      var totalDays = last.getDate();
+      var prevLast = new Date(viewYear, viewMonth, 0).getDate();
+      var cells = [];
+
+      for (var i = startOffset - 1; i >= 0; i--) {
+        cells.push({ day: prevLast - i, outMonth: true, date: new Date(viewYear, viewMonth - 1, prevLast - i) });
+      }
+      for (var d = 1; d <= totalDays; d++) {
+        cells.push({ day: d, outMonth: false, date: new Date(viewYear, viewMonth, d) });
+      }
+      var nextStart = 1;
+      while (cells.length < 42) {
+        cells.push({ day: nextStart, outMonth: true, date: new Date(viewYear, viewMonth + 1, nextStart) });
+        nextStart++;
+      }
+
+      grid.innerHTML = '';
+      cells.forEach(function(c) {
+        var btn = document.createElement('button');
+        btn.className = 'cal-cell';
+        if (c.outMonth) btn.classList.add('out-month');
+        if (isSameDay(c.date, today)) btn.classList.add('today');
+        if (selectedDate && isSameDay(c.date, selectedDate)) btn.classList.add('selected');
+        btn.textContent = c.day;
+        btn.addEventListener('click', function() {
+          selectedDate = c.date;
+          dateDisplay.textContent = fmtDate(c.date);
+          overlay.classList.remove('active');
+          render();
+        });
+        grid.appendChild(btn);
+      });
+    }
+
+    function open() { overlay.classList.add('active'); render(); }
+    function close() { overlay.classList.remove('active'); }
+
+    dateDisplay.addEventListener('click', open);
+    dateDisplay.addEventListener('keydown', function(e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) close(); });
+    btnPrev.addEventListener('click', function() { viewMonth--; if (viewMonth < 0) { viewMonth = 11; viewYear--; } render(); });
+    btnNext.addEventListener('click', function() { viewMonth++; if (viewMonth > 11) { viewMonth = 0; viewYear++; } render(); });
+    btnClear.addEventListener('click', function() { selectedDate = null; dateDisplay.textContent = '选择日期'; close(); });
+    btnToday.addEventListener('click', function() { selectedDate = new Date(); viewYear = today.getFullYear(); viewMonth = today.getMonth(); dateDisplay.textContent = fmtDate(today); render(); });
+
+    render();
+  })();
+  </script>
+</body>
+</html>

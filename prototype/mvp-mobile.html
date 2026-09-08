@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MixTouring · AI 省钱路线</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23101e33'/%3E%3Cstop offset='1' stop-color='%233e92c4'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='2' y='2' width='44' height='44' rx='12' fill='url(%23g)'/%3E%3Cpath d='M11 33 C15 19 19 19 24 26 C29 33 33 29 37 15' fill='none' stroke='%23fff' stroke-width='3' stroke-linecap='round'/%3E%3Ccircle cx='11' cy='33' r='3.2' fill='%23fff'/%3E%3Ccircle cx='24' cy='26' r='2.4' fill='%23fff'/%3E%3Ccircle cx='37' cy='15' r='3.2' fill='%23fff'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#ffffff; --card:#f5f5f7; --ink:#1c1c1e; --ink2:#6e6e73; --ink3:#c7c7cc;
+  --line:#e5e5ea; --accent:#1e3a5f; --accent2:#3e92c4; --accent-soft:#e4ebf4;
+  --train:#1e3a5f; --plane:#3e92c4;
+  --g:#34c759; --y:#ff9500; --r:#ff3b30;
+  --radius:16px;
+  --font:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box;font-family:var(--font);-webkit-tap-highlight-color:transparent}
+body{background:#dcdce0;color:var(--ink);font-size:15px;line-height:1.55}
+button{font:inherit;border:none;background:none;cursor:pointer;color:inherit}
+input,select,textarea{font:inherit;color:inherit}
+b,strong{font-weight:400}
+#app{max-width:430px;margin:0 auto;min-height:100dvh;background:var(--bg);position:relative;box-shadow:0 0 40px rgba(0,0,0,.12)}
+.view{display:none;padding:0 16px calc(96px + env(safe-area-inset-bottom))}
+.view.on{display:block}
+.view.push{padding-bottom:40px}
+
+/* ---------- 大标题 ---------- */
+.ltitle{padding:22px 2px 4px;font-size:24px;font-weight:400;letter-spacing:.01em}
+.lsub{padding:0 2px 16px;color:var(--ink2);font-size:14px}
+
+/* ---------- 品牌 Logo ---------- */
+.brand{display:flex;align-items:center;justify-content:center;gap:8px;padding:32px 2px 24px}
+.brand .mark{width:24px;height:24px;flex:none;display:block}
+.brand .word{font-size:18px;font-weight:400;letter-spacing:.02em;line-height:1;color:var(--ink)}
+.brand .word b{font-weight:400;color:var(--accent);background:none}
+.mark-lg{width:52px;height:52px;display:block;margin:0 auto}
+.ai-spark{width:16px;height:16px;flex:none}
+
+/* ---------- 行程卡（起点⇄终点 / 日期 / 出发） ---------- */
+.trip-card{background:var(--card);border-radius:20px;padding:20px 16px 18px}
+.od-pair{display:flex;align-items:flex-end;gap:8px}
+.od-pair .field{flex:1;margin-bottom:0;text-align:center}
+.od-pair .field label{display:block;text-align:center}
+.od-pair .input{text-align:center}
+.swap-btn{flex:none;width:36px;height:36px;border-radius:50%;background:#fff;border:.5px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--accent);font-size:16px;margin-bottom:5px}
+.swap-btn:active{background:var(--accent-soft);border-color:var(--accent)}
+.date-field{margin-top:14px;text-align:center}
+.date-field .input{text-align:center}
+.btn-go{display:flex;align-items:center;justify-content:center;width:62%;margin:18px auto 0;background:var(--accent);color:#fff;font-size:16px;font-weight:400;border-radius:99px;padding:11px}
+.btn-go:active{opacity:.85}
+.btn-go .ai-spark{color:var(--accent2)}
+
+/* ---------- 推荐路线卡（左图右文 + 右下@贡献者） ---------- */
+.hot-cards{display:flex;flex-direction:column;gap:10px}
+.hot-card{display:flex;gap:12px;background:var(--card);border-radius:16px;padding:12px;align-items:center}
+.hot-card:active{background:var(--accent-soft)}
+.hot-thumb{width:76px;height:76px;border-radius:12px;flex:none}
+.hot-meta{flex:1;min-width:0}
+.hot-meta .t{font-size:14px;font-weight:400;color:var(--ink)}
+.hot-meta .d{font-size:12px;color:var(--ink2);margin-top:3px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.hot-meta .by{font-size:11px;margin-top:6px;text-align:right}
+
+/* ---------- 顶部返回栏 ---------- */
+.navbar{position:sticky;top:0;z-index:20;margin:0 -16px;padding:calc(4px + env(safe-area-inset-top)) 16px 4px;display:flex;align-items:center;gap:6px;
+  background:rgba(255,255,255,.85);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border-bottom:.5px solid var(--line)}
+.navbar .back{color:var(--accent);font-size:16px;display:flex;align-items:center;gap:2px;min-height:44px;padding:4px 12px 4px 0}
+.navbar .ntitle{position:absolute;left:50%;transform:translateX(-50%);font-size:16px;font-weight:400;max-width:60%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ---------- 卡片 ---------- */
+.card{background:var(--card);border-radius:var(--radius);padding:16px}
+.card+.card{margin-top:12px}
+.pressable{transition:transform .12s ease}
+.pressable:active{transform:scale(.985)}
+
+/* ---------- 表单 ---------- */
+.field{margin-bottom:14px}
+.field label{display:block;font-size:13px;color:var(--ink2);margin-bottom:6px}
+.input,.select{width:100%;background:#fff;border:.5px solid var(--line);border-radius:99px;padding:11px 16px;font-size:16px;outline:none;-webkit-appearance:none;appearance:none}
+.input:focus,.select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+
+.segctl{display:flex;background:#e9e9eb;border-radius:10px;padding:2px}
+.segctl button{flex:1;min-height:40px;padding:7px 0;font-size:13.5px;color:var(--ink);border-radius:8px}
+.segctl button:active{opacity:.55}
+.segctl button.on{background:#fff;font-weight:400;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+
+.btn{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;background:var(--accent);color:#fff;font-size:16px;font-weight:400;border-radius:99px;padding:12px}
+.btn:active{opacity:.85}
+.btn.gray{background:#e9e9eb;color:var(--ink)}
+.btn.line{background:transparent;color:var(--accent);border:.5px solid var(--accent)}
+.btn.sm{width:auto;padding:7px 14px;font-size:14px;border-radius:10px}
+
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{background:var(--card);border:.5px solid var(--line);border-radius:99px;padding:10px 14px;font-size:13.5px;color:var(--ink);min-height:38px}
+.chip:active{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+.chip.on{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+
+/* ---------- 线路条 ---------- */
+.route{display:flex;align-items:flex-end;flex-wrap:nowrap;overflow-x:auto;padding:12px 2px 2px;scrollbar-width:none}
+.route::-webkit-scrollbar{display:none}
+.route .stop{display:flex;flex-direction:column;align-items:center;gap:4px;flex:none}
+.route .stop i{width:9px;height:9px;border-radius:50%;border:2.5px solid var(--ink);background:#fff}
+.route .stop span{font-size:12.5px;white-space:nowrap}
+.route .stop small{font-size:11px;color:var(--ink2);white-space:nowrap}
+.route .seg{flex:1;position:relative;margin:0 5px 5px;min-width:52px}
+.route .seg::before{content:"";display:block;border-top:3px solid var(--train);border-radius:2px}
+.route .seg.plane::before{border-top:2.5px dashed var(--plane)}
+.route .seg span{position:absolute;left:50%;transform:translateX(-50%);bottom:8px;font-size:11px;color:var(--ink2);background:#fff;padding:0 4px;white-space:nowrap;border-radius:4px}
+.route .seg.plane span{color:var(--plane)}
+
+/* ---------- 徽标 ---------- */
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:400;border-radius:99px;padding:3px 10px;background:#fff;color:var(--ink2)}
+.badge.g{background:#e9f9ee;color:#1f8a3d}.badge.y{background:#fff3e0;color:#b06a00}.badge.r{background:#ffe9e7;color:#c22b21}
+.badge.blue{background:var(--accent-soft);color:var(--accent)}
+.stars{color:#ff9500;font-size:12px;letter-spacing:1px}
+.stars .off{color:var(--ink3)}
+
+/* ---------- 方案卡 ---------- */
+.plan-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.plan-title{font-size:16px;font-weight:400}
+.plan-price{font-size:20px;font-weight:400;color:var(--accent);white-space:nowrap}
+.plan-price small{font-size:12px;color:var(--ink2);font-weight:400}
+.plan-meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px}
+.plan-foot{display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:12.5px;color:var(--ink2)}
+.chev{color:var(--ink3);font-size:18px}
+
+.note{display:flex;gap:8px;align-items:flex-start;background:#fff8ec;border-radius:12px;padding:10px 12px;font-size:12.5px;color:#8a6414;line-height:1.6}
+
+/* ---------- 详情 ---------- */
+.seg-row{display:flex;gap:12px;padding:14px 0;border-bottom:.5px solid var(--line)}
+.seg-row:last-child{border-bottom:none}
+.seg-ic{flex:none;width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:17px}
+.seg-ic.train{background:var(--accent-soft);color:var(--train)}
+.seg-ic.plane{background:var(--accent-soft);color:var(--plane)}
+.seg-main{flex:1;min-width:0}
+.seg-line{font-size:15px;font-weight:400}
+.seg-sub{font-size:12.5px;color:var(--ink2);margin-top:2px}
+.seg-right{text-align:right;font-size:13px}
+.seg-right .p{font-weight:400;color:var(--accent);font-size:15px}
+.seg-right .f{color:var(--ink2);font-size:11.5px;margin-top:2px}
+
+.risk-row{display:flex;gap:10px;padding:11px 0;border-bottom:.5px solid var(--line)}
+.risk-row:last-child{border-bottom:none}
+.risk-dot{flex:none;width:10px;height:10px;border-radius:50%;margin-top:6px}
+.risk-dot.g{background:var(--g)}.risk-dot.y{background:var(--y)}.risk-dot.r{background:var(--r)}
+.risk-main{flex:1}
+.risk-main b{font-size:14px}
+.risk-main p{font-size:12.5px;color:var(--ink2);margin-top:2px}
+.risk-tag{flex:none;align-self:flex-start}
+
+.sec-title{font-size:13px;font-weight:400;color:var(--ink2);margin:22px 2px 8px;text-transform:uppercase;letter-spacing:.04em}
+
+.action-row{display:flex;gap:10px;margin-top:16px}
+.action-row .btn{flex:1}
+
+/* ---------- Tab Bar ---------- */
+#tabbar{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:min(430px,100%);z-index:50;
+  display:flex;background:rgba(255,255,255,.85);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  border-top:.5px solid var(--line);padding:6px 0 calc(8px + env(safe-area-inset-bottom))}
+#tabbar.hide{display:none}
+#tabbar button{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--ink2);font-size:10.5px;padding:2px 0}
+#tabbar button.on{color:var(--accent)}
+#tabbar svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+
+/* ---------- 状态 ---------- */
+.loading-wrap{padding:90px 30px;text-align:center}
+.spinner{width:34px;height:34px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp .9s linear infinite;margin:0 auto 18px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.skel{background:var(--card);border-radius:var(--radius);height:132px;margin-top:14px;position:relative;overflow:hidden}
+.skel::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 30%,rgba(0,0,0,.04) 50%,transparent 70%);animation:sh 1.3s infinite}
+@keyframes sh{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+.empty-wrap{padding:70px 30px;text-align:center}
+.empty-ic{font-size:44px;margin-bottom:14px;opacity:.5}
+.empty-t{font-size:17px;font-weight:400}
+.empty-p{font-size:13.5px;color:var(--ink2);margin:8px 0 20px;line-height:1.7}
+
+#toast{position:fixed;left:50%;transform:translateX(-50%) translateY(20px);bottom:110px;z-index:99;
+  background:rgba(28,28,30,.92);color:#fff;font-size:13.5px;border-radius:99px;padding:10px 20px;opacity:0;pointer-events:none;transition:opacity .25s ease,transform .25s ease;max-width:80%;text-align:center}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+.me-id{display:flex;align-items:center;gap:14px}
+.avatar{width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#101e33,#3e92c4);color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:400}
+.rec-item{display:flex;gap:10px;padding:12px 0;border-bottom:.5px solid var(--line)}
+.rec-item:last-child{border-bottom:none}
+.rec-dot{flex:none;width:8px;height:8px;border-radius:50%;margin-top:7px}
+
+/* ---------- 键盘焦点与动效可达性 ---------- */
+button:focus-visible{outline:2.5px solid var(--accent);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){
+  .spinner{animation-duration:2.4s}
+  .skel::after{animation:none}
+  .pressable{transition:none}
+  #toast{transition:none}
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ============ 搜索（Tab 1） ============ -->
+  <div class="view on" id="v-search">
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 48 48" aria-hidden="true">
+        <defs><linearGradient id="mxg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#101e33"/><stop offset="1" stop-color="#3e92c4"/></linearGradient></defs>
+        <rect x="2" y="2" width="44" height="44" rx="12" fill="url(#mxg)"/>
+        <path d="M11 33 C15 19 19 19 24 26 C29 33 33 29 37 15" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="11" cy="33" r="3.2" fill="#fff"/><circle cx="24" cy="26" r="2.4" fill="#fff"/><circle cx="37" cy="15" r="3.2" fill="#fff"/>
+      </svg>
+      <div class="word">Mix<b>Touring</b></div>
+    </div>
+
+    <div class="trip-card">
+      <div class="od-pair">
+        <div class="field"><label>出发地</label><input class="input" id="in-from" placeholder="城市" value="北京"></div>
+        <button class="swap-btn" id="btn-swap" aria-label="交换起终点">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4v13M8 17l-3-3M8 17l3-3M16 20V7M16 7l-3 3M16 7l3 3"/></svg>
+        </button>
+        <div class="field"><label>目的地</label><input class="input" id="in-to" placeholder="城市" value="喀什"></div>
+      </div>
+      <div class="field date-field"><label>出发日期</label><input class="input" type="date" id="in-date" value="2026-10-01"></div>
+      <button class="btn-go" id="btn-search">
+        <svg class="ai-spark" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.9 6.1L20 10l-6.1 1.9L12 18l-1.9-6.1L4 10l6.1-1.9L12 2zM19 15l.9 2.6L22.5 18.5l-2.6.9L19 22l-.9-2.6-2.6-.9 2.6-.9L19 15z"/></svg>
+        出发!
+      </button>
+    </div>
+
+    <div class="sec-title">热门远途</div>
+    <div class="hot-cards" id="hot-cards"></div>
+  </div>
+
+  <!-- ============ 生成中 ============ -->
+  <div class="view push" id="v-loading">
+    <div class="loading-wrap">
+      <svg class="mark-lg" viewBox="0 0 48 48" aria-hidden="true" style="margin-bottom:18px">
+        <defs><linearGradient id="mxg2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#101e33"/><stop offset="1" stop-color="#3e92c4"/></linearGradient></defs>
+        <rect x="2" y="2" width="44" height="44" rx="12" fill="url(#mxg2)"/>
+        <path d="M11 33 C15 19 19 19 24 26 C29 33 33 29 37 15" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="11" cy="33" r="3.2" fill="#fff"/><circle cx="24" cy="26" r="2.4" fill="#fff"/><circle cx="37" cy="15" r="3.2" fill="#fff"/>
+      </svg>
+      <div class="spinner"></div>
+      <div style="font-size:15px;font-weight:400" id="loading-text">AI 正在规划路线…</div>
+      <div style="font-size:13px;color:var(--ink2);margin-top:6px">筛选中转城市 · 逐段询价 · 校验衔接</div>
+    </div>
+    <div class="skel"></div><div class="skel"></div><div class="skel"></div>
+  </div>
+
+  <!-- ============ 方案列表 ============ -->
+  <div class="view push" id="v-list">
+    <div class="navbar"><button class="back" data-back>‹ 搜索</button><span class="ntitle" id="list-title">方案</span></div>
+    <div style="padding-top:14px">
+      <div class="note" id="list-note"></div>
+      <div style="margin:12px 0 4px"><div class="segctl" id="list-sort"><button class="on">预算优先</button><button>耗时优先</button><button>均衡</button></div></div>
+      <div id="list-cards" style="margin-top:12px"></div>
+    </div>
+  </div>
+
+  <!-- ============ 方案详情 ============ -->
+  <div class="view push" id="v-detail">
+    <div class="navbar"><button class="back" data-back>‹ 方案</button><span class="ntitle" id="detail-title">方案详情</span></div>
+    <div id="detail-body" style="padding-top:14px"></div>
+  </div>
+
+  <!-- ============ 分享落地页 ============ -->
+  <div class="view push" id="v-share">
+    <div class="navbar"><button class="back" data-back>‹ 返回</button><span class="ntitle">好友分享的路线</span></div>
+    <div id="share-body" style="padding-top:20px"></div>
+  </div>
+
+  <!-- ============ 路线库（Tab 2） ============ -->
+  <div class="view" id="v-library">
+    <div class="ltitle">路线库</div>
+    <div class="lsub">被真实背包客走过的省钱路线，一键复用</div>
+    <div class="chips" id="lib-filter" style="margin-bottom:14px">
+      <button class="chip on" data-f="all">全部</button><button class="chip" data-f="west">西部</button><button class="chip" data-f="ne">东北</button><button class="chip" data-f="sea">海南</button>
+    </div>
+    <div id="lib-cards"></div>
+  </div>
+
+  <!-- ============ 模板详情 ============ -->
+  <div class="view push" id="v-template">
+    <div class="navbar"><button class="back" data-back>‹ 路线库</button><span class="ntitle" id="tpl-title">路线</span></div>
+    <div id="tpl-body" style="padding-top:14px"></div>
+  </div>
+
+  <!-- ============ 实测回填 ============ -->
+  <div class="view push" id="v-feedback">
+    <div class="navbar"><button class="back" data-back>‹ 返回</button><span class="ntitle">实测回填</span></div>
+    <div id="fb-body" style="padding-top:14px"></div>
+  </div>
+
+  <!-- ============ 回填成功 ============ -->
+  <div class="view push" id="v-done">
+    <div class="empty-wrap">
+      <div style="width:72px;height:72px;border-radius:50%;background:#e9f9ee;color:#1f8a3d;display:flex;align-items:center;justify-content:center;font-size:34px;margin:0 auto 18px">✓</div>
+      <div class="empty-t">已回填，感谢实测</div>
+      <div class="empty-p">你的实际花费将校准票价样本，<br>衔接经历将校准风险分。</div>
+      <button class="btn" id="done-home">回到首页</button>
+      <button class="btn gray" id="done-me" style="margin-top:10px">查看我的回填</button>
+    </div>
+  </div>
+
+  <!-- ============ 我的（Tab 3） ============ -->
+  <div class="view" id="v-me">
+    <div class="ltitle">我的</div>
+    <div class="card" style="margin-top:14px">
+      <div class="me-id">
+        <div class="avatar" id="me-avatar">背</div>
+        <div>
+          <div style="font-weight:400;font-size:16px" id="me-name">背包客_0000</div>
+          <div style="font-size:12.5px;color:var(--ink2);margin-top:2px">匿名模式 · 数据保存在本机</div>
+        </div>
+      </div>
+    </div>
+    <div class="sec-title">我的收藏</div>
+    <div class="card" id="me-favs"></div>
+    <div class="sec-title">我的回填</div>
+    <div class="card" id="me-recs"></div>
+  </div>
+
+  <!-- ============ Tab Bar ============ -->
+  <nav id="tabbar">
+    <button class="on" data-tab="search">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>搜索</button>
+    <button data-tab="library">
+      <svg viewBox="0 0 24 24"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg>路线库</button>
+    <button data-tab="me">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-3.5 4.5-5 8-5s6.5 1.5 8 5"/></svg>我的</button>
+  </nav>
+
+  <div id="toast"></div>
+</div>
+
+<script>
+/* ================= 数据层（演示样本） ================= */
+var DB = {
+"北京|喀什":{ direct:{price:"¥2,480",dur:"8h20m",note:"直飞 · 经停乌鲁木齐"}, plans:[
+ {id:"p1",title:"火车 + 飞机混搭",tag:"001 同款",price:"¥1,180–1,350",save:"省 ¥1,214",hours:"总 38h",risk:{lv:"y",t:"衔接风险 · 中"},play:{city:"银川",stars:4},
+  nodes:[{c:"北京",t:"21:30"},{s:"train",l:"火车 10h42m"},{c:"银川",t:"停 1h53m"},{s:"plane",l:"飞机 3h35m"},{c:"阿克苏",t:"停 1h40m"},{s:"train",l:"火车 5h27m"},{c:"喀什",t:"D3 11:17"}],
+  segs:[
+   {m:"train",no:"火车 K1177",line:"北京西 21:30 → 银川 08:12",sub:"次日到达 · 历时 10h42m · 夕发朝至",freq:"每日 1 班",price:"¥263 硬卧"},
+   {m:"plane",no:"飞机 3U8215",line:"银川河东 10:05 → 阿克苏 13:40",sub:"历时 3h35m · 直飞",freq:"每日 2 班",price:"¥780–920"},
+   {m:"train",no:"火车 K9786",line:"阿克苏 15:20 → 喀什 20:47",sub:"历时 5h27m",freq:"每日 3 班",price:"¥72 硬座"}],
+  risks:[
+   {lv:"y",t:"衔接时间余量 · 银川 1h53m",d:"同站转场 1–2 小时，判黄；误机将错过每日 2 班的航班"},
+   {lv:"y",t:"行李不直挂",d:"火车转飞机需自行提取并重新托运，建议预留 30 分钟"},
+   {lv:"g",t:"退改规则",d:"火车票开车前可退；机票段为 4 折以上舱位，可改期"},
+   {lv:"g",t:"机场-车站接驳",d:"银川站 → 河东机场 18 公里，机场巴士 40 分钟"}],
+  playDetail:{city:"银川",stars:4,desc:"若改签到次日航班：镇北堡西部影城（市区打车 40 分钟）、怀远夜市（人均 ¥35 吃撑）。当地物价：住宿 ¥90–150/晚 · 机场巴士 ¥20。"}},
+ {id:"p2",title:"飞兰州 + 南疆线直达",price:"¥1,560–1,780",save:"省 ¥830",hours:"总 26h",risk:{lv:"g",t:"衔接风险 · 低"},play:{city:"兰州",stars:3},
+  nodes:[{c:"北京",t:"07:55"},{s:"plane",l:"飞机 2h35m"},{c:"兰州",t:"停 3h10m"},{s:"train",l:"火车 20h05m"},{c:"喀什",t:"D2 09:45"}],
+  segs:[
+   {m:"plane",no:"飞机 CA1246",line:"北京首都 07:55 → 兰州中川 10:30",sub:"历时 2h35m",freq:"每日 4 班",price:"¥860–1,050"},
+   {m:"train",no:"火车 T295",line:"兰州 13:40 → 喀什 09:45",sub:"次日到达 · 历时 20h05m",freq:"每日 1 班",price:"¥650 硬卧"}],
+  risks:[
+   {lv:"g",t:"衔接时间余量 · 兰州 3h10m",d:"大于 2 小时，判绿"},
+   {lv:"y",t:"机场-车站接驳",d:"中川机场 → 兰州站 70 公里，城际铁路 45 分钟"},
+   {lv:"g",t:"退改规则",d:"机票 4 折以上可改期；火车票开车前可退"}],
+  playDetail:{city:"兰州",stars:3,desc:"中转 3 小时可吃一碗正宗牛肉面（人均 ¥18）；若住一晚可逛中山桥、正宁路夜市。"}},
+ {id:"p3",title:"全程火车 · 双夕发朝至",price:"¥1,040–1,160",save:"省 ¥1,330",hours:"总 54h",risk:{lv:"y",t:"衔接风险 · 中"},play:{city:"西安",stars:2},
+  nodes:[{c:"北京",t:"20:10"},{s:"train",l:"火车 12h05m"},{c:"西安",t:"停 9h20m"},{s:"train",l:"火车 32h40m"},{c:"喀什",t:"D3 16:55"}],
+  segs:[
+   {m:"train",no:"火车 Z19",line:"北京西 20:10 → 西安 08:15",sub:"次日到达 · 历时 12h05m · 夕发朝至",freq:"每日 1 班",price:"¥254 硬卧"},
+   {m:"train",no:"火车 K169",line:"西安 17:35 → 喀什 16:55",sub:"第三日到达 · 历时 32h40m",freq:"隔日 1 班",price:"¥786 硬卧"}],
+  risks:[
+   {lv:"g",t:"衔接时间余量 · 西安 9h20m",d:"白天充裕停留，判绿"},
+   {lv:"y",t:"班次密度",d:"西安 → 喀什隔日 1 班，误车需等次日，请留意日历"},
+   {lv:"g",t:"行李与退改",d:"全程铁路，开车前可退"}],
+  playDetail:{city:"西安",stars:2,desc:"白天停留 9 小时：城墙骑行一圈 13.7 公里（¥54/3h），回民街肉夹馍 + 凉皮（人均 ¥30）。"}}
+]},
+"北京|乌鲁木齐":{ direct:{price:"¥1,650",dur:"4h20m",note:"直飞"}, plans:[
+ {id:"p1",title:"全程火车 · 兰新线",price:"¥820–960",save:"省 ¥760",hours:"总 31h",risk:{lv:"g",t:"衔接风险 · 低"},play:{city:"兰州",stars:3},
+  nodes:[{c:"北京",t:"15:00"},{s:"train",l:"火车 8h30m"},{c:"兰州",t:"停 2h05m"},{s:"train",l:"火车 20h25m"},{c:"乌鲁木齐",t:"D2 22:50"}],
+  segs:[
+   {m:"train",no:"火车 Z55",line:"北京西 15:00 → 兰州 23:30",sub:"历时 8h30m",freq:"每日 1 班",price:"¥322 硬卧"},
+   {m:"train",no:"火车 T197",line:"兰州 01:35 → 乌鲁木齐 22:50",sub:"历时 20h25m",freq:"每日 1 班",price:"¥498 硬卧"}],
+  risks:[
+   {lv:"g",t:"衔接时间余量 · 兰州 2h05m",d:"同站换乘，判绿"},
+   {lv:"g",t:"退改规则",d:"全程铁路，开车前可退"}],
+  playDetail:{city:"兰州",stars:3,desc:"深夜衔接，车站附近牛肉面老店 24 小时营业（人均 ¥18）。"}},
+ {id:"p2",title:"飞西安 + 直飞乌鲁木齐",price:"¥1,080–1,260",save:"省 ¥480",hours:"总 13h",risk:{lv:"y",t:"衔接风险 · 中"},play:{city:"西安",stars:3},
+  nodes:[{c:"北京",t:"06:40"},{s:"plane",l:"飞机 2h10m"},{c:"西安",t:"停 3h20m"},{s:"plane",l:"飞机 3h50m"},{c:"乌鲁木齐",t:"16:00"}],
+  segs:[
+   {m:"plane",no:"飞机 MU2102",line:"北京大兴 06:40 → 西安咸阳 08:50",sub:"历时 2h10m",freq:"每日 6 班",price:"¥420–560"},
+   {m:"plane",no:"飞机 HU7816",line:"西安咸阳 12:10 → 乌鲁木齐 16:00",sub:"历时 3h50m",freq:"每日 3 班",price:"¥660–700"}],
+  risks:[
+   {lv:"y",t:"衔接时间余量 · 西安 3h20m",d:"同机场中转，跨承运人需自提行李"},
+   {lv:"y",t:"行李不直挂",d:"跨承运人需重新托运，建议预留 40 分钟"}],
+  playDetail:{city:"西安",stars:3,desc:"同机场中转不建议出市区；航站楼内可吃陕菜简餐。"}}
+]},
+"上海|昆明":{ direct:{price:"¥1,260",dur:"3h40m",note:"直飞"}, plans:[
+ {id:"p1",title:"火车到贵阳 + 短飞昆明",price:"¥680–760",save:"省 ¥540",hours:"总 16h",risk:{lv:"g",t:"衔接风险 · 低"},play:{city:"贵阳",stars:3},
+  nodes:[{c:"上海",t:"19:12"},{s:"train",l:"火车 11h48m"},{c:"贵阳",t:"停 2h30m"},{s:"plane",l:"飞机 1h20m"},{c:"昆明",t:"D2 10:50"}],
+  segs:[
+   {m:"train",no:"火车 K111",line:"上海南 19:12 → 贵阳 07:00",sub:"次日到达 · 历时 11h48m · 夕发朝至",freq:"每日 1 班",price:"¥353 硬卧"},
+   {m:"plane",no:"飞机 8L9862",line:"贵阳龙洞堡 09:30 → 昆明长水 10:50",sub:"历时 1h20m",freq:"每日 5 班",price:"¥320–400"}],
+  risks:[
+   {lv:"g",t:"衔接时间余量 · 贵阳 2h30m",d:"大于 2 小时，判绿"},
+   {lv:"y",t:"机场-车站接驳",d:"贵阳站 → 龙洞堡机场 12 公里，地铁 30 分钟"}],
+  playDetail:{city:"贵阳",stars:3,desc:"若多留半天：肠旺面 + 丝娃娃（人均 ¥40），甲秀楼夜景免费。"}},
+ {id:"p2",title:"全程火车 · 沪昆线直达",price:"¥460–520",save:"省 ¥760",hours:"总 34h",risk:{lv:"g",t:"衔接风险 · 低"},play:null,
+  nodes:[{c:"上海",t:"11:24"},{s:"train",l:"火车 34h06m"},{c:"昆明",t:"D2 21:30"}],
+  segs:[{m:"train",no:"火车 K79",line:"上海南 11:24 → 昆明 21:30",sub:"次日到达 · 历时 34h06m · 直达不中转",freq:"每日 1 班",price:"¥463 硬卧"}],
+  risks:[{lv:"g",t:"直达无衔接",d:"一趟车到底，无换乘风险"}],
+  playDetail:null}
+]},
+"广州|西安":{ direct:{price:"¥980",dur:"2h40m",note:"直飞"}, plans:[
+ {id:"p1",title:"飞郑州 + 城际高铁",price:"¥560–660",save:"省 ¥430",hours:"总 9h",risk:{lv:"y",t:"衔接风险 · 中"},play:{city:"郑州",stars:2},
+  nodes:[{c:"广州",t:"08:15"},{s:"plane",l:"飞机 2h20m"},{c:"郑州",t:"停 2h05m"},{s:"train",l:"高铁 2h28m"},{c:"西安",t:"15:08"}],
+  segs:[
+   {m:"plane",no:"飞机 CZ3196",line:"广州白云 08:15 → 郑州新郑 10:35",sub:"历时 2h20m",freq:"每日 8 班",price:"¥380–480"},
+   {m:"train",no:"高铁 G2002",line:"郑州东 12:40 → 西安北 15:08",sub:"历时 2h28m",freq:"每小时 1 班",price:"¥229 二等座"}],
+  risks:[
+   {lv:"y",t:"机场-车站接驳",d:"新郑机场 → 郑州东 35 公里，城际线 17 分钟"},
+   {lv:"g",t:"退改规则",d:"高铁开车前可退改签"}],
+  playDetail:{city:"郑州",stars:2,desc:"衔接紧凑不建议出市区；郑州东站内胡辣汤简餐可尝鲜。"}}
+]}
+};
+
+var TEMPLATES = [
+ {no:"001",from:"北京",to:"喀什",kind:"官方精调",avg:"¥1,266",times:12,save:"省 ¥1,214",dir:"west",
+  nodes:[{c:"北京"},{s:"train",l:"火车"},{c:"银川"},{s:"plane",l:"飞机"},{c:"阿克苏"},{s:"train",l:"火车"},{c:"喀什"}],
+  records:[
+   {u:"背包客_042",d:"2026-07-18",cost:"实付 ¥1,302",lv:"g",lt:"顺利",note:"银川 1 小时 53 分衔接够用，机场巴士很方便。镇北堡值得多留半天。"},
+   {u:"anon_9173",d:"2026-06-02",cost:"实付 ¥1,188",lv:"y",lt:"紧张但赶上",note:"北京西站人多，建议提前 1 小时到。银川转机差点赶不上，行李自己拿的。"},
+   {u:"大漠孤烟",d:"2026-05-01",cost:"实付 ¥1,415",lv:"r",lt:"误衔接",note:"五一火车晚点 40 分钟误了航班，改签到次日。旺季建议选停留 3 小时以上的班次。"}]},
+ {no:"002",from:"北京",to:"乌鲁木齐",kind:"官方精调",avg:"¥890",times:8,save:"省 ¥760",dir:"west",
+  nodes:[{c:"北京"},{s:"train",l:"火车"},{c:"兰州"},{s:"train",l:"火车"},{c:"乌鲁木齐"}],records:[]},
+ {no:"003",from:"上海",to:"昆明",kind:"官方精调",avg:"¥720",times:6,save:"省 ¥540",dir:"west",
+  nodes:[{c:"上海"},{s:"train",l:"火车"},{c:"贵阳"},{s:"plane",l:"飞机"},{c:"昆明"}],records:[]},
+ {no:"004",from:"广州",to:"西安",kind:"社区沉淀",avg:"¥610",times:4,save:"省 ¥430",dir:"west",
+  nodes:[{c:"广州"},{s:"plane",l:"飞机"},{c:"郑州"},{s:"train",l:"火车"},{c:"西安"}],records:[]},
+ {no:"005",from:"成都",to:"拉萨",kind:"官方精调",avg:"¥980",times:5,save:"省 ¥610",dir:"west",
+  nodes:[{c:"成都"},{s:"train",l:"火车"},{c:"西宁"},{s:"train",l:"火车"},{c:"拉萨"}],records:[]},
+ {no:"006",from:"北京",to:"哈尔滨",kind:"社区沉淀",avg:"¥420",times:7,save:"省 ¥350",dir:"ne",
+  nodes:[{c:"北京"},{s:"train",l:"火车"},{c:"沈阳"},{s:"train",l:"火车"},{c:"哈尔滨"}],records:[]}
+];
+
+/* ================= 视图与导航 ================= */
+var ROOTS={search:"v-search",library:"v-library",me:"v-me"};
+var stack=["v-search"];
+function $(id){return document.getElementById(id)}
+function show(id,push){
+  document.querySelectorAll(".view").forEach(function(v){v.classList.remove("on")});
+  $(id).classList.add("on");
+  var isRoot=Object.keys(ROOTS).some(function(k){return ROOTS[k]===id});
+  $("tabbar").classList.toggle("hide",!isRoot);
+  if(isRoot){stack=[id]}else if(push!==false){stack.push(id)}
+  document.querySelectorAll("#tabbar button").forEach(function(b){b.classList.toggle("on",ROOTS[b.dataset.tab]===id)});
+  window.scrollTo(0,0);
+}
+function back(){if(stack.length>1){stack.pop();var id=stack[stack.length-1];document.querySelectorAll(".view").forEach(function(v){v.classList.remove("on")});$(id).classList.add("on");var isRoot=Object.keys(ROOTS).some(function(k){return ROOTS[k]===id});$("tabbar").classList.toggle("hide",!isRoot);window.scrollTo(0,0)}}
+document.addEventListener("click",function(e){var b=e.target.closest("[data-back]");if(b)back()});
+document.querySelectorAll("#tabbar button").forEach(function(b){b.addEventListener("click",function(){show(ROOTS[b.dataset.tab]);if(b.dataset.tab==="me")renderMe()})});
+
+function toast(msg){var t=$("toast");t.textContent=msg;t.classList.add("show");clearTimeout(t._h);t._h=setTimeout(function(){t.classList.remove("show")},1800)}
+
+var LOGO='<svg viewBox="0 0 48 48" aria-hidden="true"><defs><linearGradient id="mxs" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#101e33"/><stop offset="1" stop-color="#3e92c4"/></linearGradient></defs><rect x="2" y="2" width="44" height="44" rx="12" fill="url(#mxs)"/><path d="M11 33 C15 19 19 19 24 26 C29 33 33 29 37 15" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="11" cy="33" r="3.2" fill="#fff"/><circle cx="24" cy="26" r="2.4" fill="#fff"/><circle cx="37" cy="15" r="3.2" fill="#fff"/></svg>';
+
+/* ================= 热门远途数据 ================= */
+var HOT_ROUTES=[
+ {from:"北京",to:"喀什",title:"北京 → 喀什 · 38h",desc:"火车混搭飞机，省 ¥1,214，银川中转可玩",by:"@大漠孤烟",grad:"linear-gradient(135deg,#e4ebf4,#3e92c4 55%,#101e33)",key:"北京|喀什"},
+ {from:"北京",to:"乌鲁木齐",title:"北京 → 乌鲁木齐 · 31h",desc:"兰新线直达，省 ¥760，衔接风险低",by:"@西域行者",grad:"linear-gradient(135deg,#e4ebf4,#5b7ca6 55%,#101e33)",key:"北京|乌鲁木齐"},
+ {from:"上海",to:"昆明",title:"上海 → 昆明 · 16h",desc:"贵阳短飞，省 ¥540，中转城市可玩",by:"@春城慢游",grad:"linear-gradient(135deg,#e8eef5,#4a86b8 55%,#1e3a5f)",key:"上海|昆明"},
+ {from:"广州",to:"西安",title:"广州 → 西安 · 9h",desc:"郑州城际高铁，省 ¥430，适合周末短途",by:"@古都食客",grad:"linear-gradient(135deg,#dbe7f1,#2e6f9e 55%,#0f1f36)",key:"广州|西安"}
+];
+
+function pickRandom(arr,n){
+  var a=arr.slice(),out=[];
+  while(out.length<n&&a.length){var i=Math.floor(Math.random()*a.length);out.push(a.splice(i,1)[0])}
+  return out;
+}
+
+function renderHot(){
+  var wrap=$("hot-cards");
+  var cards=pickRandom(HOT_ROUTES,3);
+  wrap.innerHTML=cards.map(function(c){
+    return '<div class="hot-card pressable" data-key="'+c.key+'">'
+      +'<div class="hot-thumb" style="background:'+c.grad+'"></div>'
+      +'<div class="hot-meta"><div class="t">'+c.title+'</div><div class="d">'+c.desc+'</div><div class="by" style="color:var(--accent2)">'+c.by+'</div></div>'
+      +'</div>';
+  }).join("");
+  wrap.querySelectorAll("[data-key]").forEach(function(el){
+    el.addEventListener("click",function(){
+      var p=el.dataset.key.split("|");
+      $("in-from").value=p[0];$("in-to").value=p[1];
+      doSearch();
+    });
+  });
+}
+renderHot();
+
+/* ================= 通用渲染 ================= */
+function routeHTML(nodes){var h='<div class="route">';nodes.forEach(function(n){if(n.s){h+='<div class="seg'+(n.s==="plane"?" plane":"")+'"><span>'+n.l+'</span></div>'}else{h+='<div class="stop"><i></i><span>'+n.c+'</span>'+(n.t?'<small>'+n.t+'</small>':'')+'</div>'}});return h+"</div>"}
+function starsHTML(n){var h="";for(var i=1;i<=5;i++){h+='<span class="'+(i<=n?"":"off")+'">★</span>'}return h}
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
+
+/* ================= 搜索流程 ================= */
+var current={key:null,od:null};
+$("btn-swap").addEventListener("click",function(){var f=$("in-from"),t=$("in-to"),tmp=f.value;f.value=t.value;t.value=tmp});
+$("btn-search").addEventListener("click",doSearch);
+
+function doSearch(){
+  var from=$("in-from").value.trim(),to=$("in-to").value.trim();
+  if(!from||!to){toast("请填写出发地和目的地");return}
+  if(from===to){toast("出发地和目的地不能相同");return}
+  $("loading-text").textContent="AI 正在规划「"+from+" → "+to+"」的路线…";
+  show("v-loading",false);
+  setTimeout(function(){
+    var key=from+"|"+to;
+    current.key=DB[key]?key:null;current.od={from:from,to:to};
+    if(DB[key]){renderList(key)}else{renderEmpty(from,to)}
+  },1400);
+}
+
+function renderEmpty(from,to){
+  show("v-list");
+  $("list-title").textContent=from+" → "+to;
+  $("list-note").style.display="none";
+  $("list-sort").style.display="none";
+  $("list-cards").innerHTML='<div class="empty-wrap"><div class="empty-ic">🧭</div><div class="empty-t">这条路线还在建设中</div><div class="empty-p">「'+esc(from)+" → "+esc(to)+'」的方案数据即将上线。<br>先来看看这些热门远途路线：</div><div class="chips" style="justify-content:center">'
+   +Object.keys(DB).map(function(k){var p=k.split("|");return '<button class="chip" data-from="'+p[0]+'" data-to="'+p[1]+'">'+p[0]+" → "+p[1]+"</button>"}).join("")+"</div></div>";
+  $("list-cards").querySelectorAll(".chip").forEach(function(c){c.addEventListener("click",function(){$("in-from").value=c.dataset.from;$("in-to").value=c.dataset.to;doSearch()})});
+}
+
+function renderList(key){
+  var d=DB[key],od=key.split("|");
+  show("v-list");
+  $("list-title").textContent=od[0]+" → "+od[1];
+  $("list-note").style.display="flex";
+  $("list-note").innerHTML="<span>价格为<b>近期估算区间</b>，仅供参考；本产品不提供购票服务。</span>";
+  $("list-sort").style.display="flex";
+  document.querySelectorAll("#list-sort button").forEach(function(x){x.classList.toggle("on",x.textContent.trim()===listSortMode)});
+  var prices=d.plans.map(function(p){return num(p.price)}),pmin=Math.min.apply(null,prices);
+  var hrs=d.plans.map(function(p){return planHours(p)}),hmin=Math.min.apply(null,hrs);
+  function score(p){return num(p.price)/pmin+planHours(p)/hmin*0.6+(p.risk.lv==="y"?0.15:p.risk.lv==="r"?0.3:0)}
+  var plans=d.plans.slice().sort(function(a,b){
+    if(listSortMode==="耗时优先")return planHours(a)-planHours(b);
+    if(listSortMode==="均衡")return score(a)-score(b);
+    return num(a.price)-num(b.price);
+  });
+  var h="";
+  h+='<div class="card"><div class="plan-head"><div><div class="plan-title" style="color:var(--ink2)">直飞基准</div><div class="plan-meta"><span class="badge">'+d.direct.note+"</span></div></div>"
+    +'<div style="text-align:right"><div class="plan-price" style="color:var(--ink)">'+d.direct.price+'</div><div style="font-size:12px;color:var(--ink2)">'+d.direct.dur+"</div></div></div></div>";
+  plans.forEach(function(p){
+    h+='<div class="card pressable" data-plan="'+p.id+'"><div class="plan-head"><div><div class="plan-title">'+p.title+(p.tag?' <span class="badge blue">'+p.tag+"</span>":"")+'</div>'
+      +'<div class="plan-meta"><span class="badge '+p.risk.lv+'">'+p.risk.t+"</span>"+(p.play?'<span class="stars">'+starsHTML(p.play.stars)+'</span><span style="font-size:12px;color:var(--ink2)">'+p.play.city+"可玩</span>":"")+"</div></div>"
+      +'<div style="text-align:right"><div class="plan-price">'+p.price+"</div><div style=\"font-size:12px;color:var(--ink2)\">"+p.hours+"</div></div></div>"
+      +routeHTML(p.nodes)
+      +'<div class="plan-foot"><span style="color:#1f8a3d;font-weight:400">'+p.save+'</span><span class="chev">›</span></div></div>';
+  });
+  $("list-cards").innerHTML=h;
+  $("list-cards").querySelectorAll("[data-plan]").forEach(function(c){c.addEventListener("click",function(){renderDetail(key,c.dataset.plan)})});
+}
+var listSortMode="预算优先";
+function num(s){var m=String(s).replace(/[¥,\s]/g,"").match(/[\d.]+/);return m?parseFloat(m[0]):0}
+function planHours(p){var m=/([\d.]+)\s*h/.exec(p.hours);return m?parseFloat(m[1]):0}
+document.querySelectorAll("#list-sort button").forEach(function(b){b.addEventListener("click",function(){
+  listSortMode=b.textContent.trim();
+  if(current.key)renderList(current.key)
+})});
+
+/* ================= 方案详情 ================= */
+var detailCtx=null;
+function renderDetail(key,pid){
+  var p=DB[key].plans.filter(function(x){return x.id===pid})[0];
+  var od=key.split("|");
+  detailCtx={key:key,pid:pid,p:p,od:od};
+  show("v-detail");
+  $("detail-title").textContent=od[0]+" → "+od[1];
+  var h='<div class="card"><div class="plan-head"><div><div class="plan-title" style="font-size:18px">'+p.title+"</div>"
+    +'<div class="plan-meta"><span class="badge '+p.risk.lv+'">'+p.risk.t+"</span><span class=\"badge\">"+p.hours+"</span></div></div>"
+    +'<div style="text-align:right"><div class="plan-price" style="font-size:22px">'+p.price+'</div><div style="font-size:12.5px;color:#1f8a3d;font-weight:400">'+p.save+"</div></div></div>"+routeHTML(p.nodes)+"</div>";
+  h+='<div class="sec-title">分段明细</div><div class="card">'+p.segs.map(function(s){
+    return '<div class="seg-row"><div class="seg-ic '+s.m+'">'+(s.m==="train"?"🚆":"✈️")+'</div><div class="seg-main"><div class="seg-line">'+s.line+'</div><div class="seg-sub">'+s.no+" · "+s.sub+'</div></div><div class="seg-right"><div class="p">'+s.price+'</div><div class="f">'+s.freq+"</div></div></div>"}).join("")+"</div>";
+  h+='<div class="sec-title">风险透明</div><div class="card">'+p.risks.map(function(r){
+    return '<div class="risk-row"><i class="risk-dot '+r.lv+'"></i><div class="risk-main"><span>'+r.t+"</span><p>"+r.d+'</p></div><span class="badge '+r.lv+' risk-tag">'+(r.lv==="g"?"低":r.lv==="y"?"中":"高")+"</span></div>"}).join("")+"</div>";
+  if(p.playDetail){
+    h+='<div class="sec-title">中转顺便玩 · '+p.playDetail.city+'</div><div class="card"><div style="display:flex;justify-content:space-between;align-items:center"><span>停留怎么玩</span><span class="stars">'+starsHTML(p.playDetail.stars)+'</span></div><p style="font-size:13.5px;color:var(--ink2);margin-top:8px;line-height:1.8">'+p.playDetail.desc+"</p></div>";
+  }
+  h+='<div class="action-row"><button class="btn gray" id="d-fav">'+(isFav(key,pid)?"★ 已收藏":"☆ 收藏")+'</button><button class="btn gray" id="d-share">分享</button><button class="btn" id="d-fb">回填实测</button></div>';
+  h+='<p style="font-size:12px;color:var(--ink2);margin-top:14px;text-align:center">估算价格样本更新于 6 小时前 · 请按分段信息自行购票</p>';
+  $("detail-body").innerHTML=h;
+  $("d-fav").addEventListener("click",function(){toggleFav(key,pid,p.title,od);$("d-fav").textContent=isFav(key,pid)?"★ 已收藏":"☆ 收藏";toast(isFav(key,pid)?"已收藏到本机":"已取消收藏")});
+  $("d-share").addEventListener("click",function(){renderShare()});
+  $("d-fb").addEventListener("click",function(){renderFeedback()});
+}
+
+/* ================= 分享落地页 ================= */
+function renderShare(){
+  var p=detailCtx.p,od=detailCtx.od;
+  show("v-share");
+  var h='<div style="text-align:center;margin-bottom:16px"><span class="badge blue">好友向你分享了一条省钱路线</span>'
+    +'<div style="font-size:20px;font-weight:400;margin-top:12px">'+esc(od[0])+" → "+esc(od[1])+"，"+p.save+"</div></div>"
+    +'<div class="card"><div class="plan-head"><div><div class="plan-title">'+p.title+'</div><div class="plan-meta"><span class="badge '+p.risk.lv+'">'+p.risk.t+'</span><span class="badge">'+p.hours+"</span></div></div>"
+    +'<div style="text-align:right"><div class="plan-price">'+p.price+'</div></div></div>'+routeHTML(p.nodes)
+    +'<div class="plan-foot"><span>价格为近期估算区间，仅供参考</span></div></div>'
+    +'<button class="btn" id="sh-go" style="margin-top:20px">按同样条件，搜我的省钱方案</button>'
+    +'<p style="font-size:12.5px;color:var(--ink2);text-align:center;margin-top:10px">跳转后预填「'+esc(od[0])+" → "+esc(od[1])+'」，日期改成你的</p>'
+    +'<div style="text-align:center;margin-top:44px"><div style="display:inline-flex;align-items:center;gap:8px"><span style="width:26px;height:26px;display:inline-block">'+LOGO+'</span><span style="font-weight:400;font-size:18px;color:var(--accent)">MixTouring</span></div><p style="font-size:12.5px;color:var(--ink2);margin-top:8px">背包客的 AI 省钱路线规划师 · 只做方案，不卖票</p></div>';
+  $("share-body").innerHTML=h;
+  $("sh-go").addEventListener("click",function(){$("in-from").value=od[0];$("in-to").value=od[1];show("v-search");toast("已预填路线，改个日期就能搜")});
+}
+
+/* ================= 路线库 ================= */
+function renderLibrary(filter){
+  var list=TEMPLATES.filter(function(t){return !filter||filter==="all"||t.dir===filter});
+  $("lib-cards").innerHTML=list.map(function(t){
+    var i=TEMPLATES.indexOf(t);
+    return '<div class="card pressable" data-tpl="'+i+'"><div class="plan-head"><div class="plan-title">'+t.no+" · "+t.from+" → "+t.to+'</div><span class="badge '+(t.kind==="官方精调"?"blue":"")+'">'+t.kind+"</span></div>"
+    +routeHTML(t.nodes)
+    +'<div class="plan-foot"><span>实测均价 '+t.avg+" · "+t.times+' 人走过</span><span style="color:#1f8a3d;font-weight:400">'+t.save+"</span></div></div>"}).join("")
+    ||'<div class="empty-wrap"><div class="empty-t">该方向路线整理中</div></div>';
+  $("lib-cards").querySelectorAll("[data-tpl]").forEach(function(c){c.addEventListener("click",function(){openTemplate(+c.dataset.tpl)})});
+}
+document.querySelectorAll("#lib-filter .chip").forEach(function(c){c.addEventListener("click",function(){document.querySelectorAll("#lib-filter .chip").forEach(function(x){x.classList.remove("on")});c.classList.add("on");renderLibrary(c.dataset.f)})});
+
+function openTemplate(i){
+  var t=TEMPLATES[i];
+  show("v-template");
+  $("tpl-title").textContent=t.no+" · "+t.from+" → "+t.to;
+  var h='<div class="card"><div class="plan-head"><div class="plan-title" style="font-size:18px">'+t.from+" → "+t.to+'</div><span class="badge '+(t.kind==="官方精调"?"blue":"")+'">'+t.kind+"</span></div>"
+    +routeHTML(t.nodes)
+    +'<div class="plan-foot"><span>实测均价 <span style="color:var(--accent);font-size:16px">'+t.avg+"</span> · "+t.times+" 人走过</span><span style=\"color:#1f8a3d;font-weight:400\">"+t.save+"</span></div></div>"
+    +'<button class="btn" id="tpl-use" style="margin-top:14px">一键复用 · 按我的日期搜</button>'
+    +'<div class="sec-title">实测记录'+(t.times?" · "+t.times+" 条":"")+"</div>";
+  if(t.records.length){
+    h+='<div class="card">'+t.records.map(function(r){return '<div class="rec-item"><i class="rec-dot" style="background:var(--'+r.lv+')"></i><div style="flex:1"><div style="display:flex;justify-content:space-between;font-size:13.5px"><span>'+r.u+'</span><span style="color:var(--ink2)">'+r.d+'</span></div><p style="font-size:13px;color:var(--ink2);margin:4px 0 6px;line-height:1.7">'+r.note+'</p><div style="display:flex;gap:8px"><span class="badge">'+r.cost+'</span><span class="badge '+r.lv+'">'+r.lt+"</span></div></div></div>"}).join("")+"</div>";
+  }else{
+    h+='<div class="card" style="text-align:center;color:var(--ink2);font-size:13.5px;padding:26px">实测记录采集中，走过这条路线后欢迎回来回填</div>';
+  }
+  $("tpl-body").innerHTML=h;
+  $("tpl-use").addEventListener("click",function(){
+    $("in-from").value=t.from;$("in-to").value=t.to;
+    if(DB[t.from+"|"+t.to]){doSearch()}else{show("v-search");toast("已预填路线，该方向方案即将上线")}
+  });
+}
+
+/* ================= 实测回填 ================= */
+function renderFeedback(){
+  var p=detailCtx.p,od=detailCtx.od;
+  show("v-feedback");
+  var h='<div class="note">关联方案：'+esc(od[0])+" → "+esc(od[1])+" · "+esc(p.title)+"</div>"
+   +'<div class="card" style="margin-top:12px">'
+   +'<div class="field"><label>实际总花费（元）</label><input class="input" id="fb-cost" inputmode="numeric" placeholder="如 1302"></div>'
+   +'<div class="field"><label>实际出行日期</label><input class="input" type="date" id="fb-date"></div>'
+   +'<div class="field"><label>衔接顺利度</label><div class="segctl" id="fb-smooth"><button class="on" data-v="顺利">顺利</button><button data-v="紧张但赶上">紧张但赶上</button><button data-v="误衔接">误衔接</button></div></div>'
+   +'<div class="field"><label>分段实付（选填）</label>'+p.segs.map(function(s,i){return '<div style="display:flex;gap:10px;align-items:center;margin-top:8px"><span style="flex:1;font-size:13px;color:var(--ink2)">'+s.no+"</span><input class=\"input fb-seg\" style=\"width:110px;padding:9px 12px\" inputmode=\"numeric\" placeholder=\"¥ 实付\"></div>"}).join("")+"</div>"
+   +'<div class="field"><label>一句话评价（选填）</label><textarea class="input" id="fb-note" rows="3" placeholder="衔接是否顺利？有什么想提醒后来者的？"></textarea></div>'
+   +'<button class="btn" id="fb-submit">提交实测回填</button>'
+   +'<p style="font-size:12px;color:var(--ink2);text-align:center;margin-top:10px">匿名提交 · 记录保存在本机</p></div>';
+  $("fb-body").innerHTML=h;
+  document.querySelectorAll("#fb-smooth button").forEach(function(b){b.addEventListener("click",function(){document.querySelectorAll("#fb-smooth button").forEach(function(x){x.classList.remove("on")});b.classList.add("on")})});
+  $("fb-submit").addEventListener("click",function(){
+    var cost=$("fb-cost").value.trim(),date=$("fb-date").value;
+    if(!cost||!date){toast("请填写实际总花费和出行日期");return}
+    var recs=store("mt_recs");
+    recs.unshift({od:od[0]+" → "+od[1],title:p.title,cost:cost,date:date,smooth:document.querySelector("#fb-smooth button.on").dataset.v,note:$("fb-note").value.trim()});
+    store("mt_recs",recs);
+    show("v-done");
+  });
+}
+$("done-home").addEventListener("click",function(){show("v-search")});
+$("done-me").addEventListener("click",function(){show("v-me");renderMe()});
+
+/* ================= 收藏 / 我的 ================= */
+function store(k,v){try{if(v===undefined){var s=localStorage.getItem(k);return s?JSON.parse(s):v===undefined?[]:v}localStorage.setItem(k,JSON.stringify(v));return v}catch(e){return v===undefined?[]:v}}
+function isFav(key,pid){return store("mt_favs").some(function(f){return f.key===key&&f.pid===pid})}
+function toggleFav(key,pid,title,od){var f=store("mt_favs");var i=f.findIndex(function(x){return x.key===key&&x.pid===pid});if(i>=0)f.splice(i,1);else f.unshift({key:key,pid:pid,title:title,od:od[0]+" → "+od[1]});store("mt_favs",f)}
+
+function renderMe(){
+  var uid=null;try{uid=JSON.parse(localStorage.getItem("mt_uid"))}catch(e){}
+  if(!uid){uid="背包客_"+Math.floor(1000+Math.random()*9000);try{localStorage.setItem("mt_uid",JSON.stringify(uid))}catch(e){}}
+  $("me-name").textContent=uid;
+  var favs=store("mt_favs");
+  $("me-favs").innerHTML=favs.length?favs.map(function(f,i){
+    return '<div class="rec-item pressable" data-fk="'+f.key+'" data-fp="'+f.pid+'"><div style="flex:1"><span style="font-size:14.5px">'+esc(f.od)+'</span><div style="font-size:12.5px;color:var(--ink2);margin-top:2px">'+esc(f.title)+'</div></div><span class="chev">›</span></div>'}).join("")
+    :'<div style="text-align:center;color:var(--ink2);font-size:13px;padding:20px">还没有收藏，去搜一条路线吧</div>';
+  $("me-favs").querySelectorAll("[data-fk]").forEach(function(c){c.addEventListener("click",function(){if(DB[c.dataset.fk])renderDetail(c.dataset.fk,c.dataset.fp)})});
+  var recs=store("mt_recs");
+  $("me-recs").innerHTML=recs.length?recs.map(function(r){
+    var lv=r.smooth==="顺利"?"g":r.smooth==="误衔接"?"r":"y";
+    return '<div class="rec-item"><i class="rec-dot" style="background:var(--'+lv+')"></i><div style="flex:1"><div style="display:flex;justify-content:space-between;font-size:13.5px"><span>'+esc(r.od)+'</span><span style="color:var(--ink2)">'+esc(r.date)+'</span></div><div style="display:flex;gap:8px;margin-top:6px"><span class="badge">实付 ¥'+esc(r.cost)+'</span><span class="badge '+lv+'">'+r.smooth+"</span></div>"+(r.note?'<p style="font-size:12.5px;color:var(--ink2);margin-top:6px">'+esc(r.note)+"</p>":"")+"</div></div>"}).join("")
+    :'<div style="text-align:center;color:var(--ink2);font-size:13px;padding:20px">走完一趟，回来回填实测</div>';
+}
+
+/* ================= 初始化 ================= */
+renderLibrary("all");
+</script>
+</body>
+</html>

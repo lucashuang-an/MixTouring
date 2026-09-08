@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>正在规划路线</title>
+    <style id="theme-vars">
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Noto+Sans+SC:wght@400;500&display=swap');
+/* MixTouring HiFi — colors_and_type.css */
+/* Brand prefix: mixtouring */
+/* Design system: Warm Modern Minimalist (from travel-app-hifi) applied to MixTouring product */
+
+:root {
+  /* === Core Color Tokens === */
+  --color-canvas: #F8F9FA;
+  --color-surface: #FFFFFF;
+  --color-primary-dark: #111111;
+  --color-brand-accent: #C86A4B;
+  --color-text-main: #1E2022;
+  --color-text-muted: #7C8089;
+  --color-badge-rating: #FBBF24;
+  --color-accent-heart: #E11D48;
+  --color-surface-2: #F4F5F7;
+  --color-border-soft: #E8E9EB;
+
+  /* === Semantic Aliases === */
+  --mixtouring-background: #F8F9FA;
+  --mixtouring-foreground: #1E2022;
+  --mixtouring-card: #FFFFFF;
+  --mixtouring-card-foreground: #1E2022;
+  --mixtouring-popover: #FFFFFF;
+  --mixtouring-popover-foreground: #1E2022;
+  --mixtouring-primary: #111111;
+  --mixtouring-primary-foreground: #FFFFFF;
+  --mixtouring-muted: #F4F5F7;
+  --mixtouring-muted-foreground: #7C8089;
+  --mixtouring-border: #E8E9EB;
+  --mixtouring-input: #FFFFFF;
+  --mixtouring-ring: #C86A4B;
+
+  /* === Radius Scale === */
+  --mixtouring-radius-sm: 8px;
+  --mixtouring-radius-md: 16px;
+  --mixtouring-radius-lg: 24px;
+
+  /* === Typography === */
+  --mixtouring-font-sans: "Inter", "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+
+  /* === Shadows === */
+  --shadow-dock: 0 10px 30px -5px rgba(0, 0, 0, 0.08);
+  --shadow-card-soft: 0 4px 20px -2px rgba(0, 0, 0, 0.04);
+
+  /* === Spacing (8pt grid) === */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+
+  /* === Radii === */
+  --r-sheet: 32px;
+  --r-card: 24px;
+  --r-pill: 9999px;
+
+  /* === State colors === */
+  --state-warning: #FBBF24;
+  --state-error: #E11D48;
+  --state-success: #34c759;
+}
+
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.1/dist/index.global.js"></script>
+    <style type="text/tailwindcss">
+  @theme inline {
+    --color-background: var(--mixtouring-background);
+    --color-foreground: var(--mixtouring-foreground);
+    --color-card: var(--mixtouring-card);
+    --color-card-foreground: var(--mixtouring-card-foreground);
+    --color-popover: var(--mixtouring-popover);
+    --color-popover-foreground: var(--mixtouring-popover-foreground);
+    --color-primary: var(--mixtouring-primary);
+    --color-primary-foreground: var(--mixtouring-primary-foreground);
+    --color-muted: var(--mixtouring-muted);
+    --color-muted-foreground: var(--mixtouring-muted-foreground);
+    --color-border: var(--mixtouring-border);
+    --color-input: var(--mixtouring-input);
+    --color-ring: var(--mixtouring-ring);
+    --radius-sm: var(--mixtouring-radius-sm);
+    --radius-md: var(--mixtouring-radius-md);
+    --radius-lg: var(--mixtouring-radius-lg);
+  }
+  @layer base {
+    body { background: var(--mixtouring-background); color: var(--mixtouring-foreground); }
+  }
+    </style>
+    <style id="semantic-token-fallback">
+      .bg-background { background-color: var(--mixtouring-background); }
+      .bg-card { background-color: var(--mixtouring-card); }
+      .bg-primary { background-color: var(--mixtouring-primary); }
+      .bg-muted { background-color: var(--mixtouring-muted); }
+      .text-foreground { color: var(--mixtouring-foreground); }
+      .text-primary-foreground { color: var(--mixtouring-primary-foreground); }
+      .text-muted-foreground { color: var(--mixtouring-muted-foreground); }
+    </style>
+    <style>
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body style="margin:0;padding:0;background:var(--mixtouring-background,#F8F9FA);font-family:var(--mixtouring-font-sans,'Inter','Noto Sans SC',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,system-ui,sans-serif);color:var(--mixtouring-foreground,#1E2022);-webkit-font-smoothing:antialiased;">
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;" aria-hidden="true">
+  <defs>
+    <symbol id="hero-magnifying-glass" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+    </symbol>
+    <symbol id="hero-map-pin" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" />
+    </symbol>
+    <symbol id="hero-user" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+    </symbol>
+    <symbol id="hero-sparkles" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" />
+    </symbol>
+  </defs>
+</svg>
+
+  <style id="critical-layout">
+    * { font-weight: 400 !important; }
+    b, strong { font-weight: 400 !important; }
+    html, body { background: var(--mixtouring-background, #F8F9FA); }
+    body { overflow-x: hidden; }
+    .app-shell {
+      max-width: 430px;
+      margin: 0 auto;
+      min-height: 100vh;
+      position: relative;
+      padding: 0 0 112px 0;
+      background: var(--mixtouring-background, #F8F9FA);
+      display: flex;
+      flex-direction: column;
+    }
+    @keyframes ringPulse {
+      0% { transform: scale(1); opacity: 0.5; }
+      70% { transform: scale(1.35); opacity: 0; }
+      100% { transform: scale(1.35); opacity: 0; }
+    }
+    @keyframes sparkFloat {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-5px); }
+    }
+    .pulse-ring {
+      position: absolute;
+      inset: 0;
+      border-radius: 9999px;
+      border: 1.5px solid var(--mixtouring-ring, #C86A4B);
+      animation: ringPulse 1.8s ease-out infinite;
+    }
+    .spark-wrap { animation: sparkFloat 2.4s ease-in-out infinite; }
+    .progress-track {
+      width: 200px;
+      height: 4px;
+      border-radius: 9999px;
+      background: var(--mixtouring-border, #E8E9EB);
+      overflow: hidden;
+    }
+    .progress-bar {
+      height: 100%;
+      width: 0%;
+      border-radius: 9999px;
+      background: var(--mixtouring-ring, #C86A4B);
+      transition: width 0.5s ease;
+    }
+    .step-row { display: flex; align-items: center; gap: 10px; transition: opacity 0.3s ease; opacity: 0.32; }
+    .step-row.active { opacity: 1; }
+    .step-dot {
+      width: 6px; height: 6px; border-radius: 9999px;
+      background: var(--mixtouring-muted-foreground, #7C8089);
+      flex-shrink: 0;
+      transition: background 0.3s ease;
+    }
+    .step-row.active .step-dot { background: var(--mixtouring-ring, #C86A4B); }
+    @media (prefers-reduced-motion: reduce) {
+      .pulse-ring, .spark-wrap { animation: none; }
+      .progress-bar { transition: none; }
+    }
+    @media (max-width: 430px) {
+      .app-shell { width: 100%; }
+    }
+  </style>
+
+  <main class="app-shell">
+    <!-- Top bar: cancel -->
+    <div class="flex items-center px-4" style="height: 52px;">
+      <button id="btnCancel" class="flex items-center" style="color: var(--mixtouring-ring, #C86A4B); font-size: 15px; background: none; border: none; cursor: pointer; font-family: inherit; padding: 8px 0;">
+        <span style="font-size: 22px; line-height: 1;">&#8249;</span>
+        <span class="ml-0.5">取消</span>
+      </button>
+    </div>
+
+    <!-- Center: brand + animation -->
+    <div class="flex-1 flex flex-col items-center justify-center px-8" style="gap: 22px; padding-bottom: 40px;">
+      <div class="relative flex items-center justify-center" style="width: 76px; height: 76px;">
+        <div class="pulse-ring"></div>
+        <div class="flex items-center justify-center" style="width: 64px; height: 64px; border-radius: 9999px; background: var(--mixtouring-card, #FFFFFF); box-shadow: var(--shadow-card-soft, 0 4px 20px -2px rgba(0,0,0,0.04));">
+          <div class="spark-wrap">
+            <svg style="width: 26px; height: 26px; color: var(--mixtouring-ring, #C86A4B);"><use href="#hero-sparkles"></use></svg>
+          </div>
+        </div>
+      </div>
+
+      <div class="text-center">
+        <div id="genHeadline" style="font-size: 19px; color: var(--mixtouring-foreground, #1E2022); letter-spacing: -0.01em;">AI 正在规划路线</div>
+        <div id="routeLabel" style="font-size: 13.5px; color: var(--mixtouring-muted-foreground, #7C8089); margin-top: 6px;">北京 → 喀什 · 10月1日</div>
+      </div>
+
+      <div class="progress-track"><div class="progress-bar" id="progressBar"></div></div>
+
+      <div class="flex flex-col" style="gap: 10px; margin-top: 2px;" id="stepList"></div>
+    </div>
+  </main>
+
+  <!-- Bottom Navigation -->
+  <nav data-mobile-nav="global" class="fixed bottom-4 left-1/2 -translate-x-1/2 w-[calc(100%-32px)] max-w-md h-[52px] rounded-full bg-white z-50" style="box-shadow: var(--shadow-dock);">
+    <div class="flex items-center justify-between w-full h-full px-1">
+      <button data-nav-key="search" data-active="true" data-dom-id="nav-search" class="flex flex-col justify-center gap-0.5 w-[52px] h-[52px] items-center rounded-full shrink-0" style="background: var(--mixtouring-primary); color: var(--mixtouring-primary-foreground);">
+        <svg class="w-[18px] h-[18px] shrink-0"><use href="#hero-magnifying-glass"></use></svg>
+        <span class="text-[10px] leading-none whitespace-nowrap">搜索</span>
+      </button>
+      <button data-nav-key="library" data-dom-id="nav-library" class="flex flex-col justify-center gap-0.5 px-4 h-full items-center shrink-0" style="color: var(--mixtouring-muted-foreground);">
+        <svg class="w-[18px] h-[18px] shrink-0"><use href="#hero-map-pin"></use></svg>
+        <span class="text-[10px] leading-none whitespace-nowrap">路线库</span>
+      </button>
+      <button data-nav-key="me" data-dom-id="nav-me" class="flex flex-col justify-center gap-0.5 px-4 h-full items-center shrink-0" style="color: var(--mixtouring-muted-foreground);">
+        <svg class="w-[18px] h-[18px] shrink-0"><use href="#hero-user"></use></svg>
+        <span class="text-[10px] leading-none whitespace-nowrap">我的</span>
+      </button>
+    </div>
+  </nav>
+
+  <script src="../assets/mock.js"></script>
+  <script src="../assets/app.js"></script>
+  <script>
+  (function () {
+    var from = MT.qs('from') || '北京';
+    var to = MT.qs('to') || '喀什';
+    var date = MT.qs('date') || '2026/10/01';
+
+    var dm = date.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+    var dateLabel = dm ? (parseInt(dm[2], 10) + '月' + parseInt(dm[3], 10) + '日') : date;
+    document.getElementById('routeLabel').textContent = from + ' → ' + to + ' · ' + dateLabel;
+
+    document.getElementById('btnCancel').addEventListener('click', function () {
+      MT.goBack('search.html');
+    });
+
+    MT.wireNav();
+
+    /* 生成仪式（P1）：步骤文案接方案库事实——有数据时带真实中转城市/候选数/直飞基准；
+       无数据不编造细节，保持通用步骤，完成态如实告知无数据 */
+    var route = window.DB.routes[from + '-' + to];
+    var steps, headline;
+    if (route && route.plans.length) {
+      var seen = {};
+      var cities = [];
+      route.plans.forEach(function (p) {
+        p.stops.slice(1, -1).forEach(function (s) {
+          if (!seen[s.name]) { seen[s.name] = 1; cities.push(s.name); }
+        });
+      });
+      var cityText = cities.length > 3
+        ? cities.slice(0, 2).join(' / ') + ' 等 ' + cities.length + ' 城'
+        : cities.join(' / ');
+      steps = [
+        '检索 ' + from + ' 出发的班次与票价样本',
+        '在 ' + cityText + ' 匹配中转组合',
+        '评估 ' + route.plans.length + ' 个候选的四因子衔接风险',
+        '对比直飞基准 ' + route.direct.price + '，按总花费排序'
+      ];
+      headline = '已找到 ' + route.plans.length + ' 个省钱方案';
+    } else {
+      steps = [
+        '扫描火车班次与低价日历',
+        '匹配中转城市的换乘组合',
+        '计算四因子衔接风险',
+        '按总花费排序方案'
+      ];
+      headline = '这条线暂无组合票数据';
+    }
+
+    var stepList = document.getElementById('stepList');
+    stepList.innerHTML = steps.map(function (t, i) {
+      return '<div class="step-row' + (i === 0 ? ' active' : '') + '"><span class="step-dot"></span>' +
+        '<span style="font-size: 13px; color: var(--mixtouring-muted-foreground, #7C8089);">' + MT.esc(t) + '</span></div>';
+    }).join('');
+
+    /* 步骤动画 + 进度条；完成态换标题节拍，随后 location.replace 跳结果页——
+       生成中是瞬态过渡页，不能留在返回栈里（v0.3.5 教训） */
+    var rows = stepList.querySelectorAll('.step-row');
+    var bar = document.getElementById('progressBar');
+    var step = 0;
+    bar.style.width = '18%';
+    var timer = setInterval(function () {
+      step++;
+      if (step < rows.length) {
+        rows[step].classList.add('active');
+        bar.style.width = (18 + step * 24) + '%';
+      }
+    }, 560);
+
+    setTimeout(function () {
+      clearInterval(timer);
+      bar.style.width = '100%';
+      document.getElementById('genHeadline').textContent = headline;
+    }, 2300);
+
+    setTimeout(function () {
+      var q = new URLSearchParams({ from: from, to: to, date: date });
+      location.replace('results.html?' + q.toString());
+    }, 2950);
+  })();
+  </script>
+</body>
+</html>

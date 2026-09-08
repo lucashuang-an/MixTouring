@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MIXTOURING · MVP 原型图 v0.3</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,900&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@600;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#f3edde; --paper2:#ece4d0; --card:#fffdf6; --ink:#1d1812; --ink2:#5c5344;
+  --line:#d8cdb4; --accent:#cf4a1b; --accent-soft:#f7ddcf;
+  --train:#2e6b57; --plane:#2b5f8a; --ok:#3d7a4d; --warn:#a97b1f; --bad:#b8402e;
+  --radius:14px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--paper);color:var(--ink);font-family:"Noto Sans SC",system-ui,sans-serif;font-size:15px;
+  background-image:radial-gradient(#00000010 1px,transparent 1px);background-size:26px 26px}
+.mono{font-family:"IBM Plex Mono",monospace}
+.display{font-family:"Fraunces","Noto Serif SC",serif}
+svg.ic{width:1em;height:1em;vertical-align:-.12em;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+/* ---------- 原型框架 ---------- */
+.shell{display:grid;grid-template-columns:264px 1fr;min-height:100vh}
+.side{background:var(--ink);color:#efe8d6;padding:28px 22px;position:sticky;top:0;height:100vh;overflow:auto}
+.side .brand{font-family:"Fraunces","Noto Serif SC",serif;font-weight:900;font-size:22px;letter-spacing:.04em}
+.side .brand em{color:var(--accent);font-style:normal}
+.side .sub{font-size:12px;color:#a99e83;margin:8px 0 22px;line-height:1.7}
+.side .nav-label{font-size:11px;letter-spacing:.2em;color:#8d8271;margin:18px 0 8px;text-transform:uppercase}
+.side a.navitem{display:flex;gap:10px;align-items:baseline;padding:10px 12px;border-radius:10px;color:#d9d0ba;text-decoration:none;font-size:14px;border-left:3px solid transparent;cursor:pointer}
+.side a.navitem .n{font-family:"IBM Plex Mono",monospace;font-size:11px;color:#8d8271}
+.side a.navitem:hover{background:#ffffff10}
+.side a.navitem.on{background:#ffffff14;border-left-color:var(--accent);color:#fff}
+.side a.navitem.on .n{color:var(--accent)}
+.side .foot{margin-top:26px;font-size:11.5px;color:#8d8271;line-height:1.8;border-top:1px dashed #4a4232;padding-top:14px}
+
+.stage{padding:34px 40px 80px;min-width:900px}
+.cap{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:14px;gap:20px}
+.cap h1{font-family:"Fraunces","Noto Serif SC",serif;font-size:26px;font-weight:900}
+.cap h1 .s{font-family:"IBM Plex Mono",monospace;font-size:13px;color:var(--accent);font-weight:600;display:block;letter-spacing:.15em;margin-bottom:4px}
+.cap .legend{font-size:12.5px;color:var(--ink2);text-align:right;line-height:1.9;max-width:520px}
+.cap .legend b{color:var(--accent);font-family:"IBM Plex Mono",monospace;font-weight:600}
+.pager{display:flex;gap:10px;margin-top:10px}
+.pager button,.ghost-btn{font:inherit;font-size:13px;background:var(--card);border:1px solid var(--line);border-radius:99px;padding:7px 16px;cursor:pointer;color:var(--ink)}
+.pager button:hover,.ghost-btn:hover{border-color:var(--accent);color:var(--accent)}
+
+.browser{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden;box-shadow:0 24px 50px -30px #3a2f1c66}
+.chrome{display:flex;align-items:center;gap:12px;background:var(--paper2);border-bottom:1px solid var(--line);padding:10px 16px}
+.chrome .dots i{display:inline-block;width:10px;height:10px;border-radius:50%;background:#c9bd9f;margin-right:6px}
+.chrome .dots i:first-child{background:var(--accent)}
+.chrome .url{flex:1;background:var(--card);border:1px solid var(--line);border-radius:99px;font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink2);padding:5px 14px}
+.viewport{padding:0;min-height:640px}
+
+/* 标注圆点 */
+.tag-no{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:var(--accent);color:#fff;font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:600;vertical-align:super;margin-left:6px}
+
+/* ---------- 产品通用组件 ---------- */
+.topbar{display:flex;justify-content:space-between;align-items:center;padding:18px 34px;border-bottom:1px solid var(--line)}
+.topbar .logo{font-family:"Fraunces","Noto Serif SC",serif;font-weight:900;font-size:20px}
+.topbar .logo em{font-style:normal;color:var(--accent)}
+.topbar nav a{margin-left:22px;color:var(--ink2);text-decoration:none;font-size:14px}
+.topbar nav a.on{color:var(--accent);font-weight:700}
+.topbar nav a:hover{color:var(--accent)}
+
+.btn{display:inline-flex;align-items:center;gap:8px;background:var(--accent);color:#fff;border:none;border-radius:12px;padding:13px 26px;font:inherit;font-weight:700;font-size:15px;cursor:pointer;letter-spacing:.02em}
+.btn:hover{filter:brightness(1.06)}
+.btn.sec{background:var(--ink)}
+.btn.line{background:transparent;color:var(--ink);border:1.5px solid var(--ink)}
+.btn.line:hover{color:var(--accent);border-color:var(--accent)}
+.btn.sm{padding:8px 16px;font-size:13px;border-radius:10px}
+
+/* 票根卡 */
+.ticket{display:flex;background:#fff;border:1.5px solid var(--ink);border-radius:var(--radius);position:relative;overflow:hidden}
+.ticket .stub{width:150px;flex:none;padding:20px 16px;border-right:2px dashed var(--line);display:flex;flex-direction:column;justify-content:center;gap:6px;background:linear-gradient(180deg,#fffef9,#fbf5e6)}
+.ticket .body{flex:1;padding:18px 22px}
+.ticket::before,.ticket::after{content:"";position:absolute;left:139px;width:22px;height:22px;background:var(--card);border:1.5px solid var(--ink);border-radius:50%}
+.ticket::before{top:-13px}.ticket::after{bottom:-13px}
+.ticket .price{font-family:"IBM Plex Mono",monospace;font-weight:600;font-size:20px;color:var(--accent)}
+.ticket .price small{font-size:12px;color:var(--ink2);font-weight:400}
+
+/* 线路条 */
+.route{display:flex;align-items:flex-end;margin:14px 0 4px}
+.route .stop{display:flex;flex-direction:column;align-items:center;gap:5px}
+.route .stop i{width:11px;height:11px;border-radius:50%;border:2.5px solid var(--ink);background:#fff}
+.route .stop b{font-size:13px;white-space:nowrap}
+.route .stop small{font-size:11px;color:var(--ink2);font-family:"IBM Plex Mono",monospace}
+.route .seg{flex:1;position:relative;margin:0 6px 5px;min-width:56px}
+.route .seg::before{content:"";display:block;border-top:3px solid var(--train);border-radius:2px}
+.route .seg.plane::before{border-top:2.5px dashed var(--plane)}
+.route .seg span{position:absolute;left:50%;transform:translateX(-50%);bottom:8px;font-size:10.5px;color:var(--ink2);font-family:"IBM Plex Mono",monospace;background:#fff;padding:0 5px;white-space:nowrap;border-radius:4px}
+.route .seg.plane span{color:var(--plane)}
+
+/* 徽标 */
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;border-radius:99px;padding:3px 11px;border:1.5px solid currentColor}
+.badge.g{color:var(--ok)}.badge.y{color:var(--warn)}.badge.r{color:var(--bad)}
+.stamp{display:inline-block;border:2px solid var(--accent);color:var(--accent);font-weight:700;font-size:11.5px;border-radius:6px;padding:3px 9px;transform:rotate(-3deg);letter-spacing:.1em;background:#fff}
+.stamp.gray{border-color:var(--ink2);color:var(--ink2)}
+.chip{display:inline-block;background:var(--card);border:1px solid var(--line);border-radius:99px;padding:6px 15px;font-size:13px;color:var(--ink);cursor:pointer}
+.chip:hover,.chip.on{border-color:var(--accent);color:var(--accent);background:#fff}
+.chip.on{font-weight:700}
+.stars{color:var(--accent);letter-spacing:2px;font-size:13px}
+.stars .off{color:var(--line)}
+
+.est-note{display:flex;gap:10px;align-items:center;background:#fdf3e4;border:1px dashed var(--warn);color:#7a5a17;border-radius:10px;padding:9px 16px;font-size:12.5px}
+
+.segctl{display:inline-flex;border:1.5px solid var(--ink);border-radius:12px;overflow:hidden}
+.segctl button{font:inherit;font-size:13.5px;padding:9px 18px;background:#fff;border:none;cursor:pointer;color:var(--ink2)}
+.segctl button.on{background:var(--ink);color:#fff;font-weight:700}
+
+/* 表单 */
+.field{display:flex;flex-direction:column;gap:7px}
+.field label{font-size:12.5px;font-weight:700;color:var(--ink2);letter-spacing:.05em}
+.field label i{color:var(--accent);font-style:normal}
+.input,.select,textarea.input{font:inherit;font-size:14.5px;background:#fff;border:1.5px solid var(--line);border-radius:11px;padding:11px 14px;color:var(--ink);outline:none;width:100%}
+.input:focus,.select:focus,textarea.input:focus{border-color:var(--accent)}
+.input::placeholder{color:#b3a88e}
+
+/* 骨架屏 */
+.skel{border-radius:var(--radius);border:1.5px dashed var(--line);background:#fff;height:118px;position:relative;overflow:hidden}
+.skel::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 30%,#f0e8d280 50%,transparent 70%);animation:sh 1.4s infinite}
+@keyframes sh{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+.spin{width:15px;height:15px;border:2.5px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp 1s linear infinite;display:inline-block;vertical-align:-3px}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+.radio-pills{display:flex;gap:10px}
+.radio-pills label{border:1.5px solid var(--line);border-radius:99px;padding:9px 18px;font-size:13.5px;cursor:pointer;background:#fff}
+.radio-pills label.on{border-color:var(--accent);color:var(--accent);font-weight:700;background:#fff}
+
+.hr-dash{border:none;border-top:1.5px dashed var(--line);margin:18px 0}
+.muted{color:var(--ink2);font-size:12.5px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+
+/* 风险因子 */
+.risk-row{display:flex;align-items:center;gap:14px;padding:12px 4px;border-bottom:1px dashed var(--line)}
+.risk-row:last-child{border-bottom:none}
+.risk-dot{width:12px;height:12px;border-radius:50%;flex:none}
+.risk-dot.g{background:var(--ok)}.risk-dot.y{background:var(--warn)}.risk-dot.r{background:var(--bad)}
+
+.page{max-width:1060px;margin:0 auto;padding:26px 34px 60px}
+.hide{display:none!important}
+
+@media (max-width:1100px){.shell{grid-template-columns:210px 1fr}.stage{padding:24px;min-width:0}}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- ============ 原型导航 ============ -->
+  <aside class="side">
+    <div class="brand">MIX<em>TOURING</em></div>
+    <div class="sub">MVP 原型图 v0.3 · 2026-08-30<br>配套《MVP产品文档.md》§4<br>中保真 · Web 端 · 全部真实文案</div>
+    <div class="nav-label">界面 Screens</div>
+    <a class="navitem on" data-s="s1"><span class="n">S1</span>搜索与约束输入</a>
+    <a class="navitem" data-s="s2"><span class="n">S2</span>方案卡片列表</a>
+    <a class="navitem" data-s="s3"><span class="n">S3</span>方案详情 · 风险透明</a>
+    <a class="navitem" data-s="s4"><span class="n">S4</span>路线库</a>
+    <a class="navitem" data-s="s5"><span class="n">S5</span>路线模板详情</a>
+    <a class="navitem" data-s="s6"><span class="n">S6</span>分享落地页</a>
+    <a class="navitem" data-s="s7"><span class="n">S7</span>实测回填</a>
+    <div class="foot">操作：← → 键切换界面<br>S2 含「生成中」骨架屏切换<br>S7 可点击提交查看成功态<br><br>覆盖 PRD §4.1–§4.7 全部 MVP 功能</div>
+  </aside>
+
+  <main class="stage">
+
+  <!-- ============ S1 搜索页 ============ -->
+  <section class="screen" id="s1">
+    <div class="cap">
+      <h1><span class="s">S1 · PRD §4.1</span>搜索与约束输入</h1>
+      <div class="legend"><b>①</b> 搜索表单（字段规则见 PRD）　<b>②</b> 偏好三选一，决定 S2 排序　<b>③</b> 热门 OD 快捷入口　<b>④</b> 001 号路线展示位</div>
+    </div>
+    <div class="pager"><button data-goto="s7">← S7</button><button data-goto="s2">S2 →</button></div>
+    <div class="browser" style="margin-top:12px">
+      <div class="chrome"><span class="dots"><i></i><i></i><i></i></span><span class="url">mixtouring.app/</span></div>
+      <div class="viewport">
+        <div class="topbar"><div class="logo">MIX<em>TOURING</em></div><nav><a class="on">搜路线</a><a>路线库</a><a>关于</a></nav></div>
+        <div class="page" style="padding-top:54px;text-align:center">
+          <div class="display" style="font-size:52px;font-weight:900;line-height:1.15">让每一段<span style="color:var(--accent)">中转</span>都省钱</div>
+          <p style="color:var(--ink2);margin:16px auto 40px;max-width:560px;line-height:1.9">火车 × 飞机自由组合，AI 替你找出直飞之外的省钱路线。<br>价格、耗时、衔接风险、中转城市可玩性，一张卡讲清楚。</p>
+
+          <div style="background:#fff;border:1.5px solid var(--ink);border-radius:18px;padding:26px;text-align:left;box-shadow:6px 6px 0 var(--accent-soft)">
+            <div class="grid2" style="grid-template-columns:1fr 44px 1fr;align-items:end">
+              <div class="field"><label>出发地 <i>*</i><span class="tag-no">①</span></label><input class="input" value="北京" placeholder="城市 / 车站 / 机场"></div>
+              <div style="text-align:center;padding-bottom:10px;color:var(--ink2);font-size:18px">⇄</div>
+              <div class="field"><label>目的地 <i>*</i></label><input class="input" value="喀什" placeholder="城市 / 车站 / 机场"></div>
+            </div>
+            <div class="grid3" style="margin-top:16px">
+              <div class="field"><label>出发日期 <i>*</i></label><input class="input mono" value="2026-10-01"></div>
+              <div class="field"><label>日期浮动</label><select class="select mono"><option>± 3 天</option><option>± 1 天</option><option>± 7 天</option><option>仅当天</option></select></div>
+              <div class="field"><label>预算上限（选填）</label><input class="input mono" placeholder="不限" value="1500"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:20px;flex-wrap:wrap;gap:14px">
+              <div class="segctl"><span class="tag-no" style="margin:8px 0 0 8px">②</span><button class="on">预算优先</button><button>耗时优先</button><button>均衡</button></div>
+              <button class="btn" style="font-size:16px;padding:15px 34px">生成省钱方案 →</button>
+            </div>
+          </div>
+
+          <div style="margin-top:30px;text-align:left">
+            <span class="muted" style="margin-right:10px">热门远途<span class="tag-no">③</span></span>
+            <span class="chip">北京 → 喀什</span> <span class="chip">北京 → 乌鲁木齐</span> <span class="chip">上海 → 昆明</span> <span class="chip">广州 → 西安</span> <span class="chip">成都 → 拉萨</span>
+          </div>
+
+          <div class="ticket" style="margin-top:26px;text-align:left">
+            <div class="stub"><span class="stamp">001 号路线</span><div class="price" style="margin-top:8px">¥1,266<small> / 实测均价</small></div><span class="muted">已实测 ×12</span></div>
+            <div class="body">
+              <div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:16px">北京 → 喀什 · 火车+飞机混搭<span class="tag-no">④</span></b><button class="btn line sm">查看路线</button></div>
+              <div class="route">
+                <div class="stop"><i></i><b>北京</b></div><div class="seg"><span>火车 10h42m</span></div>
+                <div class="stop"><i></i><b>银川</b></div><div class="seg plane"><span>飞机 3h35m</span></div>
+                <div class="stop"><i></i><b>阿克苏</b></div><div class="seg"><span>火车 5h27m</span></div>
+                <div class="stop"><i></i><b>喀什</b></div>
+              </div>
+              <div class="muted" style="margin-top:10px">来自创始人的首发路线：比直飞省约一半，银川停留可顺玩镇北堡。</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ S2 方案列表 ============ -->
+  <section class="screen hide" id="s2">
+    <div class="cap">
+      <h1><span class="s">S2 · PRD §4.2 / §4.3</span>方案卡片列表</h1>
+      <div class="legend"><b>①</b> 搜索条件摘要，可回改　<b>②</b> 直飞基准锚点　<b>③</b> 估算语义说明（不做交易）　<b>④</b> 询价失败降级「价格待补」置底</div>
+    </div>
+    <div class="pager"><button data-goto="s1">← S1</button><button class="ghost-btn" id="skelToggle">切换「生成中」状态</button><button data-goto="s3">S3 →</button></div>
+    <div class="browser" style="margin-top:12px">
+      <div class="chrome"><span class="dots"><i></i><i></i><i></i></span><span class="url">mixtouring.app/search?from=北京&to=喀什&date=2026-10-01±3</span></div>
+      <div class="viewport">
+        <div class="topbar"><div class="logo">MIX<em>TOURING</em></div><nav><a class="on">搜路线</a><a>路线库</a><a>关于</a></nav></div>
+        <div class="page">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+            <div style="font-size:16px"><b>北京 → 喀什</b> <span class="muted mono">10月1日 ±3天 · 预算 ≤¥1500</span> <a style="color:var(--accent);font-size:13px;cursor:pointer">修改<span class="tag-no">①</span></a></div>
+            <div class="segctl"><button class="on">预算优先</button><button>耗时优先</button><button>均衡</button></div>
+          </div>
+          <div class="est-note" style="margin-top:14px">⚠ 价格为<b>近期估算区间</b>（样本更新于 6 小时前），仅供参考；本产品不提供购票服务。<span class="tag-no">③</span></div>
+
+          <div id="s2results">
+            <!-- 直飞基准 -->
+            <div class="ticket" style="margin-top:18px;border-color:var(--line);background:#faf7ee">
+              <div class="stub" style="background:none"><span class="muted">直飞基准<span class="tag-no">②</span></span><div class="price mono" style="color:var(--ink)">¥2,480</div><span class="muted mono">8h 20m</span></div>
+              <div class="body">
+                <div style="display:flex;justify-content:space-between;align-items:center"><b>北京 ✈ 喀什（直飞，经停乌鲁木齐）</b><span class="muted">作为对比锚点</span></div>
+                <div class="route"><div class="stop"><i></i><b>北京</b></div><div class="seg plane"><span>直飞 8h20m</span></div><div class="stop"><i></i><b>喀什</b></div></div>
+              </div>
+            </div>
+
+            <!-- 方案 1 -->
+            <div class="ticket" style="margin-top:16px;box-shadow:6px 6px 0 var(--accent-soft)">
+              <div class="stub"><span class="badge g">省 ¥1,214</span><div class="price" style="margin-top:6px">¥1,180<small>–1,350</small></div><span class="muted mono">总 38h</span></div>
+              <div class="body">
+                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+                  <b style="font-size:15.5px">方案 1 · 火车 + 飞机混搭 <span class="stamp" style="margin-left:6px">001 同款</span></b>
+                  <span><span class="badge y">衔接风险 · 中</span>　<span class="stars">★★★★<span class="off">★</span></span> <span class="muted">银川可玩</span></span>
+                </div>
+                <div class="route">
+                  <div class="stop"><i></i><b>北京</b><small>21:30</small></div><div class="seg"><span>火车 10h42m</span></div>
+                  <div class="stop"><i></i><b>银川</b><small>停 1h53m</small></div><div class="seg plane"><span>飞机 3h35m</span></div>
+                  <div class="stop"><i></i><b>阿克苏</b><small>停 1h40m</small></div><div class="seg"><span>火车 5h27m</span></div>
+                  <div class="stop"><i></i><b>喀什</b><small>D3 11:17</small></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px">
+                  <span class="muted">比直飞省 ¥1,214 · 多花约 30h · 夕发朝至省一晚住宿</span>
+                  <button class="btn sm" data-goto="s3">查看详情 →</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 方案 2 -->
+            <div class="ticket" style="margin-top:16px">
+              <div class="stub"><span class="badge g">省 ¥830</span><div class="price" style="margin-top:6px">¥1,560<small>–1,780</small></div><span class="muted mono">总 26h</span></div>
+              <div class="body">
+                <div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:15.5px">方案 2 · 飞兰州 + 南疆线直达</b><span><span class="badge g">衔接风险 · 低</span>　<span class="stars">★★★<span class="off">★★</span></span> <span class="muted">兰州可玩</span></span></div>
+                <div class="route">
+                  <div class="stop"><i></i><b>北京</b><small>07:55</small></div><div class="seg plane"><span>飞机 2h35m</span></div>
+                  <div class="stop"><i></i><b>兰州</b><small>停 3h10m</small></div><div class="seg"><span>火车 20h05m</span></div>
+                  <div class="stop"><i></i><b>喀什</b><small>D2 09:45</small></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px"><span class="muted">比直飞省 ¥830 · 多花约 18h · 只中转 1 次</span><button class="btn line sm">查看详情 →</button></div>
+              </div>
+            </div>
+
+            <!-- 方案 3 -->
+            <div class="ticket" style="margin-top:16px">
+              <div class="stub"><span class="badge g">省 ¥1,330</span><div class="price" style="margin-top:6px">¥1,040<small>–1,160</small></div><span class="muted mono">总 54h</span></div>
+              <div class="body">
+                <div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:15.5px">方案 3 · 全程火车 · 双夕发朝至</b><span><span class="badge y">衔接风险 · 中</span>　<span class="stars">★★<span class="off">★★★</span></span> <span class="muted">西安可玩</span></span></div>
+                <div class="route">
+                  <div class="stop"><i></i><b>北京</b><small>20:10</small></div><div class="seg"><span>火车 12h05m</span></div>
+                  <div class="stop"><i></i><b>西安</b><small>停 9h20m</small></div><div class="seg"><span>火车 32h40m</span></div>
+                  <div class="stop"><i></i><b>喀什</b><small>D3 16:55</small></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px"><span class="muted">比直飞省 ¥1,330 · 西安白天可玩 9 小时</span><button class="btn line sm">查看详情 →</button></div>
+              </div>
+            </div>
+
+            <!-- 方案 4 · 价格待补 -->
+            <div class="ticket" style="margin-top:16px;border-style:dashed;opacity:.85">
+              <div class="stub"><span class="stamp gray">价格待补</span><div class="price mono" style="color:var(--ink2);margin-top:6px">— —</div><span class="muted mono">总 21h</span></div>
+              <div class="body">
+                <div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:15.5px;color:var(--ink2)">方案 4 · 西安空空中转<span class="tag-no">④</span></b><span class="badge y">询价延迟</span></div>
+                <div class="route" style="opacity:.6">
+                  <div class="stop"><i></i><b>北京</b></div><div class="seg plane"><span>飞机</span></div>
+                  <div class="stop"><i></i><b>西安</b></div><div class="seg plane"><span>飞机</span></div>
+                  <div class="stop"><i></i><b>喀什</b></div>
+                </div>
+                <div class="muted" style="margin-top:10px">该方案分段询价暂未返回，系统不会用推测价格填充。稍后自动补全，或 <a style="color:var(--accent);cursor:pointer">手动重试</a>。</div>
+              </div>
+            </div>
+            <p class="muted" style="margin-top:16px;text-align:center">未找到满意方案？试试 <a style="color:var(--accent);cursor:pointer">放宽日期窗</a> 或 <a style="color:var(--accent);cursor:pointer">调整预算</a></p>
+          </div>
+
+          <!-- 生成中骨架屏 -->
+          <div id="s2loading" class="hide">
+            <div style="display:flex;align-items:center;gap:10px;margin-top:20px;font-size:14px;color:var(--ink2)"><span class="spin"></span> AI 正在筛选中转城市并逐段询价…（预计 10–30 秒）</div>
+            <div style="margin-top:14px;display:grid;gap:14px"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+            <p class="muted" style="margin-top:14px">超过 60 秒将判定超时并给出重试入口；已询价成功的方案会优先展示。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ S3 方案详情 ============ -->
+  <section class="screen hide" id="s3">
+    <div class="cap">
+      <h1><span class="s">S3 · PRD §4.4</span>方案详情与风险透明</h1>
+      <div class="legend"><b>①</b> 分段明细（数字仅出自数据层）　<b>②</b> 风险四因子，各自展示原始值与判级　<b>③</b> 中转城市可玩性卡　<b>④</b> 操作区</div>
+    </div>
+    <div class="pager"><button data-goto="s2">← S2</button><button data-goto="s4">S4 →</button></div>
+    <div class="browser" style="margin-top:12px">
+      <div class="chrome"><span class="dots"><i></i><i></i><i></i></span><span class="url">mixtouring.app/plan/BJ-KSH-001</span></div>
+      <div class="viewport">
+        <div class="topbar"><div class="logo">MIX<em>TOURING</em></div><nav><a class="on">搜路线</a><a>路线库</a><a>关于</a></nav></div>
+        <div class="page">
+          <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px">
+            <div><div class="muted" style="margin-bottom:4px">← 返回方案列表</div><div class="display" style="font-size:30px;font-weight:900">北京 → 喀什 · 火车+飞机混搭</div></div>
+            <div style="text-align:right"><div class="price mono" style="font-size:26px">¥1,180–1,350</div><div class="muted mono">比直飞省 ¥1,214 · 总 38h</div></div>
+          </div>
+          <div class="route" style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px 24px 14px;margin-top:16px">
+            <div class="stop"><i></i><b>北京</b><small>10/1 21:30</small></div><div class="seg"><span>K 字头 · 10h42m</span></div>
+            <div class="stop"><i></i><b>银川</b><small>停留 1h53m</small></div><div class="seg plane"><span>直飞 · 3h35m</span></div>
+            <div class="stop"><i></i><b>阿克苏</b><small>停留 1h40m</small></div><div class="seg"><span>K 字头 · 5h27m</span></div>
+            <div class="stop"><i></i><b>喀什</b><small>10/3 11:17</small></div>
+          </div>
+
+          <h3 style="margin:26px 0 10px;font-size:17px">分段明细<span class="tag-no">①</span></h3>
+          <div style="background:#fff;border:1.5px solid var(--ink);border-radius:14px;overflow:hidden">
+            <div style="display:grid;grid-template-columns:110px 1fr 130px 110px;gap:10px;padding:13px 20px;border-bottom:1px dashed var(--line);align-items:center">
+              <span class="badge" style="color:var(--train)">火车 K1177</span><span><b>北京西 21:30 → 银川 08:12</b><span class="muted">（次日）</span><br><span class="muted">历时 10h42m · 夕发朝至</span></span><span class="muted mono">每日 1 班</span><span class="price mono" style="text-align:right">¥263<small> 硬卧</small></span>
+            </div>
+            <div style="display:grid;grid-template-columns:110px 1fr 130px 110px;gap:10px;padding:13px 20px;border-bottom:1px dashed var(--line);align-items:center">
+              <span class="badge" style="color:var(--plane)">飞机 3U8215</span><span><b>银川河东 10:05 → 阿克苏 13:40</b><br><span class="muted">历时 3h35m · 直飞</span></span><span class="muted mono">每日 2 班</span><span class="price mono" style="text-align:right">¥780–920</span>
+            </div>
+            <div style="display:grid;grid-template-columns:110px 1fr 130px 110px;gap:10px;padding:13px 20px;align-items:center">
+              <span class="badge" style="color:var(--train)">火车 K9786</span><span><b>阿克苏 15:20 → 喀什 20:47</b><br><span class="muted">历时 5h27m</span></span><span class="muted mono">每日 3 班</span><span class="price mono" style="text-align:right">¥72<small> 硬座</small></span>
+            </div>
+          </div>
+
+          <div class="grid2" style="margin-top:26px;align-items:start">
+            <div>
+              <h3 style="margin-bottom:10px;font-size:17px">风险透明<span class="tag-no">②</span></h3>
+              <div style="background:#fff;border:1.5px solid var(--ink);border-radius:14px;padding:8px 20px">
+                <div class="risk-row"><i class="risk-dot y"></i><div style="flex:1"><b>衔接时间余量 · 银川 1h53m</b><br><span class="muted">同站转场 1–2 小时，判黄；误机将错过每日 2 班的航班</span></div><span class="badge y">黄</span></div>
+                <div class="risk-row"><i class="risk-dot y"></i><div style="flex:1"><b>行李不直挂</b><br><span class="muted">火车转飞机需自行提取并重新托运，预留 30 分钟</span></div><span class="badge y">黄</span></div>
+                <div class="risk-row"><i class="risk-dot g"></i><div style="flex:1"><b>退改规则</b><br><span class="muted">火车票开车前可退；机票段为 4 折以上舱位，可改期</span></div><span class="badge g">绿</span></div>
+                <div class="risk-row"><i class="risk-dot g"></i><div style="flex:1"><b>机场-车站接驳</b><br><span class="muted">银川站 → 河东机场 18 公里，机场巴士 40 分钟</span></div><span class="badge g">绿</span></div>
+              </div>
+            </div>
+            <div>
+              <h3 style="margin-bottom:10px;font-size:17px">中转顺便玩 · 银川<span class="tag-no">③</span></h3>
+              <div style="background:#fff;border:1.5px solid var(--ink);border-radius:14px;padding:18px 20px">
+                <div style="display:flex;justify-content:space-between;align-items:center"><b>停留 4–24h 怎么玩</b><span class="stars">★★★★<span class="off">★</span></span></div>
+                <p class="muted" style="margin-top:10px;line-height:1.9">若改签到次日航班：镇北堡西部影城（市区打车 40 分钟）、怀远夜市（人均 ¥35 吃撑）。<br>当地物价：住宿 ¥90–150/晚 · 机场巴士 ¥20。</p>
+                <hr class="hr-dash">
+                <span class="muted">数据来自路线库内容库；无可玩性数据的中转城市不展示此模块。</span>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:12px;margin-top:28px;flex-wrap:wrap;align-items:center"><span class="tag-no">④</span>
+            <button class="btn" id="copyBtn">复制分享链接</button>
+            <button class="btn line">☆ 收藏（本地）</button>
+            <button class="btn sec" data-goto="s7">出行后回填实测 →</button>
+          </div>
+          <p class="muted" style="margin-top:10px">估算价格样本更新于 6 小时前；本产品不提供购票服务，请按分段信息自行购票。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ S4 路线库 ============ -->
+  <section class="screen hide" id="s4">
+    <div class="cap">
+      <h1><span class="s">S4 · PRD §4.5</span>路线库 · 模板列表</h1>
+      <div class="legend"><b>①</b> 方向筛选　<b>②</b> 官方精调标识　<b>③</b> 实测均价与次数（社区回流数据）　<b>④</b> 一键复用</div>
+    </div>
+    <div class="pager"><button data-goto="s3">← S3</button><button data-goto="s5">S5 →</button></div>
+    <div class="browser" style="margin-top:12px">
+      <div class="chrome"><span class="dots"><i></i><i></i><i></i></span><span class="url">mixtouring.app/routes</span></div>
+      <div class="viewport">
+        <div class="topbar"><div class="logo">MIX<em>TOURING</em></div><nav><a>搜路线</a><a class="on">路线库</a><a>关于</a></nav></div>
+        <div class="page">
+          <div class="display" style="font-size:30px;font-weight:900">路线库</div>
+          <p class="muted" style="margin:8px 0 16px">被真实背包客走过的省钱路线，一键复用路线结构，按你的日期重新询价。</p>
+          <div><span class="chip on">全部</span> <span class="chip">西部<span class="tag-no">①</span></span> <span class="chip">东北</span> <span class="chip">海南</span> <span class="chip">其他</span></div>
+
+          <div class="grid2" style="margin-top:20px">
+            <div class="ticket"><div class="stub"><span class="stamp">官方精调<span class="tag-no">②</span></span><div class="price" style="margin-top:6px">¥1,266<small> 均价</small></div><span class="muted">实测 ×12<span class="tag-no">③</span></span></div>
+              <div class="body"><div style="display:flex;justify-content:space-between"><b>001 · 北京 → 喀什</b><span class="badge g">省 ¥1,214</span></div>
+                <div class="route"><div class="stop"><i></i><b>北京</b></div><div class="seg"><span>火车</span></div><div class="stop"><i></i><b>银川</b></div><div class="seg plane"><span>飞机</span></div><div class="stop"><i></i><b>阿克苏</b></div><div class="seg"><span>火车</span></div><div class="stop"><i></i><b>喀什</b></div></div>
+                <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px"><button class="btn line sm" data-goto="s5">详情</button><button class="btn sm">一键复用<span class="tag-no">④</span></button></div></div></div>
+
+            <div class="ticket"><div class="stub"><span class="stamp">官方精调</span><div class="price" style="margin-top:6px">¥890<small> 均价</small></div><span class="muted">实测 ×8</span></div>
+              <div class="body"><div style="display:flex;justify-content:space-between"><b>002 · 北京 → 乌鲁木齐</b><span class="badge g">省 ¥760</span></div>
+                <div class="route"><div class="stop"><i></i><b>北京</b></div><div class="seg"><span>火车</span></div><div class="stop"><i></i><b>兰州</b></div><div class="seg"><span>火车</span></div><div class="stop"><i></i><b>乌鲁木齐</b></div></div>
+                <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px"><button class="btn line sm">详情</button><button class="btn sm">一键复用</button></div></div></div>
+
+            <div class="ticket"><div class="stub"><span class="stamp">官方精调</span><div class="price" style="margin-top:6px">¥720<small> 均价</small></div><span class="muted">实测 ×6</span></div>
+              <div class="body"><div style="display:flex;justify-content:space-between"><b>003 · 上海 → 昆明</b><span class="badge g">省 ¥540</span></div>
+                <div class="route"><div class="stop"><i></i><b>上海</b></div><div class="seg"><span>火车</span></div><div class="stop"><i></i><b>贵阳</b></div><div class="seg plane"><span>飞机</span></div><div class="stop"><i></i><b>昆明</b></div></div>
+                <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px"><button class="btn line sm">详情</button><button class="btn sm">一键复用</button></div></div></div>
+
+            <div class="ticket"><div class="stub"><span class="stamp gray">社区沉淀</span><div class="price" style="margin-top:6px">¥610<small> 均价</small></div><span class="muted">实测 ×4</span></div>
+              <div class="body"><div style="display:flex;justify-content:space-between"><b>004 · 广州 → 西安</b><span class="badge g">省 ¥430</span></div>
+                <div class="route"><div class="stop"><i></i><b>广州</b></div><div class="seg plane"><span>飞机</span></div><div class="stop"><i></i><b>郑州</b></div><div class="seg"><span>火车</span></div><div class="stop"><i></i><b>西安</b></div></div>
+                <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px"><button class="btn line sm">详情</button><button class="btn sm">一键复用</button></div></div></div>
+          </div>
+          <p class="muted" style="margin-top:18px">路线库冷启动为官方精调 30–50 条「直飞贵」热门远途 OD；社区实测沉淀的模板随回流逐步上架。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ S5 模板详情 ============ -->
+  <section class="screen hide" id="s5">
+    <div class="cap">
+      <h1><span class="s">S5 · PRD §4.5</span>路线模板详情（001 号路线）</h1>
+      <div class="legend"><b>①</b> 模板 = 路线结构，不锁历史价　<b>②</b> 一键复用 → 预填 S1 重新生成　<b>③</b> 实测记录（回流引擎校准）</div>
+    </div>
+    <div class="pager"><button data-goto="s4">← S4</button><button data-goto="s6">S6 →</button></div>
+    <div class="browser" style="margin-top:12px">
+      <div class="chrome"><span class="dots"><i></i><i></i><i></i></span><span class="url">mixtouring.app/routes/001</span></div>
+      <div class="viewport">
+        <div class="topbar"><div class="logo">MIX<em>TOURING</em></div><nav><a>搜路线</a><a class="on">路线库</a><a>关于</a></nav></div>
+        <div class="page">
+          <div class="muted">← 返回路线库</div>
+          <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px;margin-top:6px">
+            <div class="display" style="font-size:30px;font-weight:900">001 · 北京 → 喀什 <span class="stamp" style="vertical-align:middle">官方精调</span></div>
+            <div style="text-align:right"><div class="price mono" style="font-size:24px">¥1,266 <small style="font-size:13px;color:var(--ink2)">/ 12 次实测均价</small></div></div>
+          </div>
+          <div class="est-note" style="margin-top:14px">模板只复用<b>路线结构</b>（中转城市 + 交通方式组合），不锁定历史价格；复用后按你的日期窗重新询价生成方案。<span class="tag-no">①</span></div>
+          <div class="route" style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px 24px 14px;margin-top:16px">
+            <div class="stop"><i></i><b>北京</b></div><div class="seg"><span>火车 · 夕发朝至</span></div>
+            <div class="stop"><i></i><b>银川</b></div><div class="seg plane"><span>飞机</span></div>
+            <div class="stop"><i></i><b>阿克苏</b></div><div class="seg"><span>火车</span></div>
+            <div class="stop"><i></i><b>喀什</b></div>
+          </div>
+          <div style="display:flex;gap:12px;margin-top:18px"><button class="btn" data-goto="s1">一键复用 · 按我的日期搜<span class="tag-no">②</span></button><button class="btn line" id="copyBtn2">复制分享链接</button></div>
+
+          <h3 style="margin:30px 0 12px;font-size:17px">实测记录 · 12 条<span class="tag-no">③</span></h3>
+          <div style="display:grid;gap:12px">
+            <div style="background:#fff;border:1px solid var(--line);border-left:4px solid var(--ok);border-radius:12px;padding:14px 20px;display:grid;grid-template-columns:150px 1fr 130px;gap:12px;align-items:center">
+              <div><b class="mono">背包客_042</b><br><span class="muted mono">2026-07-18 出行</span></div>
+              <div class="muted">「银川 1 小时 53 分衔接够用，机场巴士很方便。镇北堡值得多留半天。」</div>
+              <div style="text-align:right"><b class="mono">实付 ¥1,302</b><br><span class="badge g">顺利</span></div>
+            </div>
+            <div style="background:#fff;border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:12px;padding:14px 20px;display:grid;grid-template-columns:150px 1fr 130px;gap:12px;align-items:center">
+              <div><b class="mono">anon_9173</b><br><span class="muted mono">2026-06-02 出行</span></div>
+              <div class="muted">「北京西站人多，建议提前 1 小时到。银川转机差点赶不上，行李自己拿的。」</div>
+              <div style="text-align:right"><b class="mono">实付 ¥1,188</b><br><span class="badge y">紧张但赶上</span></div>
+            </div>
+            <div style="background:#fff;border:1px solid var(--line);border-left:4px solid var(--bad);border-radius:12px;padding:14px 20px;display:grid;grid-template-columns:150px 1fr 130px;gap:12px;align-items:center">
+              <div><b class="mono">大漠孤烟</b><br><span class="muted mono">2026-05-01 出行</span></div>
+              <div class="muted">「五一火车晚点 40 分钟误了航班，改签到次日。旺季建议选停留 3 小时以上的班次。」</div>
+              <div style="text-align:right"><b class="mono">实付 ¥1,415</b><br><span class="badge r">误衔接</span></div>
+            </div>
+          </div>
+          <p class="muted" style="margin-top:14px">实测价格回流票价样本库用于滚动校准；误衔接案例回流风险分因子（旺季衔接余量上调）。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ S6 分享落地页 ============ -->
+  <section class="screen hide" id="s6">
+    <div class="cap">
+      <h1><span class="s">S6 · PRD §4.6</span>分享落地页（被分享者视角）</h1>
+      <div class="legend"><b>①</b> 只读方案卡，无购买入口　<b>②</b> 主 CTA：按同样条件搜我的　<b>③</b> 品牌区导流首页</div>
+    </div>
+    <div class="pager"><button data-goto="s5">← S5</button><button data-goto="s7">S7 →</button></div>
+    <div class="browser" style="margin-top:12px">
+      <div class="chrome"><span class="dots"><i></i><i></i><i></i></span><span class="url">mixtouring.app/s/BJ-KSH-3f2a</span></div>
+      <div class="viewport">
+        <div class="page" style="max-width:760px;padding-top:44px">
+          <div style="text-align:center;margin-bottom:22px">
+            <div class="stamp" style="font-size:13px">好友向你分享了一条省钱路线</div>
+            <div class="display" style="font-size:26px;font-weight:900;margin-top:14px">北京 → 喀什，比直飞省 ¥1,214</div>
+          </div>
+          <div class="ticket"><span class="tag-no" style="position:absolute;top:10px;right:12px">①</span>
+            <div class="stub"><span class="muted">总花费估算</span><div class="price" style="margin-top:4px">¥1,180<small>–1,350</small></div><span class="muted mono">总 38h</span></div>
+            <div class="body">
+              <div style="display:flex;justify-content:space-between;align-items:center"><b>火车 + 飞机混搭 · 银川 / 阿克苏中转</b><span class="badge y">衔接风险 · 中</span></div>
+              <div class="route">
+                <div class="stop"><i></i><b>北京</b></div><div class="seg"><span>火车 10h42m</span></div>
+                <div class="stop"><i></i><b>银川</b></div><div class="seg plane"><span>飞机 3h35m</span></div>
+                <div class="stop"><i></i><b>阿克苏</b></div><div class="seg"><span>火车 5h27m</span></div>
+                <div class="stop"><i></i><b>喀什</b></div>
+              </div>
+              <div class="muted" style="margin-top:8px">价格为近期估算区间，仅供参考 · 分享自 MIXTOURING</div>
+            </div>
+          </div>
+          <div style="text-align:center;margin-top:26px"><button class="btn" style="font-size:16px;padding:15px 34px" data-goto="s1">按同样条件，搜我的省钱方案 →<span class="tag-no" style="background:#fff;color:var(--accent)">②</span></button></div>
+          <p class="muted" style="text-align:center;margin-top:12px">跳转后预填「北京 → 喀什」，日期窗改成你的。</p>
+          <hr class="hr-dash" style="margin:34px 0">
+          <div style="text-align:center"><span class="tag-no">③</span><div class="logo display" style="font-size:20px;font-weight:900">MIX<span style="color:var(--accent)">TOURING</span></div>
+            <p class="muted" style="margin-top:8px">背包客的 AI 省钱路线规划师 · 火车 × 飞机自由组合 · 只做方案，不卖票</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ S7 实测回填 ============ -->
+  <section class="screen hide" id="s7">
+    <div class="cap">
+      <h1><span class="s">S7 · PRD §4.7</span>实测回填</h1>
+      <div class="legend"><b>①</b> 关联原方案分段　<b>②</b> 衔接顺利度（回流风险分校准）　<b>③</b> 匿名提交，绑定本地标识（账号 TBD）</div>
+    </div>
+    <div class="pager"><button data-goto="s6">← S6</button><button data-goto="s1">S1 →</button></div>
+    <div class="browser" style="margin-top:12px">
+      <div class="chrome"><span class="dots"><i></i><i></i><i></i></span><span class="url">mixtouring.app/feedback/new?plan=BJ-KSH-001</span></div>
+      <div class="viewport">
+        <div class="topbar"><div class="logo">MIX<em>TOURING</em></div><nav><a>搜路线</a><a>路线库</a><a>关于</a></nav></div>
+        <div class="page" style="max-width:720px">
+          <div id="s7form">
+            <div class="display" style="font-size:28px;font-weight:900">走完这趟，回来回填实测</div>
+            <p class="muted" style="margin:8px 0 20px">你的真实花费和衔接经历，会校准下一位背包客看到的估算与风险分。</p>
+            <div style="background:#fff;border:1.5px solid var(--ink);border-radius:16px;padding:24px">
+              <div class="est-note" style="margin-bottom:18px">关联方案：北京 → 喀什 · 火车+飞机混搭（3 段）<span class="tag-no">①</span></div>
+              <div class="grid2">
+                <div class="field"><label>实际总花费（元） <i>*</i></label><input class="input mono" placeholder="如 1302"></div>
+                <div class="field"><label>实际出行日期 <i>*</i></label><input class="input mono" placeholder="2026-10-01"></div>
+              </div>
+              <div class="field" style="margin-top:16px"><label>衔接顺利度 <i>*</i><span class="tag-no">②</span></label>
+                <div class="radio-pills"><label class="on">顺利</label><label>紧张但赶上</label><label>误衔接</label></div>
+              </div>
+              <div class="field" style="margin-top:16px"><label>分段实付明细（选填）</label>
+                <div style="display:grid;gap:8px">
+                  <div style="display:grid;grid-template-columns:1fr 130px;gap:10px;align-items:center"><span class="muted">火车 · 北京西 → 银川</span><input class="input mono" placeholder="¥ 实付"></div>
+                  <div style="display:grid;grid-template-columns:1fr 130px;gap:10px;align-items:center"><span class="muted">飞机 · 银川 → 阿克苏</span><input class="input mono" placeholder="¥ 实付"></div>
+                  <div style="display:grid;grid-template-columns:1fr 130px;gap:10px;align-items:center"><span class="muted">火车 · 阿克苏 → 喀什</span><input class="input mono" placeholder="¥ 实付"></div>
+                </div>
+              </div>
+              <div class="field" style="margin-top:16px"><label>一句话评价（选填，≤140 字）</label><textarea class="input" rows="3" placeholder="衔接是否顺利？有什么想提醒后来者的？"></textarea></div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-top:22px;flex-wrap:wrap;gap:10px">
+                <span class="muted">匿名提交，记录保存在本地浏览器标识下<span class="tag-no">③</span></span>
+                <button class="btn" id="s7submit">提交实测回填</button>
+              </div>
+            </div>
+          </div>
+          <div id="s7done" class="hide" style="text-align:center;padding:60px 0">
+            <div class="stamp" style="font-size:15px;transform:rotate(-2deg)">已回填 · 感谢实测</div>
+            <div class="display" style="font-size:26px;font-weight:900;margin:22px 0 10px">你的数据已提交</div>
+            <p class="muted" style="max-width:440px;margin:0 auto;line-height:1.9">实际花费将进入票价样本库滚动校准；衔接经历将校准风险分因子。<br>状态流转：待回填 → 已回填 → 已入库校准（每日任务）。</p>
+            <div style="margin-top:26px;display:flex;gap:12px;justify-content:center"><button class="btn line" id="s7back">再填一条</button><button class="btn" data-goto="s1">回到首页</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  </main>
+</div>
+
+<script>
+(function(){
+  var items=[].slice.call(document.querySelectorAll('.navitem'));
+  var order=items.map(function(a){return a.dataset.s});
+  function show(id){
+    order.forEach(function(s){document.getElementById(s).classList.toggle('hide',s!==id)});
+    items.forEach(function(a){a.classList.toggle('on',a.dataset.s===id)});
+    window.scrollTo(0,0);
+  }
+  items.forEach(function(a){a.addEventListener('click',function(){show(a.dataset.s)})});
+  document.addEventListener('click',function(e){
+    var b=e.target.closest('[data-goto]');if(b){show(b.dataset.goto)}
+  });
+  document.addEventListener('keydown',function(e){
+    var cur=order.find(function(s){return !document.getElementById(s).classList.contains('hide')});
+    var i=order.indexOf(cur);
+    if(e.key==='ArrowRight'&&i<order.length-1)show(order[i+1]);
+    if(e.key==='ArrowLeft'&&i>0)show(order[i-1]);
+  });
+  var sk=document.getElementById('skelToggle');
+  sk.addEventListener('click',function(){
+    document.getElementById('s2results').classList.toggle('hide');
+    document.getElementById('s2loading').classList.toggle('hide');
+    sk.textContent=document.getElementById('s2loading').classList.contains('hide')?'切换「生成中」状态':'查看生成结果';
+  });
+  function fakeCopy(id){
+    var b=document.getElementById(id);if(!b)return;
+    b.addEventListener('click',function(){var t=b.textContent;b.textContent='已复制到剪贴板';setTimeout(function(){b.textContent=t},1500)});
+  }
+  fakeCopy('copyBtn');fakeCopy('copyBtn2');
+  var sub=document.getElementById('s7submit');
+  sub.addEventListener('click',function(){document.getElementById('s7form').classList.add('hide');document.getElementById('s7done').classList.remove('hide')});
+  document.getElementById('s7back').addEventListener('click',function(){document.getElementById('s7done').classList.add('hide');document.getElementById('s7form').classList.remove('hide')});
+  document.querySelectorAll('.segctl').forEach(function(g){g.addEventListener('click',function(e){if(e.target.tagName==='BUTTON'){g.querySelectorAll('button').forEach(function(x){x.classList.remove('on')});e.target.classList.add('on')}})});
+  document.querySelectorAll('.radio-pills').forEach(function(g){g.addEventListener('click',function(e){var l=e.target.closest('label');if(l){g.querySelectorAll('label').forEach(function(x){x.classList.remove('on')});l.classList.add('on')}})});
+})();
+</script>
+</body>
+</html>

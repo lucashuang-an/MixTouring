@@ -1,0 +1,238 @@
+{
+  "data": [
+    {
+      "id": "page-search",
+      "title": "搜索首页",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1788278400000,
+      "canvasData": {
+        "x": 60,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 1223,
+          "viewportWidth": 375,
+          "sourceHash": "fnv1a-5dc5af59",
+          "measuredAt": 1788631313690
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/search.html",
+        "interactions": [
+          {
+            "domId": "trip-card-cta",
+            "targetPageId": "page-detail",
+            "type": "navigate",
+            "hideEdge": false
+          },
+          {
+            "domId": "hot-card-1",
+            "targetPageId": "page-detail",
+            "type": "navigate",
+            "hideEdge": false
+          },
+          {
+            "domId": "hot-card-2",
+            "targetPageId": "page-detail",
+            "type": "navigate",
+            "hideEdge": false
+          },
+          {
+            "domId": "hot-card-3",
+            "targetPageId": "page-detail",
+            "type": "navigate",
+            "hideEdge": false
+          },
+          {
+            "domId": "nav-search",
+            "targetPageId": "page-search",
+            "type": "navigate",
+            "hideEdge": false
+          },
+          {
+            "domId": "nav-library",
+            "targetPageId": "page-library",
+            "type": "navigate",
+            "hideEdge": false
+          },
+          {
+            "domId": "nav-me",
+            "targetPageId": "page-search",
+            "type": "navigate",
+            "hideEdge": false
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-detail",
+      "title": "方案详情",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1788278400000,
+      "canvasData": {
+        "x": 60,
+        "y": 465,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 1553,
+          "viewportWidth": 375,
+          "sourceHash": "fnv1a-38059583",
+          "measuredAt": 1788630390554
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/detail.html",
+        "interactions": [
+          {
+            "domId": "back-button",
+            "targetPageId": "page-search",
+            "type": "navigate",
+            "hideEdge": true
+          },
+          {
+            "domId": "fav-button",
+            "targetPageId": "page-detail",
+            "type": "action",
+            "hideEdge": false
+          },
+          {
+            "domId": "share-button",
+            "targetPageId": "page-detail",
+            "type": "action",
+            "hideEdge": false
+          },
+          {
+            "domId": "feedback-button",
+            "targetPageId": "page-detail",
+            "type": "action",
+            "hideEdge": false
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-library",
+      "title": "路线库",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1788278400000,
+      "canvasData": {
+        "x": 156,
+        "y": 1020,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 900,
+          "viewportWidth": 375,
+          "sourceHash": "fnv1a-83e0ceee",
+          "measuredAt": 1788630712239
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/library.html",
+        "interactions": [
+          {
+            "domId": "tpl-card-1",
+            "targetPageId": "page-detail",
+            "type": "navigate",
+            "hideEdge": false
+          },
+          {
+            "domId": "tpl-card-2",
+            "targetPageId": "page-detail",
+            "type": "navigate",
+            "hideEdge": false
+          },
+          {
+            "domId": "tpl-card-3",
+            "targetPageId": "page-detail",
+            "type": "navigate",
+            "hideEdge": false
+          },
+          {
+            "domId": "nav-search",
+            "targetPageId": "page-search",
+            "type": "navigate",
+            "hideEdge": false
+          },
+          {
+            "domId": "nav-library",
+            "targetPageId": "page-library",
+            "type": "navigate",
+            "hideEdge": false
+          },
+          {
+            "domId": "nav-me",
+            "targetPageId": "page-library",
+            "type": "navigate",
+            "hideEdge": false
+          }
+        ]
+      }
+    },
+    {
+      "id": "image-001",
+      "title": "Kashgar Scenery",
+      "type": "image",
+      "version": 1,
+      "createdAt": 1788278400000,
+      "canvasData": {
+        "x": 0,
+        "y": 1398,
+        "naturalSize": {
+          "width": 2240,
+          "height": 1680
+        }
+      },
+      "devMetadata": {
+        "imageSrc": "assets/route-kashgar.jpg"
+      }
+    },
+    {
+      "id": "image-002",
+      "title": "Tianshan Grassland",
+      "type": "image",
+      "version": 1,
+      "createdAt": 1788278400000,
+      "canvasData": {
+        "x": 169,
+        "y": 1398,
+        "naturalSize": {
+          "width": 2240,
+          "height": 1680
+        }
+      },
+      "devMetadata": {
+        "imageSrc": "assets/route-urumqi.jpg"
+      }
+    },
+    {
+      "id": "image-003",
+      "title": "Kunming Karst Landscape",
+      "type": "image",
+      "version": 1,
+      "createdAt": 1788278400000,
+      "canvasData": {
+        "x": 338,
+        "y": 1398,
+        "naturalSize": {
+          "width": 2240,
+          "height": 1680
+        }
+      },
+      "devMetadata": {
+        "imageSrc": "assets/route-kunming.jpg"
+      }
+    }
+  ],
+  "config": {
+    "autoLayout": false,
+    "deviceType": "mobile",
+    "projectName": "MixTouring HiFi",
+    "visualEditorEnabled": false
+  }
+}

@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Preflight</title>
+    <style id="theme-vars">
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Noto+Sans+SC:wght@400;500&display=swap');
+/* MixTouring HiFi — colors_and_type.css */
+/* Brand prefix: mixtouring */
+/* Design system: Warm Modern Minimalist (from travel-app-hifi) applied to MixTouring product */
+
+:root {
+  /* === Core Color Tokens === */
+  --color-canvas: #F8F9FA;
+  --color-surface: #FFFFFF;
+  --color-primary-dark: #111111;
+  --color-brand-accent: #C86A4B;
+  --color-text-main: #1E2022;
+  --color-text-muted: #7C8089;
+  --color-badge-rating: #FBBF24;
+  --color-accent-heart: #E11D48;
+  --color-surface-2: #F4F5F7;
+  --color-border-soft: #E8E9EB;
+
+  /* === Semantic Aliases === */
+  --mixtouring-background: #F8F9FA;
+  --mixtouring-foreground: #1E2022;
+  --mixtouring-card: #FFFFFF;
+  --mixtouring-card-foreground: #1E2022;
+  --mixtouring-popover: #FFFFFF;
+  --mixtouring-popover-foreground: #1E2022;
+  --mixtouring-primary: #111111;
+  --mixtouring-primary-foreground: #FFFFFF;
+  --mixtouring-muted: #F4F5F7;
+  --mixtouring-muted-foreground: #7C8089;
+  --mixtouring-border: #E8E9EB;
+  --mixtouring-input: #FFFFFF;
+  --mixtouring-ring: #C86A4B;
+
+  /* === Radius Scale === */
+  --mixtouring-radius-sm: 8px;
+  --mixtouring-radius-md: 16px;
+  --mixtouring-radius-lg: 24px;
+
+  /* === Typography === */
+  --mixtouring-font-sans: "Inter", "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+
+  /* === Shadows === */
+  --shadow-dock: 0 10px 30px -5px rgba(0, 0, 0, 0.08);
+  --shadow-card-soft: 0 4px 20px -2px rgba(0, 0, 0, 0.04);
+
+  /* === Spacing (8pt grid) === */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+
+  /* === Radii === */
+  --r-sheet: 32px;
+  --r-card: 24px;
+  --r-pill: 9999px;
+
+  /* === State colors === */
+  --state-warning: #FBBF24;
+  --state-error: #E11D48;
+  --state-success: #34c759;
+}
+
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.1/dist/index.global.js"></script>
+    <style type="text/tailwindcss">
+  @theme inline {
+    --color-background: var(--mixtouring-background);
+    --color-foreground: var(--mixtouring-foreground);
+    --color-card: var(--mixtouring-card);
+    --color-card-foreground: var(--mixtouring-card-foreground);
+    --color-popover: var(--mixtouring-popover);
+    --color-popover-foreground: var(--mixtouring-popover-foreground);
+    --color-primary: var(--mixtouring-primary);
+    --color-primary-foreground: var(--mixtouring-primary-foreground);
+    --color-muted: var(--mixtouring-muted);
+    --color-muted-foreground: var(--mixtouring-muted-foreground);
+    --color-border: var(--mixtouring-border);
+    --color-input: var(--mixtouring-input);
+    --color-ring: var(--mixtouring-ring);
+    --radius-sm: var(--mixtouring-radius-sm);
+    --radius-md: var(--mixtouring-radius-md);
+    --radius-lg: var(--mixtouring-radius-lg);
+  }
+  @layer base {
+    body { background: var(--mixtouring-background); color: var(--mixtouring-foreground); }
+    td, th { @apply break-words; word-break: break-all; word-break: auto-phrase; }
+    th { @apply whitespace-nowrap; }
+  }
+    </style>
+    <style id="semantic-token-fallback">
+      .bg-background { background-color: var(--mixtouring-background); }
+      .text-background { color: var(--mixtouring-background); }
+      .border-background { border-color: var(--mixtouring-background); }
+      .ring-background { --tw-ring-color: var(--mixtouring-background); }
+      .bg-foreground { background-color: var(--mixtouring-foreground); }
+      .text-foreground { color: var(--mixtouring-foreground); }
+      .border-foreground { border-color: var(--mixtouring-foreground); }
+      .ring-foreground { --tw-ring-color: var(--mixtouring-foreground); }
+      .bg-card { background-color: var(--mixtouring-card); }
+      .text-card { color: var(--mixtouring-card); }
+      .border-card { border-color: var(--mixtouring-card); }
+      .ring-card { --tw-ring-color: var(--mixtouring-card); }
+      .bg-card-foreground { background-color: var(--mixtouring-card-foreground); }
+      .text-card-foreground { color: var(--mixtouring-card-foreground); }
+      .border-card-foreground { border-color: var(--mixtouring-card-foreground); }
+      .ring-card-foreground { --tw-ring-color: var(--mixtouring-card-foreground); }
+      .bg-popover { background-color: var(--mixtouring-popover); }
+      .text-popover { color: var(--mixtouring-popover); }
+      .border-popover { border-color: var(--mixtouring-popover); }
+      .ring-popover { --tw-ring-color: var(--mixtouring-popover); }
+      .bg-popover-foreground { background-color: var(--mixtouring-popover-foreground); }
+      .text-popover-foreground { color: var(--mixtouring-popover-foreground); }
+      .border-popover-foreground { border-color: var(--mixtouring-popover-foreground); }
+      .ring-popover-foreground { --tw-ring-color: var(--mixtouring-popover-foreground); }
+      .bg-primary { background-color: var(--mixtouring-primary); }
+      .text-primary { color: var(--mixtouring-primary); }
+      .border-primary { border-color: var(--mixtouring-primary); }
+      .ring-primary { --tw-ring-color: var(--mixtouring-primary); }
+      .bg-primary-foreground { background-color: var(--mixtouring-primary-foreground); }
+      .text-primary-foreground { color: var(--mixtouring-primary-foreground); }
+      .border-primary-foreground { border-color: var(--mixtouring-primary-foreground); }
+      .ring-primary-foreground { --tw-ring-color: var(--mixtouring-primary-foreground); }
+      .bg-muted { background-color: var(--mixtouring-muted); }
+      .text-muted { color: var(--mixtouring-muted); }
+      .border-muted { border-color: var(--mixtouring-muted); }
+      .ring-muted { --tw-ring-color: var(--mixtouring-muted); }
+      .bg-muted-foreground { background-color: var(--mixtouring-muted-foreground); }
+      .text-muted-foreground { color: var(--mixtouring-muted-foreground); }
+      .border-muted-foreground { border-color: var(--mixtouring-muted-foreground); }
+      .ring-muted-foreground { --tw-ring-color: var(--mixtouring-muted-foreground); }
+      .bg-border { background-color: var(--mixtouring-border); }
+      .text-border { color: var(--mixtouring-border); }
+      .border-border { border-color: var(--mixtouring-border); }
+      .ring-border { --tw-ring-color: var(--mixtouring-border); }
+      .bg-input { background-color: var(--mixtouring-input); }
+      .text-input { color: var(--mixtouring-input); }
+      .border-input { border-color: var(--mixtouring-input); }
+      .ring-input { --tw-ring-color: var(--mixtouring-input); }
+      .bg-ring { background-color: var(--mixtouring-ring); }
+      .text-ring { color: var(--mixtouring-ring); }
+      .border-ring { border-color: var(--mixtouring-ring); }
+      .ring-ring { --tw-ring-color: var(--mixtouring-ring); }
+    </style>
+    <style>
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      [data-icon] {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        -webkit-mask-size: contain;
+        mask-size: contain;
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+        mask-position: center;
+        background-color: currentColor;
+      }
+    </style>
+</head>
+<body class="min-h-screen font-sans antialiased">
+    <main>
+    </main>
+
+</body>
+</html>

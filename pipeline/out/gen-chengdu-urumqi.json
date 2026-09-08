@@ -1,0 +1,129 @@
+{
+  "route_pair": {
+    "route_id": "成都-乌鲁木齐",
+    "from": "成都",
+    "to": "乌鲁木齐",
+    "direct": {
+      "price": 1210,
+      "duration_min": 225,
+      "sampled_at": "2026-09-06T00:15:00+08:00",
+      "source": "web_search: ctrip/trip.com 2026-09-06 样本 ¥989/¥1210/¥1220/¥1250，取 4 折典型值"
+    }
+  },
+  "plans": [
+    {
+      "id": "p-cdwl-1",
+      "type": "plan",
+      "route_id": "成都-乌鲁木齐",
+      "from": "成都",
+      "to": "乌鲁木齐",
+      "stops": [
+        { "city": "成都", "kind": "origin", "depart": "20:42", "day_offset": 0 },
+        { "city": "兰州", "kind": "transfer", "wait_min": 190 },
+        { "city": "乌鲁木齐", "kind": "dest", "arrive": "14:10", "day_offset": 1 }
+      ],
+      "segs": [
+        {
+          "mode": "train", "train_no": "K2616",
+          "from_station": "成都西", "to_station": "兰州",
+          "dep": "20:42", "dep_day": 0, "arr": "08:10", "arr_day": 1,
+          "duration_min": 688, "fixed_price": 208, "price_band": null,
+          "source": "ailieche.com/k2616 硬卧 ¥208，2026-09-06 采样"
+        },
+        {
+          "mode": "plane", "flight_no": "CZ6675",
+          "from_station": "中川机场T3", "to_station": "天山国际机场",
+          "dep": "11:20", "dep_day": 1, "arr": "14:10", "arr_day": 1,
+          "duration_min": 170, "fixed_price": null,
+          "price_band": { "min": 650, "max": 1000, "sample_count": 5, "sampled_at": "2026-09-06T00:15:00+08:00" },
+          "source": "ctrip/trip.com 2026-09-06 样本 ¥650/¥720/¥740/¥820/¥1000（3.5–5.8 折舱）"
+        }
+      ],
+      "risks": [
+        {
+          "factor": "connection",
+          "raw": { "city": "兰州", "wait_min": 190, "same_station": false, "transfer_min": 50 },
+          "narrative": ["城际动车直达机场航站楼，30–60 分钟一班，误车可等下一班"]
+        },
+        {
+          "factor": "baggage",
+          "raw": { "modes": ["train", "plane"] },
+          "narrative": ["建议预留 30 分钟"]
+        },
+        {
+          "factor": "refund",
+          "raw": { "plane_fare": "discounted", "ticket_tight": false },
+          "narrative": ["火车票开车前可退"]
+        },
+        {
+          "factor": "transfer",
+          "raw": { "label": "兰州站 → 中川机场", "km": 70, "min": 50, "same_station": false, "rail_direct": true },
+          "narrative": ["城际二等座 ¥21.5，兰州站有专用进站通道"]
+        }
+      ],
+      "play": {
+        "city": "兰州",
+        "lines": [
+          "出站先吃碗牛肉面，再坐城际去机场",
+          "黄河铁桥（中山桥）距兰州站打车 15 分钟",
+          "正宁路夜市晚上最热闹，牛奶鸡蛋醪糟必点"
+        ]
+      },
+      "ai": {
+        "summary": "夜卧铺睡到{transfer_city_1}，城际转午班机，比直飞省 {saved}",
+        "fit": "适合能睡卧铺、想压预算的背包客；怕折腾的选直达火车方案更省心",
+        "notice": "{transfer_city_1}站到中川机场 {transfer_km_1} 公里，城际 {transfer_min_1} 分钟，衔接窗口 {wait_min_1}，下车直奔城际候车厅",
+        "play_intro": "若改签到傍晚航班，{transfer_city_1}的牛肉面和中山桥值得留半天",
+        "model": "claude-realtime-experiment-20260906"
+      }
+    },
+    {
+      "id": "p-cdwl-2",
+      "type": "plan",
+      "route_id": "成都-乌鲁木齐",
+      "from": "成都",
+      "to": "乌鲁木齐",
+      "stops": [
+        { "city": "成都", "kind": "origin", "depart": "19:58", "day_offset": 0 },
+        { "city": "乌鲁木齐", "kind": "dest", "arrive": "09:19", "day_offset": 2 }
+      ],
+      "segs": [
+        {
+          "mode": "train", "train_no": "K2058",
+          "from_station": "成都西", "to_station": "乌鲁木齐",
+          "dep": "19:58", "dep_day": 0, "arr": "09:19", "arr_day": 2,
+          "duration_min": 2241, "fixed_price": 492, "price_band": null,
+          "source": "ip138.com/train/k2058 硬卧 ¥491.5 + ailieche.com/k2058 时刻，2026-09-06 采样"
+        }
+      ],
+      "risks": [
+        {
+          "factor": "baggage",
+          "raw": { "modes": ["train"] },
+          "narrative": []
+        },
+        {
+          "factor": "refund",
+          "raw": { "plane_fare": null, "ticket_tight": true },
+          "narrative": []
+        },
+        {
+          "factor": "advisory",
+          "title": "长途硬卧提示",
+          "level": "中",
+          "lines": [
+            "全程约 37 小时，备足干粮、水和充电宝",
+            "夜间经停站多，贵重物品贴身放"
+          ]
+        }
+      ],
+      "ai": {
+        "summary": "硬卧一觉接一觉，{price_mid} 直达{to}，比直飞省 {saved}",
+        "fit": "适合时间大把、预算极紧的背包客；全程 {total_time}，怕久坐慎选",
+        "notice": "进疆长线卧铺紧张，旺季退票后未必买得回原班次，定好行程再出票",
+        "play_intro": "把长途当体验：过了嘉峪关，车窗外就是戈壁与风车",
+        "model": "claude-realtime-experiment-20260906"
+      }
+    }
+  ]
+}

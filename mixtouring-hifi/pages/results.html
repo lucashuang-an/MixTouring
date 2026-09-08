@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>方案列表</title>
+    <style id="theme-vars">
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Noto+Sans+SC:wght@400;500&display=swap');
+/* MixTouring HiFi — colors_and_type.css */
+/* Brand prefix: mixtouring */
+/* Design system: Warm Modern Minimalist (from travel-app-hifi) applied to MixTouring product */
+
+:root {
+  /* === Core Color Tokens === */
+  --color-canvas: #F8F9FA;
+  --color-surface: #FFFFFF;
+  --color-primary-dark: #111111;
+  --color-brand-accent: #C86A4B;
+  --color-text-main: #1E2022;
+  --color-text-muted: #7C8089;
+  --color-badge-rating: #FBBF24;
+  --color-accent-heart: #E11D48;
+  --color-surface-2: #F4F5F7;
+  --color-border-soft: #E8E9EB;
+
+  /* === Semantic Aliases === */
+  --mixtouring-background: #F8F9FA;
+  --mixtouring-foreground: #1E2022;
+  --mixtouring-card: #FFFFFF;
+  --mixtouring-card-foreground: #1E2022;
+  --mixtouring-popover: #FFFFFF;
+  --mixtouring-popover-foreground: #1E2022;
+  --mixtouring-primary: #111111;
+  --mixtouring-primary-foreground: #FFFFFF;
+  --mixtouring-muted: #F4F5F7;
+  --mixtouring-muted-foreground: #7C8089;
+  --mixtouring-border: #E8E9EB;
+  --mixtouring-input: #FFFFFF;
+  --mixtouring-ring: #C86A4B;
+
+  /* === Radius Scale === */
+  --mixtouring-radius-sm: 8px;
+  --mixtouring-radius-md: 16px;
+  --mixtouring-radius-lg: 24px;
+
+  /* === Typography === */
+  --mixtouring-font-sans: "Inter", "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+
+  /* === Shadows === */
+  --shadow-dock: 0 10px 30px -5px rgba(0, 0, 0, 0.08);
+  --shadow-card-soft: 0 4px 20px -2px rgba(0, 0, 0, 0.04);
+
+  /* === Spacing (8pt grid) === */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+
+  /* === Radii === */
+  --r-sheet: 32px;
+  --r-card: 24px;
+  --r-pill: 9999px;
+
+  /* === State colors === */
+  --state-warning: #FBBF24;
+  --state-error: #E11D48;
+  --state-success: #34c759;
+}
+
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.1/dist/index.global.js"></script>
+    <style type="text/tailwindcss">
+  @theme inline {
+    --color-background: var(--mixtouring-background);
+    --color-foreground: var(--mixtouring-foreground);
+    --color-card: var(--mixtouring-card);
+    --color-card-foreground: var(--mixtouring-card-foreground);
+    --color-popover: var(--mixtouring-popover);
+    --color-popover-foreground: var(--mixtouring-popover-foreground);
+    --color-primary: var(--mixtouring-primary);
+    --color-primary-foreground: var(--mixtouring-primary-foreground);
+    --color-muted: var(--mixtouring-muted);
+    --color-muted-foreground: var(--mixtouring-muted-foreground);
+    --color-border: var(--mixtouring-border);
+    --color-input: var(--mixtouring-input);
+    --color-ring: var(--mixtouring-ring);
+    --radius-sm: var(--mixtouring-radius-sm);
+    --radius-md: var(--mixtouring-radius-md);
+    --radius-lg: var(--mixtouring-radius-lg);
+  }
+  @layer base {
+    body { background: var(--mixtouring-background); color: var(--mixtouring-foreground); }
+  }
+    </style>
+    <style id="semantic-token-fallback">
+      .bg-background { background-color: var(--mixtouring-background); }
+      .bg-card { background-color: var(--mixtouring-card); }
+      .bg-primary { background-color: var(--mixtouring-primary); }
+      .bg-muted { background-color: var(--mixtouring-muted); }
+      .text-foreground { color: var(--mixtouring-foreground); }
+      .text-primary-foreground { color: var(--mixtouring-primary-foreground); }
+      .text-muted-foreground { color: var(--mixtouring-muted-foreground); }
+    </style>
+    <style>
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body style="margin:0;padding:0;background:var(--mixtouring-background,#F8F9FA);font-family:var(--mixtouring-font-sans,'Inter','Noto Sans SC',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,system-ui,sans-serif);color:var(--mixtouring-foreground,#1E2022);-webkit-font-smoothing:antialiased;">
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;" aria-hidden="true">
+  <defs>
+    <symbol id="hero-magnifying-glass" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+    </symbol>
+    <symbol id="hero-map-pin" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" />
+    </symbol>
+    <symbol id="hero-user" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+    </symbol>
+    <symbol id="hero-train-front" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 16.5V9a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v7.5M6 16.5h12M4 21l2.5-4.5M20 21l-2.5-4.5M8 12h8M7.5 9V6.5M16.5 9V6.5" />
+    </symbol>
+    <symbol id="hero-paper-airplane" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" />
+    </symbol>
+    <symbol id="hero-chevron-right" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+    </symbol>
+    <symbol id="hero-map" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 6.75V15m6-6v8.25m.503 3.498 4.875-2.25c.381-.174.622-.534.622-.916V4.68c0-.382-.22-.742-.622-.916L14.997 1.5a1.125 1.125 0 0 0-.994 0L8.998 3.59a1.125 1.125 0 0 1-.994 0L3.622 1.5a.75.75 0 0 0-.728.528l-.005.013a.75.75 0 0 0 .08 1.543L3.004 3.09V18.75a.75.75 0 0 0 1.06.75l4.905-2.288a1.125 1.125 0 0 1 .994 0l5.237 2.44a1.125 1.125 0 0 1 .994 0l4.878-2.276a.75.75 0 0 0 .622-.916V4.68c0-.382-.22-.742-.622-.916l-4.878-2.276a1.125 1.125 0 0 1-.994 0L9.503 3.84a1.125 1.125 0 0 1-.994 0L3.622 1.5a.75.75 0 0 0-.728.528Z" />
+    </symbol>
+    <symbol id="hero-sparkles" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423 1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" />
+    </symbol>
+  </defs>
+</svg>
+
+  <style id="critical-layout">
+    * { font-weight: 400 !important; }
+    b, strong { font-weight: 400 !important; }
+    html, body { background: var(--mixtouring-background, #F8F9FA); }
+    body { overflow-x: hidden; }
+    .app-shell {
+      max-width: 430px;
+      margin: 0 auto;
+      min-height: 100vh;
+      position: relative;
+      padding: 0 0 112px 0;
+      background: var(--mixtouring-background, #F8F9FA);
+    }
+    .detail-card {
+      background: var(--mixtouring-card, #FFFFFF);
+      border-radius: var(--mixtouring-radius-md, 16px);
+      box-shadow: var(--shadow-card-soft, 0 4px 20px -2px rgba(0,0,0,0.04));
+    }
+    .plan-card { cursor: pointer; transition: transform 0.15s ease, box-shadow 0.15s ease; }
+    .plan-card:active { transform: scale(0.985); box-shadow: 0 2px 12px -2px rgba(0,0,0,0.06); }
+    .seg-pill {
+      min-height: 34px;
+      padding: 7px 14px;
+      font-size: 13.5px;
+      border-radius: 9999px;
+      border: none;
+      background: transparent;
+      color: var(--mixtouring-muted-foreground, #7C8089);
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.18s ease;
+      white-space: nowrap;
+    }
+    .seg-pill.active {
+      background: var(--mixtouring-card, #FFFFFF);
+      color: var(--mixtouring-foreground, #1E2022);
+      box-shadow: 0 2px 8px -2px rgba(0,0,0,0.10);
+    }
+    @keyframes shimmer {
+      0% { background-position: -200px 0; }
+      100% { background-position: 200px 0; }
+    }
+    .sk {
+      border-radius: 8px;
+      background: linear-gradient(90deg, var(--mixtouring-muted, #F4F5F7) 25%, #ECEEF1 37%, var(--mixtouring-muted, #F4F5F7) 63%);
+      background-size: 400px 100%;
+      animation: shimmer 1.4s ease infinite;
+    }
+    .demo-chip { transition: transform 0.15s ease; }
+    .demo-chip:active { transform: scale(0.97); }
+    @media (prefers-reduced-motion: reduce) {
+      .sk { animation: none; }
+    }
+    @media (max-width: 430px) {
+      .app-shell { width: 100%; }
+    }
+  </style>
+
+  <main class="app-shell">
+
+    <!-- Sticky Navbar -->
+    <nav class="sticky top-0 z-20" style="background: rgba(248,249,250,0.85); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); border-bottom: 0.5px solid var(--mixtouring-border, #E8E9EB);">
+      <div class="flex items-center px-4" style="height: 52px;">
+        <div class="flex-1 flex justify-start">
+          <button id="btnBack" class="flex items-center" style="color: var(--mixtouring-ring, #C86A4B); font-size: 15px; background: none; border: none; cursor: pointer; font-family: inherit; padding: 8px 0;">
+            <span style="font-size: 22px; line-height: 1;">&#8249;</span>
+            <span class="ml-0.5">搜索</span>
+          </button>
+        </div>
+        <div class="flex-1 flex justify-center">
+          <h1 id="navTitle" class="text-center" style="font-size: 16px; color: var(--mixtouring-foreground, #1E2022); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">方案列表</h1>
+        </div>
+        <div class="flex-1"></div>
+      </div>
+    </nav>
+
+    <!-- Meta + Sort -->
+    <div class="px-4 pt-3">
+      <div id="metaLine" style="font-size: 13px; color: var(--mixtouring-muted-foreground, #7C8089);"></div>
+      <div class="mt-3 flex items-center" style="background: var(--mixtouring-muted, #F4F5F7); border-radius: 9999px; padding: 3px; width: fit-content;" role="tablist" aria-label="排序方式">
+        <button class="seg-pill active" data-sort="budget" role="tab" aria-selected="true">预算优先</button>
+        <button class="seg-pill" data-sort="time" role="tab" aria-selected="false">耗时优先</button>
+        <button class="seg-pill" data-sort="balance" role="tab" aria-selected="false">均衡</button>
+      </div>
+    </div>
+
+    <!-- Skeleton -->
+    <div id="skeleton" class="px-4 pt-3 flex flex-col" style="gap: 12px;">
+      <div class="detail-card p-4"><div class="sk" style="height: 18px; width: 55%;"></div><div class="sk mt-3" style="height: 34px;"></div><div class="sk mt-3" style="height: 14px; width: 75%;"></div></div>
+      <div class="detail-card p-4"><div class="sk" style="height: 18px; width: 45%;"></div><div class="sk mt-3" style="height: 34px;"></div><div class="sk mt-3" style="height: 14px; width: 65%;"></div></div>
+      <div class="detail-card p-4"><div class="sk" style="height: 18px; width: 50%;"></div><div class="sk mt-3" style="height: 34px;"></div><div class="sk mt-3" style="height: 14px; width: 70%;"></div></div>
+    </div>
+
+    <!-- Content -->
+    <div id="content" style="display: none;">
+      <!-- 直飞基准 -->
+      <div class="px-4 pt-3" id="directWrap"></div>
+      <!-- 方案卡列表 -->
+      <div id="planList" class="px-4 pt-3 flex flex-col" style="gap: 12px;"></div>
+      <!-- 页脚说明 -->
+      <div class="px-4 text-center" style="margin-top: 24px;">
+        <p style="font-size: 12px; color: var(--mixtouring-muted-foreground, #7C8089);">估算价格样本更新于 6 小时前 · 请按分段信息自行购票</p>
+      </div>
+    </div>
+
+    <!-- Empty State（无数据不出卡） -->
+    <div id="empty" style="display: none;" class="px-8 pt-16 flex-col items-center text-center">
+      <div class="flex items-center justify-center" style="width: 64px; height: 64px; border-radius: 9999px; background: var(--mixtouring-muted, #F4F5F7);">
+        <svg style="width: 26px; height: 26px; color: var(--mixtouring-muted-foreground, #7C8089);"><use href="#hero-map"></use></svg>
+      </div>
+      <div style="font-size: 17px; color: var(--mixtouring-foreground, #1E2022); margin-top: 16px;">这条线路还没有方案数据</div>
+      <div style="font-size: 13px; color: var(--mixtouring-muted-foreground, #7C8089); margin-top: 8px; line-height: 1.6;">MixTouring 只展示有真实样本的路线，不为这条线路编造价格。可以让 AI 离线探索，生成后提醒你。</div>
+      <div id="wishWrap" class="flex flex-col items-center" style="gap: 10px; margin-top: 18px; width: 100%;">
+        <button id="btnWish" class="demo-chip" style="width: calc(100% - 64px); max-width: 280px; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; color: var(--mixtouring-primary-foreground, #FFFFFF); background: var(--mixtouring-primary, #111111); border: none; border-radius: 9999px; padding: 12px 20px; cursor: pointer; font-family: inherit; box-shadow: var(--shadow-card-soft, 0 4px 20px -2px rgba(0,0,0,0.08));">
+          <svg style="width:14px;height:14px;"><use href="#hero-sparkles"></use></svg>
+          <span>让 AI 离线探索这条线</span>
+        </button>
+        <div id="wishHint" style="display:none;font-size:12px;color:var(--mixtouring-muted-foreground,#7C8089);"></div>
+      </div>
+      <div id="demoRoutes" class="flex flex-col items-center" style="gap: 8px; margin-top: 18px;"></div>
+      <button id="goLibrary" class="demo-chip" style="margin-top: 8px; font-size: 14px; color: var(--mixtouring-ring, #C86A4B); background: none; border: none; cursor: pointer; font-family: inherit; padding: 10px 16px;">或去路线库看看 ›</button>
+    </div>
+
+  </main>
+
+  <!-- Bottom Navigation -->
+  <nav data-mobile-nav="global" class="fixed bottom-4 left-1/2 -translate-x-1/2 w-[calc(100%-32px)] max-w-md h-[52px] rounded-full bg-white z-50" style="box-shadow: var(--shadow-dock);">
+    <div class="flex items-center justify-between w-full h-full px-1">
+      <button data-nav-key="search" data-active="true" data-dom-id="nav-search" class="flex flex-col justify-center gap-0.5 w-[52px] h-[52px] items-center rounded-full shrink-0" style="background: var(--mixtouring-primary); color: var(--mixtouring-primary-foreground);">
+        <svg class="w-[18px] h-[18px] shrink-0"><use href="#hero-magnifying-glass"></use></svg>
+        <span class="text-[10px] leading-none whitespace-nowrap">搜索</span>
+      </button>
+      <button data-nav-key="library" data-dom-id="nav-library" class="flex flex-col justify-center gap-0.5 px-4 h-full items-center shrink-0" style="color: var(--mixtouring-muted-foreground);">
+        <svg class="w-[18px] h-[18px] shrink-0"><use href="#hero-map-pin"></use></svg>
+        <span class="text-[10px] leading-none whitespace-nowrap">路线库</span>
+      </button>
+      <button data-nav-key="me" data-dom-id="nav-me" class="flex flex-col justify-center gap-0.5 px-4 h-full items-center shrink-0" style="color: var(--mixtouring-muted-foreground);">
+        <svg class="w-[18px] h-[18px] shrink-0"><use href="#hero-user"></use></svg>
+        <span class="text-[10px] leading-none whitespace-nowrap">我的</span>
+      </button>
+    </div>
+  </nav>
+
+  <script src="../assets/mock.js"></script>
+  <script src="../assets/app.js"></script>
+  <script src="../assets/api.js"></script>
+  <script>
+  (function () {
+    var from = MT.qs('from') || '北京';
+    var to = MT.qs('to') || '喀什';
+    var date = MT.qs('date') || '2026/10/01';
+    var sortMode = 'budget';
+    var routeData = null;
+
+    document.getElementById('navTitle').textContent = from + ' → ' + to;
+    var dm = date.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+    var dateLabel = dm ? (parseInt(dm[2], 10) + '月' + parseInt(dm[3], 10) + '日') : date;
+
+    document.getElementById('btnBack').addEventListener('click', function () {
+      MT.goBack('search.html');
+    });
+    document.getElementById('goLibrary').addEventListener('click', function () {
+      location.href = 'library.html';
+    });
+    MT.wireNav();
+
+    /* ---------- 心愿单登记 ---------- */
+    function initWish() {
+      var btn = document.getElementById('btnWish');
+      var hint = document.getElementById('wishHint');
+      var idx = MT.wishIndex(from, to);
+      if (idx !== -1) {
+        var w = MT.wishList()[idx];
+        btn.disabled = true;
+        btn.style.opacity = '0.5';
+        if (w.status === 'generated') {
+          btn.innerHTML = '<svg style="width:14px;height:14px;"><use href="#hero-sparkles"></use></svg><span>已生成，点此查看</span>';
+          btn.style.opacity = '1';
+          btn.disabled = false;
+          btn.addEventListener('click', function () { location.href = 'loading.html?' + new URLSearchParams({ from: from, to: to, date: date }); });
+        } else {
+          btn.innerHTML = '<svg style="width:14px;height:14px;"><use href="#hero-sparkles"></use></svg><span>已在探索中</span>';
+          hint.textContent = '已登记，生成后可在「我的」查看进度';
+          hint.style.display = 'block';
+        }
+        return;
+      }
+      btn.addEventListener('click', function () {
+        MT.wishAdd({ from: from, to: to, date: date });
+        MT.toast('已登记心愿，AI 离线探索中');
+        btn.disabled = true;
+        btn.style.opacity = '0.5';
+        btn.innerHTML = '<svg style="width:14px;height:14px;"><use href="#hero-sparkles"></use></svg><span>已在探索中</span>';
+        hint.textContent = '已登记，生成后可在「我的」查看进度';
+        hint.style.display = 'block';
+      });
+    }
+
+    /* ---------- 渲染片段 ---------- */
+    function modeIcon(mode, size, color) {
+      var id = mode === 'plane' ? '#hero-paper-airplane' : '#hero-train-front';
+      return '<svg style="width:' + size + 'px;height:' + size + 'px;color:' + color + ';"><use href="' + id + '"></use></svg>';
+    }
+    function segLine(mode) {
+      return mode === 'plane'
+        ? '<div class="w-full mt-2" style="height:2px;border-top:2px dashed var(--mixtouring-ring,#C86A4B);border-radius:1px;"></div>'
+        : '<div class="w-full mt-2" style="height:2px;background:var(--mixtouring-foreground,#1E2022);border-radius:1px;"></div>';
+    }
+    /* 路线条：站点 chip + 交通方式段线（与详情页同构） */
+    function routeBarHtml(item) {
+      var html = '<div class="flex items-start no-scrollbar overflow-x-auto" style="gap:0;">';
+      item.stops.forEach(function (stop, i) {
+        html += '<div class="flex flex-col items-center flex-shrink-0" style="width:54px;">' +
+          '<div class="w-full text-center px-1.5 py-1" style="border-radius:8px;background:var(--mixtouring-muted,#F4F5F7);font-size:12px;color:var(--mixtouring-foreground,#1E2022);white-space:nowrap;">' + MT.esc(stop.name) + '</div>' +
+          '<div style="font-size:11px;color:var(--mixtouring-muted-foreground,#7C8089);margin-top:6px;white-space:nowrap;">' + MT.esc(stop.sub) + '</div></div>';
+        var seg = item.segs[i];
+        if (seg) {
+          var isPlane = seg.mode === 'plane';
+          var color = isPlane ? 'var(--mixtouring-ring,#C86A4B)' : 'var(--mixtouring-foreground,#1E2022)';
+          var labelColor = isPlane ? 'var(--mixtouring-ring,#C86A4B)' : 'var(--mixtouring-muted-foreground,#7C8089)';
+          html += '<div class="flex flex-col items-center flex-shrink-0" style="min-width:64px;flex:1;padding:0 6px;">' +
+            '<div class="flex items-center gap-1" style="margin-top:2px;">' + modeIcon(seg.mode, 12, color) +
+            '<span style="font-size:11px;color:' + labelColor + ';white-space:nowrap;">' + MT.esc(seg.dur) + '</span></div>' +
+            segLine(seg.mode) + '</div>';
+        }
+      });
+      return html + '</div>';
+    }
+    /* 风险四因子 mini 行：原始值+判级，无总分 */
+    function riskRowHtml(risks) {
+      var html = '<div class="flex items-center flex-wrap" style="gap:6px;">';
+      risks.forEach(function (r) {
+        var short = r.title.slice(0, 2);
+        var c = MT.levelColor(r.level);
+        html += '<span class="flex items-center" style="gap:4px;font-size:11px;color:var(--mixtouring-muted-foreground,#7C8089);padding:3px 8px;border-radius:9999px;background:var(--mixtouring-muted,#F4F5F7);" title="' + MT.esc(r.title) + '">' +
+          '<span style="width:6px;height:6px;border-radius:9999px;background:' + c + ';"></span>' +
+          MT.esc(short) + ' <span style="color:' + c + ';">' + MT.esc(r.level) + '</span></span>';
+      });
+      return html + '</div>';
+    }
+
+    function planCardHtml(p) {
+      var modes = p.modes.map(function (m) {
+        return '<div class="w-8 h-8 rounded-full flex items-center justify-center" style="background:var(--mixtouring-muted,#F4F5F7);">' +
+          modeIcon(m, 16, m === 'plane' ? 'var(--mixtouring-ring,#C86A4B)' : 'var(--mixtouring-foreground,#1E2022)') + '</div>';
+      }).join('');
+      return '<article class="plan-card detail-card p-4" data-plan-id="' + p.id + '" role="button" tabindex="0" aria-label="' + MT.esc(p.from + ' 到 ' + p.to + ' 方案详情') + '">' +
+        '<div class="flex items-center justify-between">' +
+          '<div class="flex items-center" style="gap:6px;">' + modes + '</div>' +
+          '<div class="flex items-center" style="gap:6px;">' +
+            '<span style="font-size:12px;padding:5px 12px;border-radius:9999px;background:var(--mixtouring-muted,#F4F5F7);color:var(--mixtouring-muted-foreground,#7C8089);">' + MT.esc(p.totalTime) + '</span>' +
+            '<span style="font-size:13px;padding:5px 12px;border-radius:9999px;background:var(--mixtouring-muted,#F4F5F7);color:var(--mixtouring-ring,#C86A4B);">' + MT.esc(p.price) + '</span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="pt-4 pb-1">' + routeBarHtml(p) + '</div>' +
+        (p.ai && p.ai.summary
+          ? '<p style="font-size:13px;color:var(--mixtouring-foreground,#1E2022);line-height:1.5;padding-top:10px;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;">' + MT.esc(p.ai.summary) + '</p>'
+          : '') +
+        '<div class="pt-2">' + riskRowHtml(p.risks) + '</div>' +
+        '<div class="flex items-center justify-between" style="padding-top:12px;margin-top:12px;border-top:0.5px solid var(--mixtouring-border,#E8E9EB);">' +
+          '<span style="font-size:12px;padding:3px 10px;border-radius:9999px;background:rgba(52,199,89,0.08);color:#34c759;">' + MT.esc(p.saved) + '</span>' +
+          '<span class="flex items-center" style="font-size:13px;color:var(--mixtouring-muted-foreground,#7C8089);">详情<svg style="width:14px;height:14px;margin-left:2px;"><use href="#hero-chevron-right"></use></svg></span>' +
+        '</div>' +
+      '</article>';
+    }
+
+    function directCardHtml(d) {
+      return '<div class="detail-card p-4" style="background:var(--mixtouring-muted,#F4F5F7);box-shadow:none;">' +
+        '<div class="flex items-center justify-between">' +
+          '<div class="flex items-center" style="gap:8px;">' +
+            '<span style="font-size:12px;padding:3px 10px;border-radius:9999px;background:var(--mixtouring-card,#FFFFFF);color:var(--mixtouring-muted-foreground,#7C8089);">直飞基准</span>' +
+            '<span style="font-size:13px;color:var(--mixtouring-muted-foreground,#7C8089);">' + MT.esc(d.note) + '</span>' +
+          '</div>' +
+          '<div class="flex items-center" style="gap:6px;">' +
+            '<span style="font-size:12px;color:var(--mixtouring-muted-foreground,#7C8089);">' + MT.esc(d.time) + '</span>' +
+            '<span style="font-size:13px;color:var(--mixtouring-foreground,#1E2022);">' + MT.esc(d.price) + '</span>' +
+          '</div>' +
+        '</div></div>';
+    }
+
+    function hours(p) {
+      var m = p.totalTime.match(/(\d+)h/);
+      return m ? parseInt(m[1], 10) : 99;
+    }
+    function sortPlans(plans) {
+      var arr = plans.slice();
+      if (sortMode === 'budget') arr.sort(function (a, b) { return a.priceMid - b.priceMid; });
+      else if (sortMode === 'time') arr.sort(function (a, b) { return hours(a) - hours(b); });
+      else arr.sort(function (a, b) { return (a.priceMid + hours(a) * 45) - (b.priceMid + hours(b) * 45); });
+      return arr;
+    }
+
+    function renderList() {
+      var list = sortPlans(routeData.plans);
+      document.getElementById('metaLine').textContent =
+        dateLabel + ' 出发 · ' + list.length + ' 个方案 · 已按' + ({ budget: '预算', time: '耗时', balance: '均衡' })[sortMode] + '排序';
+      var wrap = document.getElementById('planList');
+      wrap.innerHTML = list.map(planCardHtml).join('');
+      wrap.querySelectorAll('.plan-card').forEach(function (card) {
+        function open() { location.href = 'detail.html?id=' + card.getAttribute('data-plan-id'); }
+        card.addEventListener('click', open);
+        card.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+      });
+    }
+
+    function renderEmpty() {
+      document.getElementById('skeleton').style.display = 'none';
+      document.getElementById('content').style.display = 'none';
+      var empty = document.getElementById('empty');
+      empty.style.display = 'flex';
+      initWish();
+      var demo = [
+        { from: '北京', to: '喀什' },
+        { from: '成都', to: '乌鲁木齐' },
+        { from: '上海', to: '昆明' }
+      ];
+      var wrap = document.getElementById('demoRoutes');
+      wrap.innerHTML = '';
+      demo.forEach(function (r) {
+        var b = document.createElement('button');
+        b.className = 'demo-chip';
+        b.style.cssText = 'font-size:14px;color:var(--mixtouring-foreground,#1E2022);background:var(--mixtouring-card,#FFFFFF);border:none;border-radius:9999px;padding:10px 20px;cursor:pointer;font-family:inherit;box-shadow:var(--shadow-card-soft,0 4px 20px -2px rgba(0,0,0,0.04));min-width:200px;';
+        b.textContent = r.from + ' → ' + r.to;
+        b.addEventListener('click', function () {
+          var q = new URLSearchParams({ from: r.from, to: r.to, date: date });
+          location.href = 'loading.html?' + q.toString();
+        });
+        wrap.appendChild(b);
+      });
+    }
+
+    /* ---------- 排序切换 ---------- */
+    document.querySelectorAll('.seg-pill').forEach(function (pill) {
+      pill.addEventListener('click', function () {
+        if (pill.getAttribute('data-sort') === sortMode) return;
+        sortMode = pill.getAttribute('data-sort');
+        document.querySelectorAll('.seg-pill').forEach(function (p) {
+          var on = p.getAttribute('data-sort') === sortMode;
+          p.classList.toggle('active', on);
+          p.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+        renderList();
+      });
+    });
+
+    /* ---------- 数据加载（API 桩：GET /api/plans） ---------- */
+    API.planSearch({ from: from, to: to, date: date }).then(function (res) {
+      routeData = res.data;
+      if (!routeData.plans.length) { renderEmpty(); return; }
+      document.getElementById('skeleton').style.display = 'none';
+      document.getElementById('content').style.display = 'block';
+      document.getElementById('directWrap').innerHTML = routeData.direct ? directCardHtml(routeData.direct) : '';
+      renderList();
+    });
+  })();
+  </script>
+</body>
+</html>

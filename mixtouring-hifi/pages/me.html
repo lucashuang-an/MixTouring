@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的 · MixTouring</title>
+    <style id="theme-vars">
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Noto+Sans+SC:wght@400;500&display=swap');
+/* MixTouring HiFi — colors_and_type.css */
+/* Brand prefix: mixtouring */
+/* Design system: Warm Modern Minimalist (from travel-app-hifi) applied to MixTouring product */
+
+:root {
+  /* === Core Color Tokens === */
+  --color-canvas: #F8F9FA;
+  --color-surface: #FFFFFF;
+  --color-primary-dark: #111111;
+  --color-brand-accent: #C86A4B;
+  --color-text-main: #1E2022;
+  --color-text-muted: #7C8089;
+  --color-badge-rating: #FBBF24;
+  --color-accent-heart: #E11D48;
+  --color-surface-2: #F4F5F7;
+  --color-border-soft: #E8E9EB;
+
+  /* === Semantic Aliases === */
+  --mixtouring-background: #F8F9FA;
+  --mixtouring-foreground: #1E2022;
+  --mixtouring-card: #FFFFFF;
+  --mixtouring-card-foreground: #1E2022;
+  --mixtouring-popover: #FFFFFF;
+  --mixtouring-popover-foreground: #1E2022;
+  --mixtouring-primary: #111111;
+  --mixtouring-primary-foreground: #FFFFFF;
+  --mixtouring-muted: #F4F5F7;
+  --mixtouring-muted-foreground: #7C8089;
+  --mixtouring-border: #E8E9EB;
+  --mixtouring-input: #FFFFFF;
+  --mixtouring-ring: #C86A4B;
+
+  /* === Radius Scale === */
+  --mixtouring-radius-sm: 8px;
+  --mixtouring-radius-md: 16px;
+  --mixtouring-radius-lg: 24px;
+
+  /* === Typography === */
+  --mixtouring-font-sans: "Inter", "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+
+  /* === Shadows === */
+  --shadow-dock: 0 10px 30px -5px rgba(0, 0, 0, 0.08);
+  --shadow-card-soft: 0 4px 20px -2px rgba(0, 0, 0, 0.04);
+
+  /* === Spacing (8pt grid) === */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+
+  /* === Radii === */
+  --r-sheet: 32px;
+  --r-card: 24px;
+  --r-pill: 9999px;
+
+  /* === State colors === */
+  --state-warning: #FBBF24;
+  --state-error: #E11D48;
+  --state-success: #34c759;
+}
+
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.1/dist/index.global.js"></script>
+    <style type="text/tailwindcss">
+  @theme inline {
+    --color-background: var(--mixtouring-background);
+    --color-foreground: var(--mixtouring-foreground);
+    --color-card: var(--mixtouring-card);
+    --color-card-foreground: var(--mixtouring-card-foreground);
+    --color-popover: var(--mixtouring-popover);
+    --color-popover-foreground: var(--mixtouring-popover-foreground);
+    --color-primary: var(--mixtouring-primary);
+    --color-primary-foreground: var(--mixtouring-primary-foreground);
+    --color-muted: var(--mixtouring-muted);
+    --color-muted-foreground: var(--mixtouring-muted-foreground);
+    --color-border: var(--mixtouring-border);
+    --color-input: var(--mixtouring-input);
+    --color-ring: var(--mixtouring-ring);
+    --radius-sm: var(--mixtouring-radius-sm);
+    --radius-md: var(--mixtouring-radius-md);
+    --radius-lg: var(--mixtouring-radius-lg);
+  }
+  @layer base {
+    body { background: var(--mixtouring-background); color: var(--mixtouring-foreground); }
+  }
+    </style>
+    <style id="semantic-token-fallback">
+      .bg-background { background-color: var(--mixtouring-background); }
+      .bg-card { background-color: var(--mixtouring-card); }
+      .bg-primary { background-color: var(--mixtouring-primary); }
+      .bg-muted { background-color: var(--mixtouring-muted); }
+      .text-foreground { color: var(--mixtouring-foreground); }
+      .text-primary-foreground { color: var(--mixtouring-primary-foreground); }
+      .text-muted-foreground { color: var(--mixtouring-muted-foreground); }
+    </style>
+    <style>
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body style="margin:0;padding:0;background:var(--mixtouring-background,#F8F9FA);font-family:var(--mixtouring-font-sans,'Inter','Noto Sans SC',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,system-ui,sans-serif);color:var(--mixtouring-foreground,#1E2022);-webkit-font-smoothing:antialiased;">
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;" aria-hidden="true">
+  <defs>
+    <symbol id="hero-magnifying-glass" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+    </symbol>
+    <symbol id="hero-map-pin" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" />
+    </symbol>
+    <symbol id="hero-user" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+    </symbol>
+    <symbol id="hero-heart-solid" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z" />
+    </symbol>
+    <symbol id="hero-pencil-square" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
+    </symbol>
+    <symbol id="hero-sparkles" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423 1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" />
+    </symbol>
+    <symbol id="hero-chevron-right" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+    </symbol>
+  </defs>
+</svg>
+
+  <style id="critical-layout">
+    * { font-weight: 400 !important; }
+    b, strong { font-weight: 400 !important; }
+    html, body { background: var(--mixtouring-background, #F8F9FA); }
+    body { overflow-x: hidden; }
+    .app-shell {
+      max-width: 430px;
+      margin: 0 auto;
+      min-height: 100vh;
+      position: relative;
+      padding: 0 0 112px 0;
+      background: var(--mixtouring-background, #F8F9FA);
+    }
+    .detail-card {
+      background: var(--mixtouring-card, #FFFFFF);
+      border-radius: var(--mixtouring-radius-md, 16px);
+      box-shadow: var(--shadow-card-soft, 0 4px 20px -2px rgba(0,0,0,0.04));
+    }
+    .row-card { cursor: pointer; transition: transform 0.15s ease; }
+    .row-card:active { transform: scale(0.985); }
+    .link-btn { transition: transform 0.15s ease; }
+    .link-btn:active { transform: scale(0.97); }
+    @media (max-width: 430px) {
+      .app-shell { width: 100%; }
+    }
+  </style>
+
+  <main class="app-shell">
+
+    <!-- 页头 -->
+    <header class="px-4" style="padding-top: 26px;">
+      <h1 style="font-size: 24px; color: var(--mixtouring-foreground, #1E2022); letter-spacing: -0.02em;">我的</h1>
+      <p style="font-size: 13.5px; color: var(--mixtouring-muted-foreground, #7C8089); margin-top: 6px;">匿名使用中 · 收藏与回填只存在这台设备上</p>
+    </header>
+
+    <!-- 我的收藏 -->
+    <h3 class="px-4" style="font-size: 13px; color: var(--mixtouring-muted-foreground, #7C8089); letter-spacing: 0.08em; margin-top: 24px;">我的收藏</h3>
+    <div class="px-4 pt-3 flex flex-col" style="gap: 10px;" id="favWrap"></div>
+
+    <!-- 我的心愿 -->
+    <h3 class="px-4" style="font-size: 13px; color: var(--mixtouring-muted-foreground, #7C8089); letter-spacing: 0.08em; margin-top: 24px;">我的心愿</h3>
+    <div class="px-4 pt-3 flex flex-col" style="gap: 10px;" id="wishWrap"></div>
+
+    <!-- 回填记录 -->
+    <h3 class="px-4" style="font-size: 13px; color: var(--mixtouring-muted-foreground, #7C8089); letter-spacing: 0.08em; margin-top: 24px;">回填记录</h3>
+    <div class="px-4 pt-3 flex flex-col" style="gap: 10px;" id="fbWrap"></div>
+
+    <!-- 关于 -->
+    <h3 class="px-4" style="font-size: 13px; color: var(--mixtouring-muted-foreground, #7C8089); letter-spacing: 0.08em; margin-top: 24px;">关于</h3>
+    <div class="px-4 pt-3">
+      <div class="detail-card p-4">
+        <div class="flex items-center gap-2">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="MixTouring">
+            <defs>
+              <linearGradient id="mt-logo-grad-me" x1="0" y1="0" x2="24" y2="24" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#111111" />
+                <stop offset="100%" stop-color="#C86A4B" />
+              </linearGradient>
+            </defs>
+            <rect width="24" height="24" rx="6" fill="url(#mt-logo-grad-me)" />
+            <path d="M5 16.5 C 8 9, 12 17, 19 7.5" stroke="#FFFFFF" stroke-width="1.4" stroke-linecap="round" fill="none" />
+            <circle cx="5" cy="16.5" r="1.6" fill="#FFFFFF" />
+            <circle cx="10.5" cy="12.75" r="1.6" fill="#FFFFFF" />
+            <circle cx="19" cy="7.5" r="1.6" fill="#FFFFFF" />
+          </svg>
+          <span style="font-size: 15px; color: var(--mixtouring-foreground, #1E2022);">Mix<span style="color: var(--mixtouring-ring, #C86A4B);">Touring</span></span>
+          <span style="font-size: 12px; color: var(--mixtouring-muted-foreground, #7C8089);">MVP 原型 v0.3.8</span>
+        </div>
+        <p style="font-size: 12.5px; color: var(--mixtouring-muted-foreground, #7C8089); line-height: 1.7; margin-top: 10px;">背包客的 AI 省钱路线规划师。自动发现直飞之外的「火车 × 飞机」自由组票，按总花费排序，衔接风险透明化。纯内容与方案产品，不提供购票服务。</p>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Bottom Navigation -->
+  <nav data-mobile-nav="global" class="fixed bottom-4 left-1/2 -translate-x-1/2 w-[calc(100%-32px)] max-w-md h-[52px] rounded-full bg-white z-50" style="box-shadow: var(--shadow-dock);">
+    <div class="flex items-center justify-between w-full h-full px-1">
+      <button data-nav-key="search" data-dom-id="nav-search" class="flex flex-col justify-center gap-0.5 px-4 h-full items-center shrink-0" style="color: var(--mixtouring-muted-foreground);">
+        <svg class="w-[18px] h-[18px] shrink-0"><use href="#hero-magnifying-glass"></use></svg>
+        <span class="text-[10px] leading-none whitespace-nowrap">搜索</span>
+      </button>
+      <button data-nav-key="library" data-dom-id="nav-library" class="flex flex-col justify-center gap-0.5 px-4 h-full items-center shrink-0" style="color: var(--mixtouring-muted-foreground);">
+        <svg class="w-[18px] h-[18px] shrink-0"><use href="#hero-map-pin"></use></svg>
+        <span class="text-[10px] leading-none whitespace-nowrap">路线库</span>
+      </button>
+      <button data-nav-key="me" data-active="true" data-dom-id="nav-me" class="flex flex-col justify-center gap-0.5 w-[52px] h-[52px] items-center rounded-full shrink-0" style="background: var(--mixtouring-primary); color: var(--mixtouring-primary-foreground);">
+        <svg class="w-[18px] h-[18px] shrink-0"><use href="#hero-user"></use></svg>
+        <span class="text-[10px] leading-none whitespace-nowrap">我的</span>
+      </button>
+    </div>
+  </nav>
+
+  <script src="../assets/mock.js"></script>
+  <script src="../assets/app.js"></script>
+  <script>
+  (function () {
+    MT.wireNav();
+
+    /* ---------- 收藏列表 ---------- */
+    function favRowHtml(f) {
+      return '<div class="detail-card row-card p-4 flex items-center justify-between" data-fav-id="' + MT.esc(f.id) + '" data-fav-type="' + MT.esc(f.type) + '" role="button" tabindex="0">' +
+        '<div class="flex items-center min-w-0" style="gap:10px;">' +
+          '<div class="w-9 h-9 rounded-full flex items-center justify-center shrink-0" style="background:rgba(225,29,72,0.08);">' +
+            '<svg style="width:16px;height:16px;color:var(--color-accent-heart,#E11D48);"><use href="#hero-heart-solid"></use></svg>' +
+          '</div>' +
+          '<div class="min-w-0">' +
+            '<div style="font-size:15px;color:var(--mixtouring-foreground,#1E2022);">' + MT.esc(f.title) + '</div>' +
+            '<div style="font-size:12px;color:var(--mixtouring-muted-foreground,#7C8089);margin-top:3px;">' + MT.esc(f.price) + ' · ' + MT.esc(f.saved) + ' · 收藏于 ' + MT.fmtTs(f.ts) + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<svg class="shrink-0" style="width:16px;height:16px;color:var(--mixtouring-muted-foreground,#7C8089);margin-left:8px;"><use href="#hero-chevron-right"></use></svg>' +
+      '</div>';
+    }
+
+    function renderFavs() {
+      var list = MT.favList();
+      var wrap = document.getElementById('favWrap');
+      if (!list.length) {
+        wrap.innerHTML = '<div class="detail-card p-5 text-center" style="font-size:13px;color:var(--mixtouring-muted-foreground,#7C8089);line-height:1.7;">还没有收藏任何方案<br />在方案详情页点「收藏」，会出现在这里</div>';
+        return;
+      }
+      wrap.innerHTML = list.map(favRowHtml).join('');
+      wrap.querySelectorAll('.row-card').forEach(function (card) {
+        function open() {
+          var id = card.getAttribute('data-fav-id');
+          var type = card.getAttribute('data-fav-type');
+          location.href = type === 'tpl' ? ('detail.html?tpl=' + id) : ('detail.html?id=' + id);
+        }
+        card.addEventListener('click', open);
+        card.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+      });
+    }
+
+    /* ---------- 回填记录 ---------- */
+    function fbRowHtml(r) {
+      return '<div class="detail-card p-4">' +
+        '<div class="flex items-center justify-between">' +
+          '<div class="flex items-center" style="gap:8px;">' +
+            '<svg style="width:15px;height:15px;color:var(--mixtouring-ring,#C86A4B);"><use href="#hero-pencil-square"></use></svg>' +
+            '<span style="font-size:15px;color:var(--mixtouring-foreground,#1E2022);">' + MT.esc(r.title) + '</span>' +
+          '</div>' +
+          '<span style="font-size:12px;color:var(--mixtouring-muted-foreground,#7C8089);">' + MT.fmtTs(r.ts) + '</span>' +
+        '</div>' +
+        '<div class="flex items-center flex-wrap" style="gap:6px;margin-top:10px;">' +
+          (r.cost ? '<span style="font-size:12px;padding:3px 10px;border-radius:9999px;background:var(--mixtouring-muted,#F4F5F7);color:var(--mixtouring-ring,#C86A4B);">实际花费 ' + MT.esc(r.cost) + '</span>' : '') +
+          (r.time ? '<span style="font-size:12px;padding:3px 10px;border-radius:9999px;background:var(--mixtouring-muted,#F4F5F7);color:var(--mixtouring-muted-foreground,#7C8089);">实际耗时 ' + MT.esc(r.time) + '</span>' : '') +
+        '</div>' +
+        (r.note ? '<p style="font-size:13px;color:var(--mixtouring-muted-foreground,#7C8089);line-height:1.6;margin-top:10px;">' + MT.esc(r.note) + '</p>' : '') +
+      '</div>';
+    }
+
+    function renderFeedback() {
+      var list = MT.feedbackList();
+      var wrap = document.getElementById('fbWrap');
+      if (!list.length) {
+        wrap.innerHTML = '<div class="detail-card p-5 text-center" style="font-size:13px;color:var(--mixtouring-muted-foreground,#7C8089);line-height:1.7;">还没有回填过实测数据<br />走过某条方案后，在详情页点「回填实测」</div>';
+        return;
+      }
+      wrap.innerHTML = list.map(fbRowHtml).join('');
+    }
+
+    /* ---------- 我的心愿 ---------- */
+    function wishRowHtml(w) {
+      var statusColor = w.status === 'generated' ? '#34c759' : (w.status === 'pending' ? '#FBBF24' : '#7C8089');
+      var statusText = w.status === 'generated' ? '已生成' : (w.status === 'pending' ? '探索中' : '已关闭');
+      var generated = w.generatedAt ? ' · ' + MT.fmtTs(w.generatedAt) : '';
+      return '<div class="detail-card row-card p-4 flex items-center justify-between" data-wish-id="' + MT.esc(w.id) + '" role="button" tabindex="0">' +
+        '<div class="flex items-center min-w-0" style="gap:10px;">' +
+          '<div class="w-9 h-9 rounded-full flex items-center justify-center shrink-0" style="background:rgba(200,106,75,0.08);">' +
+            '<svg style="width:16px;height:16px;color:var(--mixtouring-ring,#C86A4B);"><use href="#hero-sparkles"></use></svg>' +
+          '</div>' +
+          '<div class="min-w-0">' +
+            '<div style="font-size:15px;color:var(--mixtouring-foreground,#1E2022);">' + MT.esc(w.from + ' → ' + w.to) + '</div>' +
+            '<div style="font-size:12px;color:var(--mixtouring-muted-foreground,#7C8089);margin-top:3px;">' + MT.esc(w.date) + ' · <span style="color:' + statusColor + ';">' + statusText + '</span>' + generated + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<svg class="shrink-0" style="width:16px;height:16px;color:var(--mixtouring-muted-foreground,#7C8089);margin-left:8px;"><use href="#hero-chevron-right"></use></svg>' +
+      '</div>';
+    }
+
+    function renderWishes() {
+      /* 自动回流：方案库已有此路线（离线生成已完成）时，pending 升级为 generated */
+      var pending = MT.wishList().filter(function (w) { return w.status === 'pending'; });
+      pending.forEach(function (w) {
+        if (window.DB && window.DB.routes[w.from + '-' + w.to]) MT.wishMarkGenerated(w.from, w.to);
+      });
+      var list = MT.wishList().filter(function (w) { return w.status !== 'dismissed'; });
+      var wrap = document.getElementById('wishWrap');
+      if (!list.length) {
+        wrap.innerHTML = '<div class="detail-card p-5 text-center" style="font-size:13px;color:var(--mixtouring-muted-foreground,#7C8089);line-height:1.7;">还没有心愿路线<br />在搜索结果页遇到无数据路线，可以让 AI 离线探索</div>';
+        return;
+      }
+      wrap.innerHTML = list.map(wishRowHtml).join('');
+      wrap.querySelectorAll('.row-card').forEach(function (card) {
+        function open() {
+          var id = card.getAttribute('data-wish-id');
+          var w = MT.wishList().find(function (x) { return x.id === id; });
+          if (!w) return;
+          location.href = 'loading.html?' + new URLSearchParams({ from: w.from, to: w.to, date: w.date });
+        }
+        card.addEventListener('click', open);
+        card.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+      });
+    }
+
+    renderFavs();
+    renderWishes();
+    renderFeedback();
+  })();
+  </script>
+</body>
+</html>

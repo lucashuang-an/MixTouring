@@ -1,0 +1,642 @@
+{
+  "skillProvenance": {
+    "name": "solo-design",
+    "version": "2026.08.06.19.15.08",
+    "version_source": "skill-release-manifest.json",
+    "read_status": "ok"
+  },
+  "project": {
+    "name": "MixTouring HiFi",
+    "designProjectPath": "d:\\VIBE CODING\\MIXTOURING\\mixtouring-hifi",
+    "resolvedLane": "free_exploration",
+    "deviceType": "mobile",
+    "selectedIntentWorkflowRead": true,
+    "intentProfile": {
+      "routingReason": "New project creation applying travel-app-hifi design system to MixTouring product — no existing Library, no restore target, open-ended page creation",
+      "caseFamily": "free_exploration",
+      "operatingMode": "free-explore",
+      "complexity": "stateful-free-fast"
+    },
+    "contextReadScope": {
+      "mainAgent": {
+        "forbiddenReads": [
+          "other intent-workflows/**",
+          "Sub-Agent implementation files before dispatch"
+        ]
+      },
+      "pageSubAgent": {
+        "allowedReads": [
+          "current lane page runtime guide",
+          "current lane dispatch contract excerpt",
+          "current Page Packet",
+          "supplementaryReads[] only"
+        ],
+        "forbiddenReads": [
+          "SKILL.md full re-read",
+          "other intent-workflows/**",
+          "full runtime-orchestration-summary.json unless explicitly sliced"
+        ]
+      },
+      "readScopeLedgerWriter": "shared-runtime/deterministic-tooling/build-page-dispatch-manifest.mjs"
+    },
+    "contextRequirementsLoaded": [
+      {
+        "path": "shared-runtime/runtime-boundaries/lane-runtime-contracts.md",
+        "readStatus": "loaded",
+        "bodyRead": true
+      },
+      {
+        "path": "shared-runtime/agent-dispatch-runtime/lane-dispatch-index.md",
+        "readStatus": "loaded",
+        "bodyRead": true
+      },
+      {
+        "path": "delivery-quality/page-rendering-quality-gate.md",
+        "readStatus": "loaded",
+        "bodyRead": true
+      },
+      {
+        "path": "delivery-quality/design-artifact-validation.md",
+        "readStatus": "loaded",
+        "bodyRead": true
+      },
+      {
+        "path": "delivery-quality/delivery-evidence-contract.md",
+        "readStatus": "loaded",
+        "bodyRead": true
+      },
+      {
+        "path": "visual-experience/visual-experience-guidelines.md",
+        "readStatus": "loaded",
+        "bodyRead": true
+      }
+    ],
+    "validationRunDiscipline": {
+      "maxFullValidationRuns": 2,
+      "softWarningsTriggerRepair": false,
+      "blockingRepairMode": "targeted-once",
+      "forbiddenRepairTriggers": [
+        "soft-warning-only",
+        "provenance-warning-only",
+        "style-warning-only"
+      ]
+    },
+    "lowValueCallWatchdog": {
+      "applies": true,
+      "noProgressSignals": [
+        "no_tool_call",
+        "no_artifact_diff",
+        "no_structured_decision"
+      ],
+      "noProgressNextAction": "enter_readiness_or_blocked_summary"
+    },
+    "cssPreflightEvidence": {
+      "applies": true,
+      "status": "passed",
+      "command": "node c:\\Users\\17106\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\apply-html-head-contract.mjs d:\\VIBE CODING\\MIXTOURING\\mixtouring-hifi\\colors_and_type.css d:\\VIBE CODING\\MIXTOURING\\mixtouring-hifi\\.preflight\\preflight.html --title=Preflight --lang=zh-CN --prefix=mixtouring",
+      "brandPrefix": "mixtouring",
+      "checks": {
+        "themeVars": "present",
+        "semanticTokenFallback": "present",
+        "themeInline": "present",
+        "tailwindCdn": "present",
+        "htmlClass": "present",
+        "semanticMappings": "resolved"
+      },
+      "retryCount": 0,
+      "blockingReason": null
+    },
+    "sharedProjectShellContract": {
+      "mobileNavigation": {
+        "type": "pill-dock",
+        "items": [
+          {
+            "key": "search",
+            "label": "搜索",
+            "icon": "search"
+          },
+          {
+            "key": "library",
+            "label": "路线库",
+            "icon": "map"
+          },
+          {
+            "key": "me",
+            "label": "我的",
+            "icon": "user"
+          }
+        ],
+        "heightPx": 64,
+        "position": "flow-bottom",
+        "activeState": "pill-active",
+        "structure": {
+          "navTag": "nav",
+          "navClass": "fixed bottom-4 left-1/2 -translate-x-1/2 w-[calc(100%-32px)] max-w-md h-[64px] rounded-full bg-white grid grid-cols-3 px-2 z-50",
+          "innerClass": "flex items-center justify-between w-full h-full col-span-3",
+          "itemTag": "button",
+          "itemClass": "flex flex-col justify-center gap-0.5 px-3 h-full items-center rounded-full",
+          "iconClass": "w-5 h-5 shrink-0",
+          "labelClass": "text-[10px] leading-none whitespace-nowrap truncate",
+          "activeRule": "only background/color may change; no class changes that affect layout",
+          "markerAttr": "data-mobile-nav=\"global\"",
+          "canonicalHtmlByKey": {
+            "search": "<nav data-mobile-nav=\"global\" class=\"fixed bottom-4 left-1/2 -translate-x-1/2 w-[calc(100%-32px)] max-w-md h-[64px] rounded-full bg-white grid grid-cols-3 px-2 z-50\" style=\"box-shadow: var(--shadow-dock);\"><div class=\"flex items-center justify-between w-full h-full col-span-3\"><button data-nav-key=\"search\" data-active=\"true\" data-dom-id=\"nav-search\" class=\"flex flex-col justify-center gap-0.5 px-3 h-full items-center rounded-full\" style=\"background: var(--mixtouring-primary); color: var(--mixtouring-primary-foreground);\"><i data-lucide=\"search\" class=\"w-5 h-5 shrink-0\"></i><span class=\"text-[10px] leading-none whitespace-nowrap truncate\">搜索</span></button><button data-nav-key=\"library\" data-dom-id=\"nav-library\" class=\"flex flex-col justify-center gap-0.5 px-3 h-full items-center\" style=\"color: var(--mixtouring-muted-foreground);\"><i data-lucide=\"map\" class=\"w-5 h-5 shrink-0\"></i><span class=\"text-[10px] leading-none whitespace-nowrap truncate\">路线库</span></button><button data-nav-key=\"me\" data-dom-id=\"nav-me\" class=\"flex flex-col justify-center gap-0.5 px-3 h-full items-center\" style=\"color: var(--mixtouring-muted-foreground);\"><i data-lucide=\"user\" class=\"w-5 h-5 shrink-0\"></i><span class=\"text-[10px] leading-none whitespace-nowrap truncate\">我的</span></button></div></nav>",
+            "library": "<nav data-mobile-nav=\"global\" class=\"fixed bottom-4 left-1/2 -translate-x-1/2 w-[calc(100%-32px)] max-w-md h-[64px] rounded-full bg-white grid grid-cols-3 px-2 z-50\" style=\"box-shadow: var(--shadow-dock);\"><div class=\"flex items-center justify-between w-full h-full col-span-3\"><button data-nav-key=\"search\" data-dom-id=\"nav-search\" class=\"flex flex-col justify-center gap-0.5 px-3 h-full items-center\" style=\"color: var(--mixtouring-muted-foreground);\"><i data-lucide=\"search\" class=\"w-5 h-5 shrink-0\"></i><span class=\"text-[10px] leading-none whitespace-nowrap truncate\">搜索</span></button><button data-nav-key=\"library\" data-active=\"true\" data-dom-id=\"nav-library\" class=\"flex flex-col justify-center gap-0.5 px-3 h-full items-center rounded-full\" style=\"background: var(--mixtouring-primary); color: var(--mixtouring-primary-foreground);\"><i data-lucide=\"map\" class=\"w-5 h-5 shrink-0\"></i><span class=\"text-[10px] leading-none whitespace-nowrap truncate\">路线库</span></button><button data-nav-key=\"me\" data-dom-id=\"nav-me\" class=\"flex flex-col justify-center gap-0.5 px-3 h-full items-center\" style=\"color: var(--mixtouring-muted-foreground);\"><i data-lucide=\"user\" class=\"w-5 h-5 shrink-0\"></i><span class=\"text-[10px] leading-none whitespace-nowrap truncate\">我的</span></button></div></nav>"
+          }
+        }
+      }
+    },
+    "expectedDispatches": [
+      {
+        "nodeId": "page-search",
+        "htmlSrc": "pages/search.html",
+        "status": "completed",
+        "qualityGate": "passed",
+        "changedFiles": [
+          "pages/search.html"
+        ],
+        "toolCallLedger": {
+          "source": "main-agent-runtime-trace",
+          "traceDigest": "5956278e42a6d7cc8f721b4778f1f00c384608cef87b552bfde8bd3fd0a8f943",
+          "writePaths": [
+            "pages/search.html"
+          ],
+          "wroteOnlyAllowedPaths": true
+        }
+      },
+      {
+        "nodeId": "page-detail",
+        "htmlSrc": "pages/detail.html",
+        "status": "completed",
+        "qualityGate": "passed",
+        "changedFiles": [
+          "pages/detail.html"
+        ],
+        "toolCallLedger": {
+          "source": "main-agent-runtime-trace",
+          "traceDigest": "a2caf3318ab3249f823777411c50baa284c3795ef599fccc4eba90e6215b6102",
+          "writePaths": [
+            "pages/detail.html"
+          ],
+          "wroteOnlyAllowedPaths": true
+        }
+      },
+      {
+        "nodeId": "page-library",
+        "htmlSrc": "pages/library.html",
+        "status": "completed",
+        "qualityGate": "passed",
+        "changedFiles": [
+          "pages/library.html"
+        ],
+        "toolCallLedger": {
+          "source": "main-agent-runtime-trace",
+          "traceDigest": "16a57677bb7e5dbd377a79e1eacd3b2779fea45d8f05d2d27ff7eeaf096adb9c",
+          "writePaths": [
+            "pages/library.html"
+          ],
+          "wroteOnlyAllowedPaths": true
+        }
+      }
+    ],
+    "pageCompletenessGate": {
+      "applies": true,
+      "requiredPages": [
+        {
+          "nodeId": "page-search",
+          "htmlSrc": "pages/search.html",
+          "role": "tab-root",
+          "navKey": "search"
+        },
+        {
+          "nodeId": "page-detail",
+          "htmlSrc": "pages/detail.html",
+          "role": "push-detail"
+        },
+        {
+          "nodeId": "page-library",
+          "htmlSrc": "pages/library.html",
+          "role": "tab-root",
+          "navKey": "library"
+        }
+      ],
+      "requiredInteractions": [
+        {
+          "page": "page-search",
+          "domId": "trip-card-cta",
+          "target": "page-detail"
+        },
+        {
+          "page": "page-search",
+          "domId": "nav-library",
+          "target": "page-library"
+        },
+        {
+          "page": "page-detail",
+          "domId": "back-button",
+          "target": "page-search"
+        },
+        {
+          "page": "page-library",
+          "domId": "tpl-card-1",
+          "target": "page-detail"
+        },
+        {
+          "page": "page-library",
+          "domId": "nav-search",
+          "target": "page-search"
+        }
+      ]
+    },
+    "dispatchPreflightManifest": [
+      {
+        "recorded_at": "2026-09-01T15:38:47.595Z",
+        "generatedBy": "build-page-dispatch-manifest.mjs",
+        "packetType": "FreePagePacket",
+        "laneContract": {
+          "resolvedLane": "free_exploration",
+          "packetType": "FreePagePacket",
+          "pageRuntimeGuide": "intent-workflows/intent-page-free-exploration/free-exploration-page-runtime.md",
+          "dispatchContract": "intent-workflows/intent-page-free-exploration/dispatch-contract.md"
+        },
+        "taskLinePresent": true,
+        "outputPathPresent": true,
+        "sharedTemplate": "intent-workflows/intent-page-free-exploration/free-exploration-page-runtime.md",
+        "nodeId": "page-search",
+        "htmlSrc": "pages/search.html",
+        "supplementaryReads": [],
+        "allowedWritePaths": [
+          "pages/search.html",
+          "assets/"
+        ],
+        "forbiddenWriteRoots": [
+          "*.design",
+          "runtime-orchestration-summary.json",
+          "validation-report.json",
+          "finish-readiness-report.json",
+          "restore-contract-report.json",
+          "page-generation-summary.json"
+        ],
+        "toolPolicy": {
+          "todoWriteAllowed": false,
+          "validationScriptsAllowed": false,
+          "previewAllowed": false,
+          "helperScriptsAllowed": false,
+          "designFileWriteAllowed": false,
+          "allowedWritePaths": [
+            "pages/search.html",
+            "assets/"
+          ]
+        },
+        "skillRuntime": {
+          "skillDir": "c:\\Users\\17106\\.trae-cn\\builtin\\design\\default\\skills\\solo-design",
+          "deterministicToolDir": "c:\\Users\\17106\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling",
+          "toolPaths": {
+            "applyHtmlHeadContract": "c:\\Users\\17106\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\apply-html-head-contract.mjs",
+            "recordDispatchCompletion": "c:\\Users\\17106\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\record-dispatch-completion.mjs",
+            "buildPageDispatchManifest": "c:\\Users\\17106\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\build-page-dispatch-manifest.mjs",
+            "validateDesignWorkspace": "c:\\Users\\17106\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\validate-design-workspace.mjs",
+            "validateFinishReadiness": "c:\\Users\\17106\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\validate-finish-readiness.mjs",
+            "validateRestoreContract": "c:\\Users\\17106\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\validate-restore-contract.mjs"
+          },
+          "requiredForPageSubAgent": [
+            "applyHtmlHeadContract",
+            "recordDispatchCompletion"
+          ],
+          "pathInjection": "absolute",
+          "pathContract": "Do not use {SKILL_DIR} placeholders inside Page Sub-Agent packets; use toolPaths.* absolute paths.",
+          "commandTemplates": {
+            "recordDispatchCompletion": "node \"c:\\Users\\17106\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\record-dispatch-completion.mjs\" \"d:\\VIBE CODING\\MIXTOURING\\mixtouring-hifi\" --node-id=\"page-search\" --html-src=\"pages/search.html\" --status=completed --changed-files=<comma-separated-project-relative-files> --trace-digest=<main-agent-runtime-trace-digest> --tool-ledger-json=<tool-ledger-json-or-file>"
+          }
+        },
+        "cssFilePath": "d:\\VIBE CODING\\MIXTOURING\\mixtouring-hifi\\colors_and_type.css",
+        "htmlFilePath": "d:\\VIBE CODING\\MIXTOURING\\mixtouring-hifi\\pages\\search.html",
+        "brandPrefix": "mixtouring",
+        "aestheticsMode": "free-explore",
+        "toolDisciplineBlockPresent": true,
+        "fillHtmlHeadCommand": "node \"c:\\Users\\17106\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\apply-html-head-contract.mjs\" \"d:\\VIBE CODING\\MIXTOURING\\mixtouring-hifi\\colors_and_type.css\" \"d:\\VIBE CODING\\MIXTOURING\\mixtouring-hifi\\pages\\search.html\" --title=\"搜索首页\" --lang=\"zh-CN\" --prefix=\"mixtouring\"",
+        "headFillMode": "skeleton-first",
+        "viewportMode": null,
+        "completionSchemaExpected": "compact",
+        "restoreFields": null,
+        "restoreContractStatus": null,
+        "restoreCompactPacket": null,
+        "deterministicCommands": null,
+        "sourceAuthorityLock": null,
+        "preDispatchFileHashes": {
+          ".design": "a427d1d5dd32e6623b95384afd13f513a28ebb24a73754b6f996bc34703751c2"
+        },
+        "contextPreflight": {
+          "workflowPath": "intent-workflows/intent-page-free-exploration/INTENT_WORKFLOW.md",
+          "requiredContextFiles": [
+            "shared-runtime/runtime-boundaries/lane-runtime-contracts.md",
+            "shared-runtime/agent-dispatch-runtime/lane-dispatch-index.md",
+            "delivery-quality/page-rendering-quality-gate.md",
+            "delivery-quality/design-artifact-validation.md",
+            "delivery-quality/delivery-evidence-contract.md",
+            "visual-experience/visual-experience-guidelines.md"
+          ],
+          "optionalContextFiles": [],
+          "passed": true
+        },
+        "pageSliceOnly": true,
+        "requiredFieldsPresent": true,
+        "missingFields": [],
+        "fillHtmlHeadCommandValid": true,
+        "mobileNavigation": {
+          "required": true,
+          "appliesToThisPage": true,
+          "activeKey": "search",
+          "contractPresent": true,
+          "structurePresent": true,
+          "canonicalHtmlIncluded": true,
+          "canonicalHtmlSource": "sharedProjectShellContract.mobileNavigation.structure.canonicalHtmlByKey.search",
+          "structureHash": "78521a5170e22d5c8f2bf143fd726026c8772be5fdbc28b6dc8bfcfc001e2c21",
+          "missingFields": []
+        },
+        "persistedToSummary": true,
+        "taskQueryAudited": false,
+        "proofSource": "summary-only",
+        "largeWorkflowFilesInTaskQuery": null
+      },
+      {
+        "recorded_at": "2026-09-01T15:38:47.595Z",
+        "generatedBy": "build-page-dispatch-manifest.mjs",
+        "packetType": "FreePagePacket",
+        "laneContract": {
+          "resolvedLane": "free_exploration",
+          "packetType": "FreePagePacket",
+          "pageRuntimeGuide": "intent-workflows/intent-page-free-exploration/free-exploration-page-runtime.md",
+          "dispatchContract": "intent-workflows/intent-page-free-exploration/dispatch-contract.md"
+        },
+        "taskLinePresent": true,
+        "outputPathPresent": true,
+        "sharedTemplate": "intent-workflows/intent-page-free-exploration/free-exploration-page-runtime.md",
+        "nodeId": "page-detail",
+        "htmlSrc": "pages/detail.html",
+        "supplementaryReads": [],
+        "allowedWritePaths": [
+          "pages/detail.html",
+          "assets/"
+        ],
+        "forbiddenWriteRoots": [
+          "*.design",
+          "runtime-orchestration-summary.json",
+          "validation-report.json",
+          "finish-readiness-report.json",
+          "restore-contract-report.json",
+          "page-generation-summary.json"
+        ],
+        "toolPolicy": {
+          "todoWriteAllowed": false,
+          "validationScriptsAllowed": false,
+          "previewAllowed": false,
+          "helperScriptsAllowed": false,
+          "designFileWriteAllowed": false,
+          "allowedWritePaths": [
+            "pages/detail.html",
+            "assets/"
+          ]
+        },
+        "skillRuntime": {
+          "skillDir": "c:\\Users\\17106\\.trae-cn\\builtin\\design\\default\\skills\\solo-design",
+          "deterministicToolDir": "c:\\Users\\17106\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling",
+          "toolPaths": {
+            "applyHtmlHeadContract": "c:\\Users\\17106\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\apply-html-head-contract.mjs",
+            "recordDispatchCompletion": "c:\\Users\\17106\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\record-dispatch-completion.mjs",
+            "buildPageDispatchManifest": "c:\\Users\\17106\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\build-page-dispatch-manifest.mjs",
+            "validateDesignWorkspace": "c:\\Users\\17106\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\validate-design-workspace.mjs",
+            "validateFinishReadiness": "c:\\Users\\17106\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\validate-finish-readiness.mjs",
+            "validateRestoreContract": "c:\\Users\\17106\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\validate-restore-contract.mjs"
+          },
+          "requiredForPageSubAgent": [
+            "applyHtmlHeadContract",
+            "recordDispatchCompletion"
+          ],
+          "pathInjection": "absolute",
+          "pathContract": "Do not use {SKILL_DIR} placeholders inside Page Sub-Agent packets; use toolPaths.* absolute paths.",
+          "commandTemplates": {
+            "recordDispatchCompletion": "node \"c:\\Users\\17106\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\record-dispatch-completion.mjs\" \"d:\\VIBE CODING\\MIXTOURING\\mixtouring-hifi\" --node-id=\"page-detail\" --html-src=\"pages/detail.html\" --status=completed --changed-files=<comma-separated-project-relative-files> --trace-digest=<main-agent-runtime-trace-digest> --tool-ledger-json=<tool-ledger-json-or-file>"
+          }
+        },
+        "cssFilePath": "d:\\VIBE CODING\\MIXTOURING\\mixtouring-hifi\\colors_and_type.css",
+        "htmlFilePath": "d:\\VIBE CODING\\MIXTOURING\\mixtouring-hifi\\pages\\detail.html",
+        "brandPrefix": "mixtouring",
+        "aestheticsMode": "free-explore",
+        "toolDisciplineBlockPresent": true,
+        "fillHtmlHeadCommand": "node \"c:\\Users\\17106\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\apply-html-head-contract.mjs\" \"d:\\VIBE CODING\\MIXTOURING\\mixtouring-hifi\\colors_and_type.css\" \"d:\\VIBE CODING\\MIXTOURING\\mixtouring-hifi\\pages\\detail.html\" --title=\"方案详情\" --lang=\"zh-CN\" --prefix=\"mixtouring\"",
+        "headFillMode": "skeleton-first",
+        "viewportMode": null,
+        "completionSchemaExpected": "compact",
+        "restoreFields": null,
+        "restoreContractStatus": null,
+        "restoreCompactPacket": null,
+        "deterministicCommands": null,
+        "sourceAuthorityLock": null,
+        "preDispatchFileHashes": {
+          ".design": "a427d1d5dd32e6623b95384afd13f513a28ebb24a73754b6f996bc34703751c2"
+        },
+        "contextPreflight": {
+          "workflowPath": "intent-workflows/intent-page-free-exploration/INTENT_WORKFLOW.md",
+          "requiredContextFiles": [
+            "shared-runtime/runtime-boundaries/lane-runtime-contracts.md",
+            "shared-runtime/agent-dispatch-runtime/lane-dispatch-index.md",
+            "delivery-quality/page-rendering-quality-gate.md",
+            "delivery-quality/design-artifact-validation.md",
+            "delivery-quality/delivery-evidence-contract.md",
+            "visual-experience/visual-experience-guidelines.md"
+          ],
+          "optionalContextFiles": [],
+          "passed": true
+        },
+        "pageSliceOnly": true,
+        "requiredFieldsPresent": true,
+        "missingFields": [],
+        "fillHtmlHeadCommandValid": true,
+        "mobileNavigation": {
+          "required": true,
+          "appliesToThisPage": true,
+          "activeKey": "search",
+          "contractPresent": true,
+          "structurePresent": true,
+          "canonicalHtmlIncluded": true,
+          "canonicalHtmlSource": "sharedProjectShellContract.mobileNavigation.structure.canonicalHtmlByKey.search",
+          "structureHash": "78521a5170e22d5c8f2bf143fd726026c8772be5fdbc28b6dc8bfcfc001e2c21",
+          "missingFields": []
+        },
+        "persistedToSummary": true,
+        "taskQueryAudited": false,
+        "proofSource": "summary-only",
+        "largeWorkflowFilesInTaskQuery": null
+      },
+      {
+        "recorded_at": "2026-09-01T15:38:47.595Z",
+        "generatedBy": "build-page-dispatch-manifest.mjs",
+        "packetType": "FreePagePacket",
+        "laneContract": {
+          "resolvedLane": "free_exploration",
+          "packetType": "FreePagePacket",
+          "pageRuntimeGuide": "intent-workflows/intent-page-free-exploration/free-exploration-page-runtime.md",
+          "dispatchContract": "intent-workflows/intent-page-free-exploration/dispatch-contract.md"
+        },
+        "taskLinePresent": true,
+        "outputPathPresent": true,
+        "sharedTemplate": "intent-workflows/intent-page-free-exploration/free-exploration-page-runtime.md",
+        "nodeId": "page-library",
+        "htmlSrc": "pages/library.html",
+        "supplementaryReads": [],
+        "allowedWritePaths": [
+          "pages/library.html",
+          "assets/"
+        ],
+        "forbiddenWriteRoots": [
+          "*.design",
+          "runtime-orchestration-summary.json",
+          "validation-report.json",
+          "finish-readiness-report.json",
+          "restore-contract-report.json",
+          "page-generation-summary.json"
+        ],
+        "toolPolicy": {
+          "todoWriteAllowed": false,
+          "validationScriptsAllowed": false,
+          "previewAllowed": false,
+          "helperScriptsAllowed": false,
+          "designFileWriteAllowed": false,
+          "allowedWritePaths": [
+            "pages/library.html",
+            "assets/"
+          ]
+        },
+        "skillRuntime": {
+          "skillDir": "c:\\Users\\17106\\.trae-cn\\builtin\\design\\default\\skills\\solo-design",
+          "deterministicToolDir": "c:\\Users\\17106\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling",
+          "toolPaths": {
+            "applyHtmlHeadContract": "c:\\Users\\17106\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\apply-html-head-contract.mjs",
+            "recordDispatchCompletion": "c:\\Users\\17106\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\record-dispatch-completion.mjs",
+            "buildPageDispatchManifest": "c:\\Users\\17106\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\build-page-dispatch-manifest.mjs",
+            "validateDesignWorkspace": "c:\\Users\\17106\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\validate-design-workspace.mjs",
+            "validateFinishReadiness": "c:\\Users\\17106\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\validate-finish-readiness.mjs",
+            "validateRestoreContract": "c:\\Users\\17106\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\validate-restore-contract.mjs"
+          },
+          "requiredForPageSubAgent": [
+            "applyHtmlHeadContract",
+            "recordDispatchCompletion"
+          ],
+          "pathInjection": "absolute",
+          "pathContract": "Do not use {SKILL_DIR} placeholders inside Page Sub-Agent packets; use toolPaths.* absolute paths.",
+          "commandTemplates": {
+            "recordDispatchCompletion": "node \"c:\\Users\\17106\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\record-dispatch-completion.mjs\" \"d:\\VIBE CODING\\MIXTOURING\\mixtouring-hifi\" --node-id=\"page-library\" --html-src=\"pages/library.html\" --status=completed --changed-files=<comma-separated-project-relative-files> --trace-digest=<main-agent-runtime-trace-digest> --tool-ledger-json=<tool-ledger-json-or-file>"
+          }
+        },
+        "cssFilePath": "d:\\VIBE CODING\\MIXTOURING\\mixtouring-hifi\\colors_and_type.css",
+        "htmlFilePath": "d:\\VIBE CODING\\MIXTOURING\\mixtouring-hifi\\pages\\library.html",
+        "brandPrefix": "mixtouring",
+        "aestheticsMode": "free-explore",
+        "toolDisciplineBlockPresent": true,
+        "fillHtmlHeadCommand": "node \"c:\\Users\\17106\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\apply-html-head-contract.mjs\" \"d:\\VIBE CODING\\MIXTOURING\\mixtouring-hifi\\colors_and_type.css\" \"d:\\VIBE CODING\\MIXTOURING\\mixtouring-hifi\\pages\\library.html\" --title=\"路线库\" --lang=\"zh-CN\" --prefix=\"mixtouring\"",
+        "headFillMode": "skeleton-first",
+        "viewportMode": null,
+        "completionSchemaExpected": "compact",
+        "restoreFields": null,
+        "restoreContractStatus": null,
+        "restoreCompactPacket": null,
+        "deterministicCommands": null,
+        "sourceAuthorityLock": null,
+        "preDispatchFileHashes": {
+          ".design": "a427d1d5dd32e6623b95384afd13f513a28ebb24a73754b6f996bc34703751c2"
+        },
+        "contextPreflight": {
+          "workflowPath": "intent-workflows/intent-page-free-exploration/INTENT_WORKFLOW.md",
+          "requiredContextFiles": [
+            "shared-runtime/runtime-boundaries/lane-runtime-contracts.md",
+            "shared-runtime/agent-dispatch-runtime/lane-dispatch-index.md",
+            "delivery-quality/page-rendering-quality-gate.md",
+            "delivery-quality/design-artifact-validation.md",
+            "delivery-quality/delivery-evidence-contract.md",
+            "visual-experience/visual-experience-guidelines.md"
+          ],
+          "optionalContextFiles": [],
+          "passed": true
+        },
+        "pageSliceOnly": true,
+        "requiredFieldsPresent": true,
+        "missingFields": [],
+        "fillHtmlHeadCommandValid": true,
+        "mobileNavigation": {
+          "required": true,
+          "appliesToThisPage": true,
+          "activeKey": "library",
+          "contractPresent": true,
+          "structurePresent": true,
+          "canonicalHtmlIncluded": true,
+          "canonicalHtmlSource": "sharedProjectShellContract.mobileNavigation.structure.canonicalHtmlByKey.library",
+          "structureHash": "78521a5170e22d5c8f2bf143fd726026c8772be5fdbc28b6dc8bfcfc001e2c21",
+          "missingFields": []
+        },
+        "persistedToSummary": true,
+        "taskQueryAudited": false,
+        "proofSource": "summary-only",
+        "largeWorkflowFilesInTaskQuery": null
+      }
+    ],
+    "readScopeLedger": [
+      {
+        "actor": "page-sub-agent",
+        "lane": "free_exploration",
+        "path": "intent-workflows/intent-page-free-exploration/free-exploration-page-runtime.md",
+        "reason": "page runtime guide",
+        "scopeClass": "page-runtime",
+        "declaredBeforeRead": true,
+        "recordedAt": "2026-09-01T15:38:47.595Z",
+        "nodeId": "page-search",
+        "htmlSrc": "pages/search.html"
+      },
+      {
+        "actor": "page-sub-agent",
+        "lane": "free_exploration",
+        "path": "intent-workflows/intent-page-free-exploration/dispatch-contract.md",
+        "reason": "dispatch contract",
+        "scopeClass": "dispatch-contract",
+        "declaredBeforeRead": true,
+        "recordedAt": "2026-09-01T15:38:47.595Z",
+        "nodeId": "page-search",
+        "htmlSrc": "pages/search.html"
+      }
+    ],
+    "mainAgentPostDispatchMutations": [
+      {
+        "file": "pages/search.html",
+        "reason": "Redesigned search box swap button styling, added calendar icon to date field, added search bar + category navigation component, changed hot route cards from horizontal thumbnail to vertical image-on-top layout with rating badge and heart button, added 3 generated scenery images",
+        "postMutationHash": "74305b0610e9c91b775caaffe936234f6d123558ff13f99caeb450a26ca6aff3",
+        "recordedAt": "2026-09-02T06:30:00.000Z"
+      },
+      {
+        "file": ".design",
+        "reason": "Registered 3 image nodes (image-001, image-002, image-003) for route scenery photos",
+        "postMutationHash": "79b6041f5ed345303d4745dbaaa7a3741a739448c3bed962e1930410b3820aee",
+        "recordedAt": "2026-09-02T06:30:00.000Z"
+      }
+    ]
+  },
+  "pages": [
+    {
+      "nodeId": "page-search",
+      "htmlSrc": "pages/search.html",
+      "title": "搜索首页",
+      "mobileNavigationActiveKey": "search"
+    },
+    {
+      "nodeId": "page-detail",
+      "htmlSrc": "pages/detail.html",
+      "title": "方案详情",
+      "mobileNavigationActiveKey": "search"
+    },
+    {
+      "nodeId": "page-library",
+      "htmlSrc": "pages/library.html",
+      "title": "路线库",
+      "mobileNavigationActiveKey": "library"
+    }
+  ]
+}

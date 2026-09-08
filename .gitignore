@@ -1,0 +1,28 @@
+# 依赖与构建产物
+node_modules/
+dist/
+
+# 环境变量与密钥
+.env
+.env.*
+*.key
+
+# 日志
+*.log
+npm-debug.log*
+
+# 操作系统杂项
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# 编辑器
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# 工具生成与早期实验目录（不入库）
+TraeWork Copy/
+.trae-html-share-packages/
+travel-app-hifi/
+travel-booking-app/

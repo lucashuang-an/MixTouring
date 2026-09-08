@@ -1,0 +1,10 @@
+[
+  {
+    "wish_id": "wish-demo-1",
+    "from": "广州",
+    "to": "拉萨",
+    "date": "2026/10/01",
+    "prompt": "生成 广州 → 拉萨 的火车×飞机混搭方案。要求：至少 1 个混搭 + 1 个直达火车或飞机对照；所有价格须来自真实网络采样并标注来源； stops/segs/risks 必须符合 MixTouring 方案库 Schema；AI 文案中的数字只能以 {saved}/{price_mid}/{total_time}/{wait_min_1}/{transfer_min_1}/{transfer_km_1} 等占位符出现。",
+    "route_exists_now": false
+  }
+]

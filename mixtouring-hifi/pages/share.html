@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>路线分享 · MixTouring</title>
+    <style id="theme-vars">
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Noto+Sans+SC:wght@400;500&display=swap');
+/* MixTouring HiFi — colors_and_type.css */
+/* Brand prefix: mixtouring */
+/* Design system: Warm Modern Minimalist (from travel-app-hifi) applied to MixTouring product */
+
+:root {
+  /* === Core Color Tokens === */
+  --color-canvas: #F8F9FA;
+  --color-surface: #FFFFFF;
+  --color-primary-dark: #111111;
+  --color-brand-accent: #C86A4B;
+  --color-text-main: #1E2022;
+  --color-text-muted: #7C8089;
+  --color-badge-rating: #FBBF24;
+  --color-accent-heart: #E11D48;
+  --color-surface-2: #F4F5F7;
+  --color-border-soft: #E8E9EB;
+
+  /* === Semantic Aliases === */
+  --mixtouring-background: #F8F9FA;
+  --mixtouring-foreground: #1E2022;
+  --mixtouring-card: #FFFFFF;
+  --mixtouring-card-foreground: #1E2022;
+  --mixtouring-popover: #FFFFFF;
+  --mixtouring-popover-foreground: #1E2022;
+  --mixtouring-primary: #111111;
+  --mixtouring-primary-foreground: #FFFFFF;
+  --mixtouring-muted: #F4F5F7;
+  --mixtouring-muted-foreground: #7C8089;
+  --mixtouring-border: #E8E9EB;
+  --mixtouring-input: #FFFFFF;
+  --mixtouring-ring: #C86A4B;
+
+  /* === Radius Scale === */
+  --mixtouring-radius-sm: 8px;
+  --mixtouring-radius-md: 16px;
+  --mixtouring-radius-lg: 24px;
+
+  /* === Typography === */
+  --mixtouring-font-sans: "Inter", "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+
+  /* === Shadows === */
+  --shadow-dock: 0 10px 30px -5px rgba(0, 0, 0, 0.08);
+  --shadow-card-soft: 0 4px 20px -2px rgba(0, 0, 0, 0.04);
+
+  /* === Spacing (8pt grid) === */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+
+  /* === Radii === */
+  --r-sheet: 32px;
+  --r-card: 24px;
+  --r-pill: 9999px;
+
+  /* === State colors === */
+  --state-warning: #FBBF24;
+  --state-error: #E11D48;
+  --state-success: #34c759;
+}
+
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.1/dist/index.global.js"></script>
+    <style type="text/tailwindcss">
+  @theme inline {
+    --color-background: var(--mixtouring-background);
+    --color-foreground: var(--mixtouring-foreground);
+    --color-card: var(--mixtouring-card);
+    --color-card-foreground: var(--mixtouring-card-foreground);
+    --color-popover: var(--mixtouring-popover);
+    --color-popover-foreground: var(--mixtouring-popover-foreground);
+    --color-primary: var(--mixtouring-primary);
+    --color-primary-foreground: var(--mixtouring-primary-foreground);
+    --color-muted: var(--mixtouring-muted);
+    --color-muted-foreground: var(--mixtouring-muted-foreground);
+    --color-border: var(--mixtouring-border);
+    --color-input: var(--mixtouring-input);
+    --color-ring: var(--mixtouring-ring);
+    --radius-sm: var(--mixtouring-radius-sm);
+    --radius-md: var(--mixtouring-radius-md);
+    --radius-lg: var(--mixtouring-radius-lg);
+  }
+  @layer base {
+    body { background: var(--mixtouring-background); color: var(--mixtouring-foreground); }
+  }
+    </style>
+    <style id="semantic-token-fallback">
+      .bg-background { background-color: var(--mixtouring-background); }
+      .bg-card { background-color: var(--mixtouring-card); }
+      .bg-primary { background-color: var(--mixtouring-primary); }
+      .bg-muted { background-color: var(--mixtouring-muted); }
+      .text-foreground { color: var(--mixtouring-foreground); }
+      .text-primary-foreground { color: var(--mixtouring-primary-foreground); }
+      .text-muted-foreground { color: var(--mixtouring-muted-foreground); }
+    </style>
+    <style>
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body style="margin:0;padding:0;background:var(--mixtouring-background,#F8F9FA);font-family:var(--mixtouring-font-sans,'Inter','Noto Sans SC',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,system-ui,sans-serif);color:var(--mixtouring-foreground,#1E2022);-webkit-font-smoothing:antialiased;">
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;" aria-hidden="true">
+  <defs>
+    <symbol id="hero-magnifying-glass" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+    </symbol>
+    <symbol id="hero-map-pin" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" />
+    </symbol>
+    <symbol id="hero-user" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+    </symbol>
+    <symbol id="hero-train-front" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 16.5V9a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v7.5M6 16.5h12M4 21l2.5-4.5M20 21l-2.5-4.5M8 12h8M7.5 9V6.5M16.5 9V6.5" />
+    </symbol>
+    <symbol id="hero-paper-airplane" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" />
+    </symbol>
+    <symbol id="hero-link" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
+    </symbol>
+    <symbol id="hero-star-solid" viewBox="0 0 24 24">
+      <path fill="currentColor" fill-rule="evenodd" d="M10.788 3.21c.448-1.077 1.976-1.077 2.424 0l2.082 5.006 5.404.434c1.164.093 1.636 1.545.749 2.305l-4.117 3.527 1.257 5.273c.271 1.136-.964 2.033-1.96 1.425L12 18.354 7.373 21.18c-.996.608-2.231-.29-1.96-1.425l1.257-5.273-4.117-3.527c-.887-.76-.415-2.212.749-2.305l5.404-.434 2.082-5.005Z" clip-rule="evenodd" />
+    </symbol>
+  </defs>
+</svg>
+
+  <style id="critical-layout">
+    * { font-weight: 400 !important; }
+    b, strong { font-weight: 400 !important; }
+    html, body { background: var(--mixtouring-background, #F8F9FA); }
+    body { overflow-x: hidden; }
+    .app-shell {
+      max-width: 430px;
+      margin: 0 auto;
+      min-height: 100vh;
+      position: relative;
+      padding: 0 0 112px 0;
+      background: var(--mixtouring-background, #F8F9FA);
+    }
+    .detail-card {
+      background: var(--mixtouring-card, #FFFFFF);
+      border-radius: var(--mixtouring-radius-md, 16px);
+      box-shadow: var(--shadow-card-soft, 0 4px 20px -2px rgba(0,0,0,0.04));
+    }
+    .cta-btn { transition: transform 0.15s ease; }
+    .cta-btn:active { transform: scale(0.98); }
+    @media (max-width: 430px) {
+      .app-shell { width: 100%; }
+    }
+  </style>
+
+  <main class="app-shell">
+
+    <!-- Sticky Navbar -->
+    <nav class="sticky top-0 z-20" style="background: rgba(248,249,250,0.85); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); border-bottom: 0.5px solid var(--mixtouring-border, #E8E9EB);">
+      <div class="flex items-center px-4" style="height: 52px;">
+        <div class="flex-1 flex justify-start">
+          <button id="btnBack" class="flex items-center" style="color: var(--mixtouring-ring, #C86A4B); font-size: 15px; background: none; border: none; cursor: pointer; font-family: inherit; padding: 8px 0;">
+            <span style="font-size: 22px; line-height: 1;">&#8249;</span>
+            <span class="ml-0.5">返回</span>
+          </button>
+        </div>
+        <div class="flex-1 flex justify-center">
+          <h1 class="text-center" style="font-size: 16px; color: var(--mixtouring-foreground, #1E2022);">路线分享</h1>
+        </div>
+        <div class="flex-1"></div>
+      </div>
+    </nav>
+
+    <!-- 分享来源提示 -->
+    <div class="px-4 pt-5 text-center">
+      <div class="flex items-center justify-center gap-1.5">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="MixTouring">
+          <defs>
+            <linearGradient id="mt-logo-grad-share" x1="0" y1="0" x2="24" y2="24" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#111111" />
+              <stop offset="100%" stop-color="#C86A4B" />
+            </linearGradient>
+          </defs>
+          <rect width="24" height="24" rx="6" fill="url(#mt-logo-grad-share)" />
+          <path d="M5 16.5 C 8 9, 12 17, 19 7.5" stroke="#FFFFFF" stroke-width="1.4" stroke-linecap="round" fill="none" />
+          <circle cx="5" cy="16.5" r="1.6" fill="#FFFFFF" />
+          <circle cx="10.5" cy="12.75" r="1.6" fill="#FFFFFF" />
+          <circle cx="19" cy="7.5" r="1.6" fill="#FFFFFF" />
+        </svg>
+        <span style="font-size: 13px; color: var(--mixtouring-muted-foreground, #7C8089);">来自 MixTouring</span>
+      </div>
+      <h2 id="shareHeadline" style="font-size: 21px; color: var(--mixtouring-foreground, #1E2022); letter-spacing: -0.01em; margin-top: 10px; line-height: 1.35;">TA 给你分享了一条省钱路线</h2>
+      <p id="shareSub" style="font-size: 13.5px; color: var(--mixtouring-muted-foreground, #7C8089); margin-top: 8px;"></p>
+    </div>
+
+    <!-- 方案摘要卡（数据驱动） -->
+    <div class="px-4 pt-4" id="cardWrap"></div>
+
+    <!-- 操作区：无购买入口，仅复制链接 + 去搜索 -->
+    <div class="px-4" style="margin-top: 16px;">
+      <button id="btnCopy" class="cta-btn w-full rounded-full flex items-center justify-center gap-1.5" style="background: var(--mixtouring-primary, #111111); color: var(--mixtouring-primary-foreground, #FFFFFF); font-size: 15px; padding: 12px 16px; border: none; cursor: pointer; font-family: inherit;">
+        <svg style="width: 16px; height: 16px; color: var(--mixtouring-ring, #C86A4B);"><use href="#hero-link"></use></svg>
+        <span>复制分享链接</span>
+      </button>
+      <button id="btnGotoSearch" class="cta-btn w-full rounded-full flex items-center justify-center gap-1.5" style="margin-top: 10px; background: var(--mixtouring-muted, #F4F5F7); color: var(--mixtouring-foreground, #1E2022); font-size: 15px; padding: 12px 16px; border: none; cursor: pointer; font-family: inherit;">
+        <svg style="width: 16px; height: 16px; color: var(--mixtouring-foreground, #1E2022);"><use href="#hero-magnifying-glass"></use></svg>
+        <span>搜我的省钱路线</span>
+      </button>
+    </div>
+
+    <!-- 页脚声明（分享落地页无购买入口） -->
+    <div class="px-8 text-center" style="margin-top: 28px;">
+      <p style="font-size: 12px; color: var(--mixtouring-muted-foreground, #7C8089); line-height: 1.7;">MixTouring 是背包客的路线方案社区，不提供购票服务。<br />价格为估算样本，请按分段信息自行购票。</p>
+    </div>
+
+  </main>
+
+  <!-- Bottom Navigation -->
+  <nav data-mobile-nav="global" class="fixed bottom-4 left-1/2 -translate-x-1/2 w-[calc(100%-32px)] max-w-md h-[52px] rounded-full bg-white z-50" style="box-shadow: var(--shadow-dock);">
+    <div class="flex items-center justify-between w-full h-full px-1">
+      <button data-nav-key="search" data-active="true" data-dom-id="nav-search" class="flex flex-col justify-center gap-0.5 w-[52px] h-[52px] items-center rounded-full shrink-0" style="background: var(--mixtouring-primary); color: var(--mixtouring-primary-foreground);">
+        <svg class="w-[18px] h-[18px] shrink-0"><use href="#hero-magnifying-glass"></use></svg>
+        <span class="text-[10px] leading-none whitespace-nowrap">搜索</span>
+      </button>
+      <button data-nav-key="library" data-dom-id="nav-library" class="flex flex-col justify-center gap-0.5 px-4 h-full items-center shrink-0" style="color: var(--mixtouring-muted-foreground);">
+        <svg class="w-[18px] h-[18px] shrink-0"><use href="#hero-map-pin"></use></svg>
+        <span class="text-[10px] leading-none whitespace-nowrap">路线库</span>
+      </button>
+      <button data-nav-key="me" data-dom-id="nav-me" class="flex flex-col justify-center gap-0.5 px-4 h-full items-center shrink-0" style="color: var(--mixtouring-muted-foreground);">
+        <svg class="w-[18px] h-[18px] shrink-0"><use href="#hero-user"></use></svg>
+        <span class="text-[10px] leading-none whitespace-nowrap">我的</span>
+      </button>
+    </div>
+  </nav>
+
+  <script src="../assets/mock.js"></script>
+  <script src="../assets/app.js"></script>
+  <script src="../assets/api.js"></script>
+  <script>
+  (function () {
+    var id = MT.qs('id');
+    var tpl = MT.qs('tpl');
+
+    document.getElementById('btnBack').addEventListener('click', function () {
+      MT.goBack('search.html');
+    });
+    MT.wireNav();
+
+    function modeIcon(mode, size, color) {
+      var icon = mode === 'plane' ? '#hero-paper-airplane' : '#hero-train-front';
+      return '<svg style="width:' + size + 'px;height:' + size + 'px;color:' + color + ';"><use href="' + icon + '"></use></svg>';
+    }
+    function segLine(mode) {
+      return mode === 'plane'
+        ? '<div class="w-full mt-2" style="height:2px;border-top:2px dashed var(--mixtouring-ring,#C86A4B);border-radius:1px;"></div>'
+        : '<div class="w-full mt-2" style="height:2px;background:var(--mixtouring-foreground,#1E2022);border-radius:1px;"></div>';
+    }
+    function routeBarHtml(item) {
+      var html = '<div class="flex items-start no-scrollbar overflow-x-auto" style="gap:0;">';
+      item.stops.forEach(function (stop, i) {
+        html += '<div class="flex flex-col items-center flex-shrink-0" style="width:54px;">' +
+          '<div class="w-full text-center px-1.5 py-1" style="border-radius:8px;background:var(--mixtouring-muted,#F4F5F7);font-size:12px;color:var(--mixtouring-foreground,#1E2022);white-space:nowrap;">' + MT.esc(stop.name) + '</div>' +
+          '<div style="font-size:11px;color:var(--mixtouring-muted-foreground,#7C8089);margin-top:6px;white-space:nowrap;">' + MT.esc(stop.sub) + '</div></div>';
+        var seg = item.segs[i];
+        if (seg) {
+          var isPlane = seg.mode === 'plane';
+          var color = isPlane ? 'var(--mixtouring-ring,#C86A4B)' : 'var(--mixtouring-foreground,#1E2022)';
+          var labelColor = isPlane ? 'var(--mixtouring-ring,#C86A4B)' : 'var(--mixtouring-muted-foreground,#7C8089)';
+          html += '<div class="flex flex-col items-center flex-shrink-0" style="min-width:64px;flex:1;padding:0 6px;">' +
+            '<div class="flex items-center gap-1" style="margin-top:2px;">' + modeIcon(seg.mode, 12, color) +
+            '<span style="font-size:11px;color:' + labelColor + ';white-space:nowrap;">' + MT.esc(seg.dur) + '</span></div>' +
+            segLine(seg.mode) + '</div>';
+        }
+      });
+      return html + '</div>';
+    }
+    function riskRowHtml(risks) {
+      var html = '<div class="flex items-center flex-wrap" style="gap:6px;">';
+      risks.forEach(function (r) {
+        var short = r.title.slice(0, 2);
+        var c = MT.levelColor(r.level);
+        html += '<span class="flex items-center" style="gap:4px;font-size:11px;color:var(--mixtouring-muted-foreground,#7C8089);padding:3px 8px;border-radius:9999px;background:var(--mixtouring-muted,#F4F5F7);" title="' + MT.esc(r.title) + '">' +
+          '<span style="width:6px;height:6px;border-radius:9999px;background:' + c + ';"></span>' +
+          MT.esc(short) + ' <span style="color:' + c + ';">' + MT.esc(r.level) + '</span></span>';
+      });
+      return html + '</div>';
+    }
+
+    function cardHtml(item) {
+      var modes = item.modes.map(function (m) {
+        return '<div class="w-8 h-8 rounded-full flex items-center justify-center" style="background:var(--mixtouring-muted,#F4F5F7);">' +
+          modeIcon(m, 16, m === 'plane' ? 'var(--mixtouring-ring,#C86A4B)' : 'var(--mixtouring-foreground,#1E2022)') + '</div>';
+      }).join('');
+      var tplMeta = '';
+      if (item.type === 'tpl' && item.contributor) {
+        tplMeta = '<div class="flex items-center" style="gap:8px;padding-top:12px;">' +
+          '<span class="flex items-center" style="gap:3px;font-size:12px;color:var(--mixtouring-foreground,#1E2022);">' +
+            '<svg style="width:12px;height:12px;color:var(--state-warning,#FBBF24);"><use href="#hero-star-solid"></use></svg>' + item.rating + '</span>' +
+          '<span style="font-size:12px;color:var(--mixtouring-ring,#C86A4B);">' + MT.esc(item.contributor) + '</span>' +
+          '<span style="font-size:12px;color:var(--mixtouring-muted-foreground,#7C8089);">' + item.walkers + ' 人走过</span></div>';
+      }
+      return '<div class="detail-card p-4">' +
+        '<div class="flex items-center justify-between">' +
+          '<div class="flex items-center" style="gap:6px;">' + modes + '</div>' +
+          '<div class="flex items-center" style="gap:6px;">' +
+            '<span style="font-size:12px;padding:5px 12px;border-radius:9999px;background:var(--mixtouring-muted,#F4F5F7);color:var(--mixtouring-muted-foreground,#7C8089);">' + MT.esc(item.totalTime) + '</span>' +
+            '<span style="font-size:13px;padding:5px 12px;border-radius:9999px;background:var(--mixtouring-muted,#F4F5F7);color:var(--mixtouring-ring,#C86A4B);">' + MT.esc(item.price) + '</span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="pt-4 pb-1">' + routeBarHtml(item) + '</div>' +
+        '<div class="pt-2">' + riskRowHtml(item.risks) + '</div>' + tplMeta +
+        '<div class="flex items-center" style="padding-top:12px;margin-top:12px;border-top:0.5px solid var(--mixtouring-border,#E8E9EB);">' +
+          '<span style="font-size:12px;padding:3px 10px;border-radius:9999px;background:rgba(52,199,89,0.08);color:#34c759;">' + MT.esc(item.saved) + ' vs 直飞</span>' +
+        '</div>' +
+      '</div>';
+    }
+
+    function renderMissing() {
+      document.getElementById('shareHeadline').textContent = '这条分享已失效';
+      document.getElementById('shareSub').textContent = '方案数据不存在或已更新，去搜一条新的省钱路线吧';
+      document.getElementById('cardWrap').innerHTML =
+        '<div class="detail-card p-6 text-center" style="font-size:13.5px;color:var(--mixtouring-muted-foreground,#7C8089);line-height:1.7;">没有找到对应的方案数据</div>';
+    }
+
+    /* ---------- 数据加载（API 桩：GET /api/items/:id） ---------- */
+    API.fetchItem({ id: id, tpl: tpl }).then(function (res) {
+      var item = res.data;
+      if (!item) { renderMissing(); return; }
+      document.title = item.from + ' → ' + item.to + ' · MixTouring 路线分享';
+      document.getElementById('shareSub').textContent =
+        item.from + ' → ' + item.to + ' · ' + item.totalTime.replace('总 ', '') + ' · ' + item.price + ' · ' + item.saved;
+      document.getElementById('cardWrap').innerHTML = cardHtml(item);
+    });
+
+    /* ---------- 复制链接（clipboard + 降级） ---------- */
+    document.getElementById('btnCopy').addEventListener('click', function () {
+      var url = location.href;
+      function fallback() {
+        var ta = document.createElement('textarea');
+        ta.value = url;
+        ta.style.cssText = 'position:fixed;opacity:0;';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); MT.toast('链接已复制'); }
+        catch (e) { MT.toast('复制失败，请手动复制地址栏链接'); }
+        document.body.removeChild(ta);
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(function () {
+          MT.toast('链接已复制');
+        }, fallback);
+      } else {
+        fallback();
+      }
+    });
+
+    document.getElementById('btnGotoSearch').addEventListener('click', function () {
+      location.href = 'search.html';
+    });
+  })();
+  </script>
+</body>
+</html>

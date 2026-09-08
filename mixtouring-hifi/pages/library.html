@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>路线库</title>
+    <style id="theme-vars">
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Noto+Sans+SC:wght@400;500&display=swap');
+/* MixTouring HiFi — colors_and_type.css */
+/* Brand prefix: mixtouring */
+/* Design system: Warm Modern Minimalist (from travel-app-hifi) applied to MixTouring product */
+
+:root {
+  /* === Core Color Tokens === */
+  --color-canvas: #F8F9FA;
+  --color-surface: #FFFFFF;
+  --color-primary-dark: #111111;
+  --color-brand-accent: #C86A4B;
+  --color-text-main: #1E2022;
+  --color-text-muted: #7C8089;
+  --color-badge-rating: #FBBF24;
+  --color-accent-heart: #E11D48;
+  --color-surface-2: #F4F5F7;
+  --color-border-soft: #E8E9EB;
+
+  /* === Semantic Aliases === */
+  --mixtouring-background: #F8F9FA;
+  --mixtouring-foreground: #1E2022;
+  --mixtouring-card: #FFFFFF;
+  --mixtouring-card-foreground: #1E2022;
+  --mixtouring-popover: #FFFFFF;
+  --mixtouring-popover-foreground: #1E2022;
+  --mixtouring-primary: #111111;
+  --mixtouring-primary-foreground: #FFFFFF;
+  --mixtouring-muted: #F4F5F7;
+  --mixtouring-muted-foreground: #7C8089;
+  --mixtouring-border: #E8E9EB;
+  --mixtouring-input: #FFFFFF;
+  --mixtouring-ring: #C86A4B;
+
+  /* === Radius Scale === */
+  --mixtouring-radius-sm: 8px;
+  --mixtouring-radius-md: 16px;
+  --mixtouring-radius-lg: 24px;
+
+  /* === Typography === */
+  --mixtouring-font-sans: "Inter", "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+
+  /* === Shadows === */
+  --shadow-dock: 0 10px 30px -5px rgba(0, 0, 0, 0.08);
+  --shadow-card-soft: 0 4px 20px -2px rgba(0, 0, 0, 0.04);
+
+  /* === Spacing (8pt grid) === */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+
+  /* === Radii === */
+  --r-sheet: 32px;
+  --r-card: 24px;
+  --r-pill: 9999px;
+
+  /* === State colors === */
+  --state-warning: #FBBF24;
+  --state-error: #E11D48;
+  --state-success: #34c759;
+}
+
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.1/dist/index.global.js"></script>
+
+    <style type="text/tailwindcss">
+  @theme inline {
+    --color-background: var(--mixtouring-background);
+    --color-foreground: var(--mixtouring-foreground);
+    --color-card: var(--mixtouring-card);
+    --color-card-foreground: var(--mixtouring-card-foreground);
+    --color-popover: var(--mixtouring-popover);
+    --color-popover-foreground: var(--mixtouring-popover-foreground);
+    --color-primary: var(--mixtouring-primary);
+    --color-primary-foreground: var(--mixtouring-primary-foreground);
+    --color-muted: var(--mixtouring-muted);
+    --color-muted-foreground: var(--mixtouring-muted-foreground);
+    --color-border: var(--mixtouring-border);
+    --color-input: var(--mixtouring-input);
+    --color-ring: var(--mixtouring-ring);
+    --radius-sm: var(--mixtouring-radius-sm);
+    --radius-md: var(--mixtouring-radius-md);
+    --radius-lg: var(--mixtouring-radius-lg);
+  }
+  @layer base {
+    body { background: var(--mixtouring-background); color: var(--mixtouring-foreground); }
+  }
+    </style>
+    <style id="semantic-token-fallback">
+      .bg-background { background-color: var(--mixtouring-background); }
+      .bg-card { background-color: var(--mixtouring-card); }
+      .bg-primary { background-color: var(--mixtouring-primary); }
+      .bg-muted { background-color: var(--mixtouring-muted); }
+      .text-foreground { color: var(--mixtouring-foreground); }
+      .text-primary-foreground { color: var(--mixtouring-primary-foreground); }
+      .text-muted-foreground { color: var(--mixtouring-muted-foreground); }
+    </style>
+    <style>
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body style="margin:0;padding:0;background:var(--mixtouring-background,#F8F9FA);font-family:var(--mixtouring-font-sans,'Inter','Noto Sans SC',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,system-ui,sans-serif);color:var(--mixtouring-foreground,#1E2022);-webkit-font-smoothing:antialiased;">
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;" aria-hidden="true">
+  <defs>
+    <symbol id="hero-magnifying-glass" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+    </symbol>
+    <symbol id="hero-map-pin" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" />
+    </symbol>
+    <symbol id="hero-user" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+    </symbol>
+    <symbol id="hero-train-front" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 16.5V9a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v7.5M6 16.5h12M4 21l2.5-4.5M20 21l-2.5-4.5M8 12h8M7.5 9V6.5M16.5 9V6.5" />
+    </symbol>
+    <symbol id="hero-paper-airplane" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" />
+    </symbol>
+    <symbol id="hero-star-solid" viewBox="0 0 24 24">
+      <path fill="currentColor" fill-rule="evenodd" d="M10.788 3.21c.448-1.077 1.976-1.077 2.424 0l2.082 5.006 5.404.434c1.164.093 1.636 1.545.749 2.305l-4.117 3.527 1.257 5.273c.271 1.136-.964 2.033-1.96 1.425L12 18.354 7.373 21.18c-.996.608-2.231-.29-1.96-1.425l1.257-5.273-4.117-3.527c-.887-.76-.415-2.212.749-2.305l5.404-.434 2.082-5.005Z" clip-rule="evenodd" />
+    </symbol>
+  </defs>
+</svg>
+
+    <style id="critical-layout">
+      * { font-weight: 400 !important; }
+      b, strong { font-weight: 400 !important; }
+      html, body { background: var(--mixtouring-background, #F8F9FA); }
+      body { overflow-x: hidden; }
+      .app-shell {
+        max-width: 430px;
+        margin: 0 auto;
+        min-height: 100vh;
+        position: relative;
+        padding: 0 16px 112px 16px;
+        background: var(--mixtouring-background, #F8F9FA);
+      }
+
+      .page-title {
+        font-size: 24px;
+        font-weight: 400;
+        color: var(--mixtouring-foreground, #1E2022);
+        padding: 22px 2px 4px;
+        margin: 0;
+        letter-spacing: -0.02em;
+        line-height: 1.25;
+      }
+
+      .page-subtitle {
+        font-size: 14px;
+        font-weight: 400;
+        color: var(--mixtouring-muted-foreground, #7C8089);
+        padding: 0 2px 16px;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      .chip-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 14px;
+      }
+
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 38px;
+        padding: 10px 14px;
+        font-size: 13.5px;
+        font-weight: 400;
+        font-family: inherit;
+        border-radius: 9999px;
+        border: 0.5px solid var(--mixtouring-border, #E8E9EB);
+        background: var(--mixtouring-muted, #F4F5F7);
+        color: var(--mixtouring-foreground, #1E2022);
+        white-space: nowrap;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .chip-active {
+        border-color: #C86A4B;
+        color: #C86A4B;
+        background: rgba(200, 106, 75, 0.08);
+      }
+
+      .tpl-card {
+        background: var(--mixtouring-card, #FFFFFF);
+        border-radius: 16px;
+        padding: 16px;
+        box-shadow: var(--shadow-card-soft, 0 4px 20px -2px rgba(0, 0, 0, 0.04));
+        margin-bottom: 12px;
+        cursor: pointer;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+      }
+
+      .tpl-card:active {
+        transform: scale(0.985);
+        box-shadow: 0 2px 12px -2px rgba(0, 0, 0, 0.06);
+      }
+
+      .card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 6px;
+      }
+
+      .card-title {
+        font-size: 16px;
+        font-weight: 400;
+        color: var(--mixtouring-foreground, #1E2022);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .card-badge {
+        background: rgba(200, 106, 75, 0.08);
+        color: #C86A4B;
+        border-radius: 9999px;
+        padding: 3px 10px;
+        font-size: 11.5px;
+        font-weight: 400;
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+
+      .route-bar {
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        gap: 0;
+        padding: 4px 0 14px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+      }
+      .route-bar::-webkit-scrollbar { display: none; }
+
+      .route-stop {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        flex-shrink: 0;
+        padding: 0 1px;
+      }
+
+      .loc-chip {
+        text-align: center;
+        padding: 2px 8px;
+        border-radius: 8px;
+        background: var(--mixtouring-muted, #F4F5F7);
+        font-size: 12px;
+        color: var(--mixtouring-foreground, #1E2022);
+        white-space: nowrap;
+      }
+
+      .route-segment {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        flex: 1;
+        min-width: 44px;
+        padding: 0 4px;
+      }
+
+      .seg-label {
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        font-size: 10px;
+        color: var(--mixtouring-muted-foreground, #7C8089);
+        white-space: nowrap;
+        line-height: 1;
+      }
+
+      .seg-line {
+        width: 100%;
+        height: 2px;
+        background: var(--mixtouring-border, #E8E9EB);
+        border-radius: 1px;
+        margin-top: 4px;
+      }
+
+      .seg-line-plane {
+        height: 0;
+        border-top: 2px dashed var(--mixtouring-ring, #C86A4B);
+        background: none;
+        border-radius: 0;
+      }
+
+      .card-footer {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 6px;
+        padding-top: 12px;
+        border-top: 0.5px solid var(--mixtouring-border, #E8E9EB);
+      }
+
+      .amt-chip {
+        font-size: 12px;
+        padding: 3px 10px;
+        border-radius: 9999px;
+        background: var(--mixtouring-muted, #F4F5F7);
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+
+      .amt-chip-price { color: var(--mixtouring-ring, #C86A4B); }
+      .amt-chip-muted { color: var(--mixtouring-muted-foreground, #7C8089); }
+      .amt-chip-saved { background: rgba(52, 199, 89, 0.08); color: #34c759; }
+
+      </style>
+    <main>
+      <div class="app-shell">
+        <h1 class="page-title">路线库</h1>
+        <p class="page-subtitle">被真实背包客走过的省钱路线，一键复用</p>
+
+        <div class="chip-row" id="chipRow" role="tablist" aria-label="地区筛选"></div>
+
+        <div id="tplList"></div>
+      </div>
+    </main>
+
+    <!-- Bottom Navigation -->
+    <nav data-mobile-nav="global" class="fixed bottom-4 left-1/2 -translate-x-1/2 w-[calc(100%-32px)] max-w-md h-[52px] rounded-full bg-white z-50" style="box-shadow: var(--shadow-dock);">
+      <div class="flex items-center justify-between w-full h-full px-1">
+        <button data-nav-key="search" data-dom-id="nav-search" class="flex flex-col justify-center gap-0.5 px-4 h-full items-center shrink-0" style="color: var(--mixtouring-muted-foreground);">
+          <svg class="w-[18px] h-[18px] shrink-0"><use href="#hero-magnifying-glass"></use></svg>
+          <span class="text-[10px] leading-none whitespace-nowrap">搜索</span>
+        </button>
+        <button data-nav-key="library" data-active="true" data-dom-id="nav-library" class="flex flex-col justify-center gap-0.5 w-[52px] h-[52px] items-center rounded-full shrink-0" style="background: var(--mixtouring-primary); color: var(--mixtouring-primary-foreground);">
+          <svg class="w-[18px] h-[18px] shrink-0"><use href="#hero-map-pin"></use></svg>
+          <span class="text-[10px] leading-none whitespace-nowrap">路线库</span>
+        </button>
+        <button data-nav-key="me" data-dom-id="nav-me" class="flex flex-col justify-center gap-0.5 px-4 h-full items-center shrink-0" style="color: var(--mixtouring-muted-foreground);">
+          <svg class="w-[18px] h-[18px] shrink-0"><use href="#hero-user"></use></svg>
+          <span class="text-[10px] leading-none whitespace-nowrap">我的</span>
+        </button>
+      </div>
+    </nav>
+
+  <script src="../assets/mock.js"></script>
+  <script src="../assets/app.js"></script>
+  <script src="../assets/api.js"></script>
+  <script>
+  (function () {
+    var REGIONS = ['全部', '西部', '西南', '东北', '海南'];
+    var activeRegion = '全部';
+
+    MT.wireNav();
+
+    /* ---------- 地区筛选 chips ---------- */
+    var chipRow = document.getElementById('chipRow');
+    REGIONS.forEach(function (r) {
+      var b = document.createElement('button');
+      b.className = 'chip' + (r === activeRegion ? ' chip-active' : '');
+      b.textContent = r;
+      b.setAttribute('role', 'tab');
+      b.setAttribute('aria-selected', r === activeRegion ? 'true' : 'false');
+      b.addEventListener('click', function () {
+        if (activeRegion === r) return;
+        activeRegion = r;
+        chipRow.querySelectorAll('.chip').forEach(function (c) {
+          var on = c.textContent === activeRegion;
+          c.classList.toggle('chip-active', on);
+          c.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+        loadList();
+      });
+      chipRow.appendChild(b);
+    });
+
+    /* ---------- 模板卡渲染 ---------- */
+    function modeIcon(mode) {
+      var icon = mode === 'plane' ? '#hero-paper-airplane' : '#hero-train-front';
+      var color = mode === 'plane' ? 'var(--mixtouring-ring,#C86A4B)' : 'var(--mixtouring-muted-foreground,#7C8089)';
+      return '<svg style="width:12px;height:12px;color:' + color + ';"><use href="' + icon + '"></use></svg>';
+    }
+
+    function routeBarHtml(t) {
+      var html = '<div class="route-bar">';
+      t.stops.forEach(function (stop, i) {
+        html += '<div class="route-stop"><div class="loc-chip">' + MT.esc(stop.name) + '</div></div>';
+        var seg = t.segs[i];
+        if (seg) {
+          var label = seg.mode === 'plane' ? '飞机' : '火车';
+          html += '<div class="route-segment">' +
+            '<div class="seg-label">' + modeIcon(seg.mode) + '<span>' + label + '</span></div>' +
+            '<div class="seg-line' + (seg.mode === 'plane' ? ' seg-line-plane' : '') + '"></div>' +
+          '</div>';
+        }
+      });
+      return html + '</div>';
+    }
+
+    function tplCardHtml(t, idx) {
+      var num = ('00' + (idx + 1)).slice(-3);
+      return '<div class="tpl-card" data-tpl-id="' + MT.esc(t.id) + '" role="button" tabindex="0" aria-label="' + MT.esc(t.from + ' 到 ' + t.to + ' 路线详情') + '">' +
+        '<div class="card-header">' +
+          '<span class="card-title">' + num + ' · ' + MT.esc(t.from) + ' → ' + MT.esc(t.to) + '</span>' +
+          '<span class="card-badge">' + MT.esc(t.badge) + '</span>' +
+        '</div>' +
+        routeBarHtml(t) +
+        '<div class="card-footer">' +
+          '<span class="amt-chip amt-chip-muted">' + t.walkers + ' 人走过</span>' +
+          '<span class="amt-chip amt-chip-price">' + MT.esc(t.price) + '</span>' +
+          '<span class="amt-chip amt-chip-saved">' + MT.esc(t.saved) + '</span>' +
+        '</div>' +
+      '</div>';
+    }
+
+    function renderList(list) {
+      var wrap = document.getElementById('tplList');
+      if (!list.length) {
+        wrap.innerHTML = '<div class="tpl-card" style="cursor:default;text-align:center;padding:28px 16px;font-size:13px;color:var(--mixtouring-muted-foreground,#7C8089);line-height:1.7;">这个地区还没有收录路线</div>';
+        return;
+      }
+      wrap.innerHTML = list.map(tplCardHtml).join('');
+      wrap.querySelectorAll('.tpl-card').forEach(function (card) {
+        function open() { location.href = 'detail.html?tpl=' + card.getAttribute('data-tpl-id'); }
+        card.addEventListener('click', open);
+        card.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+      });
+    }
+
+    /* ---------- 数据加载（API 桩：GET /api/templates） ---------- */
+    function loadList() {
+      API.fetchTemplates({ region: activeRegion }).then(function (res) {
+        renderList(res.data);
+      });
+    }
+    loadList();
+  })();
+  </script>
+</body>
+</html>

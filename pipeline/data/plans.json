@@ -1,0 +1,1840 @@
+{
+  "meta": {
+    "version": "0.1.0",
+    "note": "MixTouring 方案库 · 存储层规范数据（schema v0.1）。数字只在本文件出现，展示字符串由构建派生。",
+    "price_updated_at": "2026-09-08T13:30:12.516Z",
+    "schedule_verified_at": "2026-09-01T00:00:00+08:00"
+  },
+  "cities": [
+    "北京",
+    "上海",
+    "广州",
+    "深圳",
+    "成都",
+    "重庆",
+    "西安",
+    "杭州",
+    "武汉",
+    "南京",
+    "长沙",
+    "厦门",
+    "昆明",
+    "三亚",
+    "哈尔滨",
+    "沈阳",
+    "乌鲁木齐",
+    "喀什",
+    "拉萨",
+    "贵阳",
+    "兰州",
+    "银川",
+    "西宁",
+    "海口"
+  ],
+  "route_pairs": [
+    {
+      "route_id": "北京-喀什",
+      "from": "北京",
+      "to": "喀什",
+      "direct": {
+        "price": 2480,
+        "duration_min": 380,
+        "sampled_at": "2026-09-05T22:00:00+08:00",
+        "source": "manual_sample"
+      },
+      "plan_ids": [
+        "p-bjks-1",
+        "p-bjks-2",
+        "p-bjks-3"
+      ]
+    },
+    {
+      "route_id": "北京-乌鲁木齐",
+      "from": "北京",
+      "to": "乌鲁木齐",
+      "direct": {
+        "price": 1650,
+        "duration_min": 255,
+        "sampled_at": "2026-09-05T22:00:00+08:00",
+        "source": "manual_sample"
+      },
+      "plan_ids": [
+        "p-bjwl-1",
+        "p-bjwl-2"
+      ]
+    },
+    {
+      "route_id": "上海-昆明",
+      "from": "上海",
+      "to": "昆明",
+      "direct": {
+        "price": 1260,
+        "duration_min": 220,
+        "sampled_at": "2026-09-05T22:00:00+08:00",
+        "source": "manual_sample"
+      },
+      "plan_ids": [
+        "p-shkm-1",
+        "p-shkm-2"
+      ]
+    },
+    {
+      "route_id": "成都-乌鲁木齐",
+      "from": "成都",
+      "to": "乌鲁木齐",
+      "direct": {
+        "price": 1210,
+        "duration_min": 225,
+        "sampled_at": "2026-09-06T00:15:00+08:00",
+        "source": "web_search: ctrip/trip.com 2026-09-06 样本 ¥989/¥1210/¥1220/¥1250，取 4 折典型值"
+      },
+      "plan_ids": [
+        "p-cdwl-1",
+        "p-cdwl-2"
+      ]
+    },
+    {
+      "route_id": "南京-喀什",
+      "from": "南京",
+      "to": "喀什",
+      "direct": {
+        "price": 1400,
+        "duration_min": 375,
+        "sampled_at": "2026-09-08T00:15:00+08:00",
+        "source": "web_search: Trip.com HK 最低 HK$1,239/携程 MU2963 全价 ¥3,690，取 10 月初非全价典型值"
+      },
+      "plan_ids": [
+        "p-njks-1",
+        "p-njks-2"
+      ]
+    }
+  ],
+  "plans": [
+    {
+      "id": "p-bjks-1",
+      "type": "plan",
+      "route_id": "北京-喀什",
+      "from": "北京",
+      "to": "喀什",
+      "stops": [
+        {
+          "city": "北京",
+          "kind": "origin",
+          "depart": "21:30",
+          "day_offset": 0
+        },
+        {
+          "city": "银川",
+          "kind": "transfer",
+          "wait_min": 113
+        },
+        {
+          "city": "阿克苏",
+          "kind": "transfer",
+          "wait_min": 100
+        },
+        {
+          "city": "喀什",
+          "kind": "dest",
+          "arrive": "20:47",
+          "day_offset": 1
+        }
+      ],
+      "segs": [
+        {
+          "mode": "train",
+          "from_station": "北京西",
+          "to_station": "银川",
+          "dep": "21:30",
+          "dep_day": 0,
+          "arr": "08:12",
+          "arr_day": 1,
+          "duration_min": 642,
+          "fixed_price": 263,
+          "price_band": null
+        },
+        {
+          "mode": "plane",
+          "from_station": "银川河东",
+          "to_station": "阿克苏",
+          "dep": "10:05",
+          "dep_day": 1,
+          "arr": "13:40",
+          "arr_day": 1,
+          "duration_min": 215,
+          "fixed_price": null,
+          "price_band": {
+            "min": 780,
+            "max": 920,
+            "sample_count": 6,
+            "sampled_at": "2026-09-05T22:00:00+08:00"
+          }
+        },
+        {
+          "mode": "train",
+          "from_station": "阿克苏",
+          "to_station": "喀什",
+          "dep": "15:20",
+          "dep_day": 1,
+          "arr": "20:47",
+          "arr_day": 1,
+          "duration_min": 327,
+          "fixed_price": 72,
+          "price_band": null
+        }
+      ],
+      "risks": [
+        {
+          "factor": "connection",
+          "raw": {
+            "city": "银川",
+            "wait_min": 113,
+            "same_station": false,
+            "transfer_min": 40
+          },
+          "narrative": [
+            "误机将错过每日 2 班的航班"
+          ]
+        },
+        {
+          "factor": "baggage",
+          "raw": {
+            "modes": [
+              "train",
+              "plane"
+            ]
+          },
+          "narrative": [
+            "建议预留 30 分钟"
+          ]
+        },
+        {
+          "factor": "refund",
+          "raw": {
+            "plane_fare": "flexible",
+            "ticket_tight": false
+          },
+          "narrative": [
+            "火车票开车前可退"
+          ]
+        },
+        {
+          "factor": "transfer",
+          "raw": {
+            "label": "银川站 → 河东机场",
+            "km": 18,
+            "min": 40,
+            "same_station": false,
+            "rail_direct": false
+          },
+          "narrative": []
+        }
+      ],
+      "play": {
+        "city": "银川",
+        "lines": [
+          "若改签到次日航班",
+          "镇北堡西部影城（市区打车 40 分钟）",
+          "怀远夜市（人均 ¥35 吃撑）",
+          "当地物价：住宿 ¥90–150/晚",
+          "机场巴士 ¥20"
+        ]
+      },
+      "ai": {
+        "summary": "火车混搭飞机，比直飞省 {saved}，银川中转还能逛夜市",
+        "fit": "适合时间相对充裕、想大幅压预算的背包客；行李多的话要掂量转运",
+        "notice": "银川转机窗口 {wait_min_1}，下火车直接奔机场巴士，别在市区逗留",
+        "play_intro": "若改签到次日航班，镇北堡西部影城和怀远夜市值得专门留一晚",
+        "status": "verified",
+        "model": "manual-seed-20260906",
+        "generated_at": "2026-09-06T22:00:00+08:00",
+        "verified_at": "2026-09-06T22:00:00+08:00"
+      }
+    },
+    {
+      "id": "p-bjks-2",
+      "type": "plan",
+      "route_id": "北京-喀什",
+      "from": "北京",
+      "to": "喀什",
+      "stops": [
+        {
+          "city": "北京",
+          "kind": "origin",
+          "depart": "18:00",
+          "day_offset": 0
+        },
+        {
+          "city": "兰州",
+          "kind": "transfer",
+          "wait_min": 200
+        },
+        {
+          "city": "喀什",
+          "kind": "dest",
+          "arrive": "15:45",
+          "day_offset": 2
+        }
+      ],
+      "segs": [
+        {
+          "mode": "train",
+          "from_station": "北京西",
+          "to_station": "兰州",
+          "dep": "18:00",
+          "dep_day": 0,
+          "arr": "10:55",
+          "arr_day": 1,
+          "duration_min": 1015,
+          "fixed_price": 343,
+          "price_band": null
+        },
+        {
+          "mode": "train",
+          "from_station": "兰州",
+          "to_station": "喀什",
+          "dep": "14:15",
+          "dep_day": 1,
+          "arr": "15:45",
+          "arr_day": 2,
+          "duration_min": 1530,
+          "fixed_price": 384,
+          "price_band": null
+        }
+      ],
+      "risks": [
+        {
+          "factor": "connection",
+          "raw": {
+            "city": "兰州",
+            "wait_min": 200,
+            "same_station": true,
+            "transfer_min": 0
+          },
+          "narrative": [
+            "误车风险低，可出站活动"
+          ]
+        },
+        {
+          "factor": "baggage",
+          "raw": {
+            "modes": [
+              "train"
+            ]
+          },
+          "narrative": [
+            "无需中途托运"
+          ]
+        },
+        {
+          "factor": "refund",
+          "raw": {
+            "plane_fare": null,
+            "ticket_tight": false
+          },
+          "narrative": []
+        },
+        {
+          "factor": "transfer",
+          "raw": {
+            "label": "兰州站同站换乘",
+            "km": 0,
+            "min": 0,
+            "same_station": true,
+            "rail_direct": false
+          },
+          "narrative": []
+        }
+      ],
+      "play": {
+        "city": "兰州",
+        "lines": [
+          "3 小时够吃一碗正经牛肉面",
+          "正宁路夜市（兰州站打车 15 分钟）",
+          "黄河铁桥散步消食",
+          "车站寄存行李 ¥10/件"
+        ]
+      },
+      "ai": {
+        "summary": "全程火车坐到底，{price_mid} 出头到喀什，省 {saved}",
+        "fit": "适合把火车当风景的慢旅行者；卧铺两晚，时间成本高",
+        "notice": "兰州换乘 {wait_min_1} 很从容，备足两顿干粮和充电宝",
+        "play_intro": "兰州间隙够吃一碗正经牛肉面，正宁路夜市离车站不远",
+        "status": "verified",
+        "model": "manual-seed-20260906",
+        "generated_at": "2026-09-06T22:00:00+08:00",
+        "verified_at": "2026-09-06T22:00:00+08:00"
+      }
+    },
+    {
+      "id": "p-bjks-3",
+      "type": "plan",
+      "route_id": "北京-喀什",
+      "from": "北京",
+      "to": "喀什",
+      "stops": [
+        {
+          "city": "北京",
+          "kind": "origin",
+          "depart": "07:00",
+          "day_offset": 0
+        },
+        {
+          "city": "西安",
+          "kind": "transfer",
+          "wait_min": 69
+        },
+        {
+          "city": "喀什",
+          "kind": "dest",
+          "arrive": "17:20",
+          "day_offset": 0
+        }
+      ],
+      "segs": [
+        {
+          "mode": "train",
+          "from_station": "北京西",
+          "to_station": "西安北",
+          "dep": "07:00",
+          "dep_day": 0,
+          "arr": "11:31",
+          "arr_day": 0,
+          "duration_min": 271,
+          "fixed_price": 515,
+          "price_band": null
+        },
+        {
+          "mode": "plane",
+          "from_station": "西安咸阳",
+          "to_station": "喀什",
+          "dep": "12:40",
+          "dep_day": 0,
+          "arr": "17:20",
+          "arr_day": 0,
+          "duration_min": 280,
+          "fixed_price": null,
+          "price_band": {
+            "min": 980,
+            "max": 1150,
+            "sample_count": 6,
+            "sampled_at": "2026-09-05T22:00:00+08:00"
+          }
+        }
+      ],
+      "risks": [
+        {
+          "factor": "connection",
+          "raw": {
+            "city": "西安",
+            "wait_min": 69,
+            "same_station": false,
+            "transfer_min": 33
+          },
+          "narrative": [
+            "高铁到后需跨站赶往机场，下车即走"
+          ]
+        },
+        {
+          "factor": "baggage",
+          "raw": {
+            "modes": [
+              "train",
+              "plane"
+            ]
+          },
+          "narrative": [
+            "高峰期托运排队 20 分钟以上"
+          ]
+        },
+        {
+          "factor": "refund",
+          "raw": {
+            "plane_fare": "discounted",
+            "ticket_tight": false
+          },
+          "narrative": [
+            "误机基本全损"
+          ]
+        },
+        {
+          "factor": "transfer",
+          "raw": {
+            "label": "西安北站 → 咸阳机场",
+            "km": 33,
+            "min": 33,
+            "same_station": false,
+            "rail_direct": true
+          },
+          "narrative": [
+            "含步行与安检，时间非常紧张"
+          ]
+        }
+      ],
+      "play": {
+        "city": "西安",
+        "lines": [
+          "若改签到次日航班",
+          "兵马俑（地铁 9 号线直达）",
+          "回民街宵夜（人均 ¥40）",
+          "机场城际末班 22:30，留意返程"
+        ]
+      },
+      "ai": {
+        "summary": "最快的混搭方案，{total_time} 到喀什，仍省 {saved}",
+        "fit": "适合假期短、愿意用钱换时间的人；衔接紧张，不适合首次独自出行",
+        "notice": "西安转机窗口仅 {wait_min_1} 且要跨站赶机场，高铁尽量买靠车门座位",
+        "play_intro": "若改签到次日航班，兵马俑加回民街刚好一天",
+        "status": "verified",
+        "model": "manual-seed-20260906",
+        "generated_at": "2026-09-06T22:00:00+08:00",
+        "verified_at": "2026-09-06T22:00:00+08:00"
+      }
+    },
+    {
+      "id": "p-bjwl-1",
+      "type": "plan",
+      "route_id": "北京-乌鲁木齐",
+      "from": "北京",
+      "to": "乌鲁木齐",
+      "stops": [
+        {
+          "city": "北京",
+          "kind": "origin",
+          "depart": "17:56",
+          "day_offset": 0
+        },
+        {
+          "city": "兰州",
+          "kind": "transfer",
+          "wait_min": 135
+        },
+        {
+          "city": "乌鲁木齐",
+          "kind": "dest",
+          "arrive": "01:05",
+          "day_offset": 2
+        }
+      ],
+      "segs": [
+        {
+          "mode": "train",
+          "from_station": "北京西",
+          "to_station": "兰州",
+          "dep": "17:56",
+          "dep_day": 0,
+          "arr": "11:01",
+          "arr_day": 1,
+          "duration_min": 1025,
+          "fixed_price": 363,
+          "price_band": null
+        },
+        {
+          "mode": "train",
+          "from_station": "兰州西",
+          "to_station": "乌鲁木齐",
+          "dep": "13:16",
+          "dep_day": 1,
+          "arr": "01:05",
+          "arr_day": 2,
+          "duration_min": 709,
+          "fixed_price": 527,
+          "price_band": null
+        }
+      ],
+      "risks": [
+        {
+          "factor": "connection",
+          "raw": {
+            "city": "兰州",
+            "wait_min": 135,
+            "same_station": false,
+            "transfer_min": 25
+          },
+          "narrative": [
+            "到达兰州站、出发兰州西站，需跨站"
+          ]
+        },
+        {
+          "factor": "baggage",
+          "raw": {
+            "modes": [
+              "train"
+            ]
+          },
+          "narrative": [
+            "无需中途托运"
+          ]
+        },
+        {
+          "factor": "refund",
+          "raw": {
+            "plane_fare": null,
+            "ticket_tight": false
+          },
+          "narrative": []
+        },
+        {
+          "factor": "transfer",
+          "raw": {
+            "label": "兰州站 → 兰州西站",
+            "km": 10,
+            "min": 25,
+            "same_station": false,
+            "rail_direct": true
+          },
+          "narrative": [
+            "行李多建议打车约 ¥20"
+          ]
+        }
+      ],
+      "play": {
+        "city": "兰州",
+        "lines": [
+          "换乘间隙吃碗牛肉面再走",
+          "兰州西站候车厅有免费充电区",
+          "进疆列车昼夜温差大，备件外套"
+        ]
+      },
+      "ai": {
+        "summary": "兰新线一路向西，全程火车省 {saved}，卧铺一晚到",
+        "fit": "适合想看河西走廊风景、不赶时间的人；要在兰州跨站换车",
+        "notice": "兰州站换兰州西站，地铁 {transfer_min_1} 分钟直达，{wait_min_1} 的余量不用慌",
+        "play_intro": "换乘间隙去正宁路吃碗面，回站前留好地铁时间",
+        "status": "verified",
+        "model": "manual-seed-20260906",
+        "generated_at": "2026-09-06T22:00:00+08:00",
+        "verified_at": "2026-09-06T22:00:00+08:00"
+      }
+    },
+    {
+      "id": "p-bjwl-2",
+      "type": "plan",
+      "route_id": "北京-乌鲁木齐",
+      "from": "北京",
+      "to": "乌鲁木齐",
+      "stops": [
+        {
+          "city": "北京",
+          "kind": "origin",
+          "depart": "21:30",
+          "day_offset": 0
+        },
+        {
+          "city": "银川",
+          "kind": "transfer",
+          "wait_min": 160
+        },
+        {
+          "city": "乌鲁木齐",
+          "kind": "dest",
+          "arrive": "14:12",
+          "day_offset": 1
+        }
+      ],
+      "segs": [
+        {
+          "mode": "train",
+          "from_station": "北京西",
+          "to_station": "银川",
+          "dep": "21:30",
+          "dep_day": 0,
+          "arr": "08:12",
+          "arr_day": 1,
+          "duration_min": 642,
+          "fixed_price": 263,
+          "price_band": null
+        },
+        {
+          "mode": "plane",
+          "from_station": "银川河东",
+          "to_station": "乌鲁木齐地窝堡",
+          "dep": "10:52",
+          "dep_day": 1,
+          "arr": "14:12",
+          "arr_day": 1,
+          "duration_min": 200,
+          "fixed_price": null,
+          "price_band": {
+            "min": 620,
+            "max": 760,
+            "sample_count": 6,
+            "sampled_at": "2026-09-05T22:00:00+08:00"
+          }
+        }
+      ],
+      "risks": [
+        {
+          "factor": "connection",
+          "raw": {
+            "city": "银川",
+            "wait_min": 160,
+            "same_station": false,
+            "transfer_min": 40
+          },
+          "narrative": [
+            "机场巴士整点发车，留意时刻"
+          ]
+        },
+        {
+          "factor": "baggage",
+          "raw": {
+            "modes": [
+              "train",
+              "plane"
+            ]
+          },
+          "narrative": [
+            "建议预留 30 分钟"
+          ]
+        },
+        {
+          "factor": "refund",
+          "raw": {
+            "plane_fare": "discounted",
+            "ticket_tight": false
+          },
+          "narrative": [
+            "火车票开车前可退"
+          ]
+        },
+        {
+          "factor": "transfer",
+          "raw": {
+            "label": "银川站 → 河东机场",
+            "km": 18,
+            "min": 40,
+            "same_station": false,
+            "rail_direct": false
+          },
+          "narrative": [
+            "机场巴士 ¥20"
+          ]
+        }
+      ],
+      "play": {
+        "city": "银川",
+        "lines": [
+          "早到可在市区吃个羊杂碎",
+          "河东机场安检人不多，体验好",
+          "机场巴士整点发车，留意时刻"
+        ]
+      },
+      "ai": {
+        "summary": "夕发朝至到银川再飞，{total_time} 到乌鲁木齐，省 {saved}",
+        "fit": "适合想平衡时间与预算的人；转机行李要自己搬运",
+        "notice": "银川机场巴士整点发车，下火车先看时刻表，{wait_min_1} 的窗口别误车",
+        "play_intro": "早到银川先吃碗羊杂碎，河东机场安检体验友好",
+        "status": "verified",
+        "model": "manual-seed-20260906",
+        "generated_at": "2026-09-06T22:00:00+08:00",
+        "verified_at": "2026-09-06T22:00:00+08:00"
+      }
+    },
+    {
+      "id": "p-shkm-1",
+      "type": "plan",
+      "route_id": "上海-昆明",
+      "from": "上海",
+      "to": "昆明",
+      "stops": [
+        {
+          "city": "上海",
+          "kind": "origin",
+          "depart": "08:35",
+          "day_offset": 0
+        },
+        {
+          "city": "贵阳",
+          "kind": "transfer",
+          "wait_min": 132
+        },
+        {
+          "city": "昆明",
+          "kind": "dest",
+          "arrive": "22:20",
+          "day_offset": 0
+        }
+      ],
+      "segs": [
+        {
+          "mode": "train",
+          "from_station": "上海虹桥",
+          "to_station": "贵阳北",
+          "dep": "08:35",
+          "dep_day": 0,
+          "arr": "17:40",
+          "arr_day": 0,
+          "duration_min": 545,
+          "fixed_price": 508,
+          "price_band": null
+        },
+        {
+          "mode": "train",
+          "from_station": "贵阳北",
+          "to_station": "昆明南",
+          "dep": "19:52",
+          "dep_day": 0,
+          "arr": "22:20",
+          "arr_day": 0,
+          "duration_min": 148,
+          "fixed_price": 212,
+          "price_band": null
+        }
+      ],
+      "risks": [
+        {
+          "factor": "connection",
+          "raw": {
+            "city": "贵阳",
+            "wait_min": 132,
+            "same_station": true,
+            "transfer_min": 0
+          },
+          "narrative": [
+            "误车风险低"
+          ]
+        },
+        {
+          "factor": "baggage",
+          "raw": {
+            "modes": [
+              "train"
+            ]
+          },
+          "narrative": [
+            "无需中途托运"
+          ]
+        },
+        {
+          "factor": "refund",
+          "raw": {
+            "plane_fare": null,
+            "ticket_tight": true
+          },
+          "narrative": [
+            "高铁票开车前可退"
+          ]
+        },
+        {
+          "factor": "transfer",
+          "raw": {
+            "label": "贵阳北站内换乘",
+            "km": 0,
+            "min": 12,
+            "same_station": true,
+            "rail_direct": false
+          },
+          "narrative": []
+        }
+      ],
+      "play": {
+        "city": "贵阳",
+        "lines": [
+          "2 小时够在站内吃个丝娃娃",
+          "甲秀楼夜景（打车 25 分钟）",
+          "贵阳北站行李寄存 ¥15/件"
+        ]
+      },
+      "ai": {
+        "summary": "全程高铁坐着到昆明，省 {saved}，贵阳站内换乘",
+        "fit": "适合不想折腾行李、追求稳妥的人",
+        "notice": "贵阳北换乘通道步行约 {transfer_min_1} 分钟，{wait_min_1} 足够吃口饭",
+        "play_intro": "间隙试试站内丝娃娃，或者打车去看甲秀楼",
+        "status": "verified",
+        "model": "manual-seed-20260906",
+        "generated_at": "2026-09-06T22:00:00+08:00",
+        "verified_at": "2026-09-06T22:00:00+08:00"
+      }
+    },
+    {
+      "id": "p-shkm-2",
+      "type": "plan",
+      "route_id": "上海-昆明",
+      "from": "上海",
+      "to": "昆明",
+      "stops": [
+        {
+          "city": "上海",
+          "kind": "origin",
+          "depart": "07:00",
+          "day_offset": 0
+        },
+        {
+          "city": "杭州",
+          "kind": "transfer",
+          "wait_min": 150
+        },
+        {
+          "city": "昆明",
+          "kind": "dest",
+          "arrive": "13:40",
+          "day_offset": 0
+        }
+      ],
+      "segs": [
+        {
+          "mode": "train",
+          "from_station": "上海虹桥",
+          "to_station": "杭州东",
+          "dep": "07:00",
+          "dep_day": 0,
+          "arr": "08:00",
+          "arr_day": 0,
+          "duration_min": 60,
+          "fixed_price": 73,
+          "price_band": null
+        },
+        {
+          "mode": "plane",
+          "from_station": "杭州萧山",
+          "to_station": "昆明长水",
+          "dep": "10:30",
+          "dep_day": 0,
+          "arr": "13:40",
+          "arr_day": 0,
+          "duration_min": 190,
+          "fixed_price": null,
+          "price_band": {
+            "min": 520,
+            "max": 680,
+            "sample_count": 6,
+            "sampled_at": "2026-09-05T22:00:00+08:00"
+          }
+        }
+      ],
+      "risks": [
+        {
+          "factor": "connection",
+          "raw": {
+            "city": "杭州",
+            "wait_min": 150,
+            "same_station": false,
+            "transfer_min": 50
+          },
+          "narrative": [
+            "杭州东站需跨站至萧山机场"
+          ]
+        },
+        {
+          "factor": "baggage",
+          "raw": {
+            "modes": [
+              "train",
+              "plane"
+            ]
+          },
+          "narrative": [
+            "建议预留 30 分钟"
+          ]
+        },
+        {
+          "factor": "refund",
+          "raw": {
+            "plane_fare": "discounted",
+            "ticket_tight": false
+          },
+          "narrative": [
+            "高铁票开车前可退"
+          ]
+        },
+        {
+          "factor": "transfer",
+          "raw": {
+            "label": "杭州东站 → 萧山机场",
+            "km": 27,
+            "min": 50,
+            "same_station": false,
+            "rail_direct": true
+          },
+          "narrative": [
+            "19 站直达，无需换乘"
+          ]
+        }
+      ],
+      "play": {
+        "city": "杭州",
+        "lines": [
+          "时间紧不建议进市区",
+          "萧山机场 T4 有不错的杭帮菜",
+          "若改签次日：西湖骑行半日"
+        ]
+      },
+      "ai": {
+        "summary": "最快 {total_time} 到昆明，省 {saved}，杭州中转",
+        "fit": "适合沪杭出发、想把路上时间压到最短的人",
+        "notice": "杭州东到萧山机场地铁 {transfer_min_1} 分钟直达，别贪玩误机",
+        "play_intro": "若改签次日，西湖骑行半日再飞",
+        "status": "verified",
+        "model": "manual-seed-20260906",
+        "generated_at": "2026-09-06T22:00:00+08:00",
+        "verified_at": "2026-09-06T22:00:00+08:00"
+      }
+    },
+    {
+      "id": "p-cdwl-1",
+      "type": "plan",
+      "route_id": "成都-乌鲁木齐",
+      "from": "成都",
+      "to": "乌鲁木齐",
+      "stops": [
+        {
+          "city": "成都",
+          "kind": "origin",
+          "depart": "20:42",
+          "day_offset": 0
+        },
+        {
+          "city": "兰州",
+          "kind": "transfer",
+          "wait_min": 190
+        },
+        {
+          "city": "乌鲁木齐",
+          "kind": "dest",
+          "arrive": "14:10",
+          "day_offset": 1
+        }
+      ],
+      "segs": [
+        {
+          "mode": "train",
+          "train_no": "K2616",
+          "from_station": "成都西",
+          "to_station": "兰州",
+          "dep": "20:42",
+          "dep_day": 0,
+          "arr": "08:10",
+          "arr_day": 1,
+          "duration_min": 688,
+          "fixed_price": 208,
+          "price_band": null,
+          "source": "ailieche.com/k2616 硬卧 ¥208，2026-09-06 采样"
+        },
+        {
+          "mode": "plane",
+          "flight_no": "CZ6675",
+          "from_station": "中川机场T3",
+          "to_station": "天山国际机场",
+          "dep": "11:20",
+          "dep_day": 1,
+          "arr": "14:10",
+          "arr_day": 1,
+          "duration_min": 170,
+          "fixed_price": null,
+          "price_band": {
+            "min": 650,
+            "max": 1000,
+            "sample_count": 5,
+            "sampled_at": "2026-09-06T00:15:00+08:00"
+          },
+          "source": "ctrip/trip.com 2026-09-06 样本 ¥650/¥720/¥740/¥820/¥1000（3.5–5.8 折舱）"
+        }
+      ],
+      "risks": [
+        {
+          "factor": "connection",
+          "raw": {
+            "city": "兰州",
+            "wait_min": 190,
+            "same_station": false,
+            "transfer_min": 50
+          },
+          "narrative": [
+            "城际动车直达机场航站楼，30–60 分钟一班，误车可等下一班"
+          ]
+        },
+        {
+          "factor": "baggage",
+          "raw": {
+            "modes": [
+              "train",
+              "plane"
+            ]
+          },
+          "narrative": [
+            "建议预留 30 分钟"
+          ]
+        },
+        {
+          "factor": "refund",
+          "raw": {
+            "plane_fare": "discounted",
+            "ticket_tight": false
+          },
+          "narrative": [
+            "火车票开车前可退"
+          ]
+        },
+        {
+          "factor": "transfer",
+          "raw": {
+            "label": "兰州站 → 中川机场",
+            "km": 70,
+            "min": 50,
+            "same_station": false,
+            "rail_direct": true
+          },
+          "narrative": [
+            "城际二等座 ¥21.5，兰州站有专用进站通道"
+          ]
+        }
+      ],
+      "play": {
+        "city": "兰州",
+        "lines": [
+          "出站先吃碗牛肉面，再坐城际去机场",
+          "黄河铁桥（中山桥）距兰州站打车 15 分钟",
+          "正宁路夜市晚上最热闹，牛奶鸡蛋醪糟必点"
+        ]
+      },
+      "ai": {
+        "summary": "夜卧铺睡到{transfer_city_1}，城际转午班机，比直飞省 {saved}",
+        "fit": "适合能睡卧铺、想压预算的背包客；怕折腾的选直达火车方案更省心",
+        "notice": "{transfer_city_1}站到中川机场 {transfer_km_1} 公里，城际 {transfer_min_1} 分钟，衔接窗口 {wait_min_1}，下车直奔城际候车厅",
+        "play_intro": "若改签到傍晚航班，{transfer_city_1}的牛肉面和中山桥值得留半天",
+        "model": "claude-realtime-experiment-20260906",
+        "status": "verified",
+        "verified_at": "2026-09-06T16:16:18.874Z",
+        "generated_at": "2026-09-06T16:16:18.874Z"
+      }
+    },
+    {
+      "id": "p-cdwl-2",
+      "type": "plan",
+      "route_id": "成都-乌鲁木齐",
+      "from": "成都",
+      "to": "乌鲁木齐",
+      "stops": [
+        {
+          "city": "成都",
+          "kind": "origin",
+          "depart": "19:58",
+          "day_offset": 0
+        },
+        {
+          "city": "乌鲁木齐",
+          "kind": "dest",
+          "arrive": "09:19",
+          "day_offset": 2
+        }
+      ],
+      "segs": [
+        {
+          "mode": "train",
+          "train_no": "K2058",
+          "from_station": "成都西",
+          "to_station": "乌鲁木齐",
+          "dep": "19:58",
+          "dep_day": 0,
+          "arr": "09:19",
+          "arr_day": 2,
+          "duration_min": 2241,
+          "fixed_price": 492,
+          "price_band": null,
+          "source": "ip138.com/train/k2058 硬卧 ¥491.5 + ailieche.com/k2058 时刻，2026-09-06 采样"
+        }
+      ],
+      "risks": [
+        {
+          "factor": "baggage",
+          "raw": {
+            "modes": [
+              "train"
+            ]
+          },
+          "narrative": []
+        },
+        {
+          "factor": "refund",
+          "raw": {
+            "plane_fare": null,
+            "ticket_tight": true
+          },
+          "narrative": []
+        },
+        {
+          "factor": "advisory",
+          "title": "长途硬卧提示",
+          "level": "中",
+          "lines": [
+            "全程约 37 小时，备足干粮、水和充电宝",
+            "夜间经停站多，贵重物品贴身放"
+          ]
+        }
+      ],
+      "ai": {
+        "summary": "硬卧一觉接一觉，{price_mid} 直达{to}，比直飞省 {saved}",
+        "fit": "适合时间大把、预算极紧的背包客；全程 {total_time}，怕久坐慎选",
+        "notice": "进疆长线卧铺紧张，旺季退票后未必买得回原班次，定好行程再出票",
+        "play_intro": "把长途当体验：过了嘉峪关，车窗外就是戈壁与风车",
+        "model": "claude-realtime-experiment-20260906",
+        "status": "verified",
+        "verified_at": "2026-09-06T16:16:18.874Z",
+        "generated_at": "2026-09-06T16:16:18.874Z"
+      }
+    },
+    {
+      "id": "p-njks-1",
+      "type": "plan",
+      "route_id": "南京-喀什",
+      "from": "南京",
+      "to": "喀什",
+      "stops": [
+        {
+          "city": "南京",
+          "kind": "origin",
+          "depart": "21:19",
+          "day_offset": 0
+        },
+        {
+          "city": "西安",
+          "kind": "transfer",
+          "wait_min": 276
+        },
+        {
+          "city": "喀什",
+          "kind": "dest",
+          "arrive": "18:40",
+          "day_offset": 1
+        }
+      ],
+      "segs": [
+        {
+          "mode": "train",
+          "train_no": "Z164",
+          "from_station": "南京",
+          "to_station": "西安",
+          "dep": "21:19",
+          "dep_day": 0,
+          "arr": "09:19",
+          "arr_day": 1,
+          "duration_min": 720,
+          "fixed_price": 262,
+          "price_band": null,
+          "source": "trains.ctrip.com 硬卧 ¥261.5，2026-09-08 采样"
+        },
+        {
+          "mode": "plane",
+          "flight_no": "9C6381",
+          "from_station": "西安咸阳T5",
+          "to_station": "喀什徕宁T2",
+          "dep": "13:55",
+          "dep_day": 1,
+          "arr": "18:40",
+          "arr_day": 1,
+          "duration_min": 285,
+          "fixed_price": null,
+          "price_band": {
+            "min": 600,
+            "max": 1000,
+            "sample_count": 5,
+            "sampled_at": "2026-09-08T00:15:00+08:00"
+          },
+          "source": "flights.ctrip.com 春秋 9C6381 经济舱 5.1 折 ¥1,680/Trip.com HK 最低 HK$926，取折扣舱样本带 ¥600–1,000"
+        }
+      ],
+      "risks": [
+        {
+          "factor": "connection",
+          "raw": {
+            "city": "西安",
+            "wait_min": 276,
+            "same_station": false,
+            "transfer_min": 70
+          },
+          "narrative": [
+            "早班机前有 4 个多小时余量，可从容吃碗羊肉泡馍再去机场"
+          ]
+        },
+        {
+          "factor": "baggage",
+          "raw": {
+            "modes": [
+              "train",
+              "plane"
+            ]
+          },
+          "narrative": [
+            "建议预留 30 分钟"
+          ]
+        },
+        {
+          "factor": "refund",
+          "raw": {
+            "plane_fare": "discounted",
+            "ticket_tight": false
+          },
+          "narrative": [
+            "火车票开车前可退"
+          ]
+        },
+        {
+          "factor": "transfer",
+          "raw": {
+            "label": "西安站 → 咸阳机场",
+            "km": 40,
+            "min": 70,
+            "same_station": false,
+            "rail_direct": false
+          },
+          "narrative": [
+            "机场大巴约 1 小时，早高峰留足 1.5 小时"
+          ]
+        }
+      ],
+      "play": {
+        "city": "西安",
+        "lines": [
+          "硬卧一觉到西安，出站先吃羊肉泡馍",
+          "如果时间充裕，钟鼓楼回民街值得半日游",
+          "春秋为廉航，随身行李尺寸提前确认"
+        ]
+      },
+      "ai": {
+        "summary": "夜卧铺到{transfer_city_1}，午班机飞喀什，比直飞省 {saved}",
+        "fit": "适合预算敏感、能睡卧铺的背包客；想当日达的选直飞或飞机+飞机",
+        "notice": "{transfer_city_1}站到咸阳机场 {transfer_km_1} 公里，机场大巴约 {transfer_min_1} 分钟，衔接窗口 {wait_min_1}，别在市区多逗留",
+        "play_intro": "若改签到傍晚航班，{transfer_city_1}的城墙骑行和回民街小吃值得留一晚",
+        "model": "claude-realtime-experiment-20260908"
+      }
+    },
+    {
+      "id": "p-njks-2",
+      "type": "plan",
+      "route_id": "南京-喀什",
+      "from": "南京",
+      "to": "喀什",
+      "stops": [
+        {
+          "city": "南京",
+          "kind": "origin",
+          "depart": "07:35",
+          "day_offset": 0
+        },
+        {
+          "city": "西安",
+          "kind": "transfer",
+          "wait_min": 260
+        },
+        {
+          "city": "喀什",
+          "kind": "dest",
+          "arrive": "18:40",
+          "day_offset": 0
+        }
+      ],
+      "segs": [
+        {
+          "mode": "plane",
+          "flight_no": "MF3449",
+          "from_station": "南京禄口T2",
+          "to_station": "西安咸阳T5",
+          "dep": "07:35",
+          "dep_day": 0,
+          "arr": "09:35",
+          "arr_day": 0,
+          "duration_min": 120,
+          "fixed_price": 485,
+          "price_band": null,
+          "source": "m.ctrip.com 南京→西安 厦航 MF3449 经济舱 3.2 折 ¥485，2026-09-08 采样"
+        },
+        {
+          "mode": "plane",
+          "flight_no": "9C6381",
+          "from_station": "西安咸阳T5",
+          "to_station": "喀什徕宁T2",
+          "dep": "13:55",
+          "dep_day": 0,
+          "arr": "18:40",
+          "arr_day": 0,
+          "duration_min": 285,
+          "fixed_price": null,
+          "price_band": {
+            "min": 600,
+            "max": 1000,
+            "sample_count": 5,
+            "sampled_at": "2026-09-08T00:15:00+08:00"
+          },
+          "source": "flights.ctrip.com 春秋 9C6381 经济舱 5.1 折 ¥1,680/Trip.com HK 最低 HK$926，取折扣舱样本带 ¥600–1,000"
+        }
+      ],
+      "risks": [
+        {
+          "factor": "connection",
+          "raw": {
+            "city": "西安",
+            "wait_min": 260,
+            "same_station": true,
+            "transfer_min": 60
+          },
+          "narrative": [
+            "同航站楼 T5，衔接 4 小时 20 分，西安机场 MCT 60 分钟，余量充足"
+          ]
+        },
+        {
+          "factor": "baggage",
+          "raw": {
+            "modes": [
+              "plane",
+              "plane"
+            ]
+          },
+          "narrative": [
+            "两段廉航/不同航司，大概率无行李直挂，需提取再托运"
+          ]
+        },
+        {
+          "factor": "refund",
+          "raw": {
+            "plane_fare": "discounted",
+            "ticket_tight": false
+          },
+          "narrative": [
+            "折扣舱退改费用高，确定行程后再出票"
+          ]
+        },
+        {
+          "factor": "transfer",
+          "raw": {
+            "label": "西安咸阳 T5 航站楼内",
+            "km": 0,
+            "min": 0,
+            "same_station": true,
+            "rail_direct": false
+          },
+          "narrative": []
+        }
+      ],
+      "ai": {
+        "summary": "早班机到{transfer_city_1}转午班机，比直飞省 {saved}，用时更短",
+        "fit": "适合想省时间、能接受早起的背包客；行李多慎选两段托运",
+        "notice": "同航站楼 T5 中转，衔接窗口 {wait_min_1}，下机后先确认第二程登机口",
+        "play_intro": "中转时间足够吃碗油泼面，T5 航站楼里有陕西小吃街",
+        "model": "claude-realtime-experiment-20260908"
+      }
+    }
+  ],
+  "templates": [
+    {
+      "id": "tpl-001",
+      "ref": "p-bjks-1",
+      "badge": "官方精调",
+      "region": "西部",
+      "contributor": "@大漠孤烟",
+      "rating": 4.8,
+      "walkers": 12,
+      "img": "../assets/route-kashgar.jpg",
+      "desc": "火车混搭飞机，省 ¥1,295，银川中转可玩"
+    },
+    {
+      "id": "tpl-002",
+      "ref": "p-bjwl-1",
+      "badge": "官方精调",
+      "region": "西部",
+      "contributor": "@西域行者",
+      "rating": 4.6,
+      "walkers": 8,
+      "img": "../assets/route-urumqi.jpg",
+      "desc": "兰新线直达，省 ¥760，衔接风险低"
+    },
+    {
+      "id": "tpl-003",
+      "ref": "p-shkm-1",
+      "badge": "官方精调",
+      "region": "西南",
+      "contributor": "@春城慢游",
+      "rating": 4.5,
+      "walkers": 6,
+      "img": "../assets/route-kunming.jpg",
+      "desc": "贵阳中转，省 ¥540，中转城市可玩"
+    },
+    {
+      "id": "tpl-004",
+      "type": "tpl",
+      "route_id": null,
+      "from": "广州",
+      "to": "三亚",
+      "saved": 549,
+      "badge": "官方精调",
+      "region": "海南",
+      "contributor": "@椰风海韵",
+      "rating": 4.7,
+      "walkers": 9,
+      "desc": "火车坐轮渡过海，省 ¥549，体验独一份",
+      "stops": [
+        {
+          "city": "广州",
+          "kind": "origin",
+          "depart": "21:16",
+          "day_offset": 0
+        },
+        {
+          "city": "海口",
+          "kind": "transfer",
+          "wait_min": 125
+        },
+        {
+          "city": "三亚",
+          "kind": "dest",
+          "arrive": "12:34",
+          "day_offset": 1
+        }
+      ],
+      "segs": [
+        {
+          "mode": "train",
+          "from_station": "广州",
+          "to_station": "海口",
+          "dep": "21:16",
+          "dep_day": 0,
+          "arr": "08:42",
+          "arr_day": 1,
+          "duration_min": 686,
+          "fixed_price": 296,
+          "price_band": null
+        },
+        {
+          "mode": "train",
+          "from_station": "海口",
+          "to_station": "三亚",
+          "dep": "10:47",
+          "dep_day": 1,
+          "arr": "12:34",
+          "arr_day": 1,
+          "duration_min": 107,
+          "fixed_price": 108,
+          "price_band": null
+        }
+      ],
+      "risks": [
+        {
+          "factor": "connection",
+          "raw": {
+            "city": "海口",
+            "wait_min": 125,
+            "same_station": true,
+            "transfer_min": 0
+          },
+          "narrative": [
+            "同站换乘环岛高铁，可出站透气"
+          ]
+        },
+        {
+          "factor": "baggage",
+          "raw": {
+            "modes": [
+              "train"
+            ]
+          },
+          "narrative": [
+            "轮渡段不卸行李"
+          ]
+        },
+        {
+          "factor": "refund",
+          "raw": {
+            "plane_fare": null,
+            "ticket_tight": false
+          },
+          "narrative": []
+        },
+        {
+          "factor": "transfer",
+          "raw": {
+            "label": "海口站同站换乘",
+            "km": 0,
+            "min": 0,
+            "same_station": true,
+            "rail_direct": false
+          },
+          "narrative": []
+        },
+        {
+          "factor": "advisory",
+          "level": "中",
+          "title": "轮渡段提示",
+          "lines": [
+            "火车拆装上船，夜间过海约 3 小时",
+            "过海段空调暂停，夏季备小风扇"
+          ]
+        }
+      ],
+      "play": {
+        "city": "海口",
+        "lines": [
+          "骑楼老街喝老爸茶（人均 ¥15）",
+          "海口站 → 市区公交 40 分钟",
+          "轮渡段在甲板看日出，值回票价"
+        ]
+      },
+      "ai": {
+        "summary": "火车坐轮渡过海，{price_mid} 到三亚，体验独一份",
+        "fit": "适合想打卡海上火车、预算优先的人；怕闷怕热慎选夏季",
+        "notice": "夜间过海空调暂停，备小风扇和水；海口换乘 {wait_min_1} 很宽裕",
+        "play_intro": "海口间隙去骑楼老街喝老爸茶，轮渡甲板日出别睡过",
+        "status": "verified",
+        "model": "manual-seed-20260906",
+        "generated_at": "2026-09-06T22:00:00+08:00",
+        "verified_at": "2026-09-06T22:00:00+08:00"
+      }
+    },
+    {
+      "id": "tpl-005",
+      "type": "tpl",
+      "route_id": null,
+      "from": "北京",
+      "to": "哈尔滨",
+      "saved": 546,
+      "badge": "官方精调",
+      "region": "东北",
+      "contributor": "@北国风光",
+      "rating": 4.6,
+      "walkers": 11,
+      "desc": "沈阳中转玩半天，省 ¥546，行程不赶路",
+      "stops": [
+        {
+          "city": "北京",
+          "kind": "origin",
+          "depart": "08:00",
+          "day_offset": 0
+        },
+        {
+          "city": "沈阳",
+          "kind": "transfer",
+          "wait_min": 260
+        },
+        {
+          "city": "哈尔滨",
+          "kind": "dest",
+          "arrive": "18:02",
+          "day_offset": 0
+        }
+      ],
+      "segs": [
+        {
+          "mode": "train",
+          "from_station": "北京朝阳",
+          "to_station": "沈阳北",
+          "dep": "08:00",
+          "dep_day": 0,
+          "arr": "11:14",
+          "arr_day": 0,
+          "duration_min": 194,
+          "fixed_price": 357,
+          "price_band": null
+        },
+        {
+          "mode": "train",
+          "from_station": "沈阳北",
+          "to_station": "哈尔滨西",
+          "dep": "15:34",
+          "dep_day": 0,
+          "arr": "18:02",
+          "arr_day": 0,
+          "duration_min": 148,
+          "fixed_price": 247,
+          "price_band": null
+        }
+      ],
+      "risks": [
+        {
+          "factor": "connection",
+          "raw": {
+            "city": "沈阳",
+            "wait_min": 260,
+            "same_station": true,
+            "transfer_min": 0
+          },
+          "narrative": [
+            "可出站到市区逛一圈"
+          ]
+        },
+        {
+          "factor": "baggage",
+          "raw": {
+            "modes": [
+              "train"
+            ]
+          },
+          "narrative": [
+            "车站寄存 ¥10/件"
+          ]
+        },
+        {
+          "factor": "refund",
+          "raw": {
+            "plane_fare": null,
+            "ticket_tight": false
+          },
+          "narrative": [
+            "开车前均可退改"
+          ]
+        },
+        {
+          "factor": "transfer",
+          "raw": {
+            "label": "沈阳北站同站换乘",
+            "km": 0,
+            "min": 0,
+            "same_station": true,
+            "rail_direct": false
+          },
+          "narrative": [
+            "地铁 2 号线直达市区"
+          ]
+        }
+      ],
+      "play": {
+        "city": "沈阳",
+        "lines": [
+          "沈阳故宫（地铁 1 号线，逛 2 小时）",
+          "中街老边饺子（人均 ¥45）",
+          "4 小时中转刚好半日游"
+        ]
+      },
+      "ai": {
+        "summary": "沈阳中转玩半天再北上，省 {saved}，行程不赶路",
+        "fit": "适合第一次去东北、想把中转变景点的人；全程高铁很稳",
+        "notice": "沈阳 {wait_min_1} 刚好半日游，回站前看好时间",
+        "play_intro": "沈阳故宫加中街老边饺子，是中转的标准打开方式",
+        "status": "verified",
+        "model": "manual-seed-20260906",
+        "generated_at": "2026-09-06T22:00:00+08:00",
+        "verified_at": "2026-09-06T22:00:00+08:00"
+      }
+    },
+    {
+      "id": "tpl-006",
+      "type": "tpl",
+      "route_id": null,
+      "from": "成都",
+      "to": "拉萨",
+      "saved": 883,
+      "badge": "官方精调",
+      "region": "西部",
+      "contributor": "@高原雄鹰",
+      "rating": 4.9,
+      "walkers": 15,
+      "desc": "西宁换车渐进上高原，省 ¥883，高反更友好",
+      "stops": [
+        {
+          "city": "成都",
+          "kind": "origin",
+          "depart": "21:37",
+          "day_offset": 0
+        },
+        {
+          "city": "西宁",
+          "kind": "transfer",
+          "wait_min": 291
+        },
+        {
+          "city": "拉萨",
+          "kind": "dest",
+          "arrive": "13:48",
+          "day_offset": 2
+        }
+      ],
+      "segs": [
+        {
+          "mode": "train",
+          "from_station": "成都西",
+          "to_station": "西宁",
+          "dep": "21:37",
+          "dep_day": 0,
+          "arr": "12:09",
+          "arr_day": 1,
+          "duration_min": 872,
+          "fixed_price": 302,
+          "price_band": null
+        },
+        {
+          "mode": "train",
+          "from_station": "西宁",
+          "to_station": "拉萨",
+          "dep": "17:00",
+          "dep_day": 1,
+          "arr": "13:48",
+          "arr_day": 2,
+          "duration_min": 1248,
+          "fixed_price": 495,
+          "price_band": null
+        }
+      ],
+      "risks": [
+        {
+          "factor": "connection",
+          "raw": {
+            "city": "西宁",
+            "wait_min": 291,
+            "same_station": true,
+            "transfer_min": 0
+          },
+          "narrative": [
+            "可在市区吃顿手抓羊肉"
+          ]
+        },
+        {
+          "factor": "baggage",
+          "raw": {
+            "modes": [
+              "train"
+            ]
+          },
+          "narrative": [
+            "进藏车有氧舱"
+          ]
+        },
+        {
+          "factor": "refund",
+          "raw": {
+            "plane_fare": null,
+            "ticket_tight": true
+          },
+          "narrative": [
+            "火车票开车前可退"
+          ]
+        },
+        {
+          "factor": "transfer",
+          "raw": {
+            "label": "西宁站同站换乘",
+            "km": 0,
+            "min": 0,
+            "same_station": true,
+            "rail_direct": false
+          },
+          "narrative": []
+        },
+        {
+          "factor": "advisory",
+          "level": "中",
+          "title": "高原提示",
+          "lines": [
+            "格尔木后海拔超 4000m",
+            "提前备红景天，车上少剧烈活动"
+          ]
+        }
+      ],
+      "play": {
+        "city": "西宁",
+        "lines": [
+          "莫家街酿皮酸奶（人均 ¥25）",
+          "塔尔寺半日（打车 40 分钟）",
+          "西宁 → 拉萨段建议提前 15 天购票"
+        ]
+      },
+      "ai": {
+        "summary": "西宁换车渐进上高原，省 {saved}，高反更友好",
+        "fit": "适合首次进藏、想逐步适应海拔的人；旺季票紧，要早订",
+        "notice": "进藏段建议提前十五天购票；格尔木后海拔高，车上少剧烈活动",
+        "play_intro": "西宁间隙去莫家街吃酿皮酸奶，塔尔寺半日也来得及",
+        "status": "verified",
+        "model": "manual-seed-20260906",
+        "generated_at": "2026-09-06T22:00:00+08:00",
+        "verified_at": "2026-09-06T22:00:00+08:00"
+      }
+    }
+  ]
+}
