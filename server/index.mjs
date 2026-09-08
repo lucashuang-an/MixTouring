@@ -12,22 +12,46 @@ import { validateStore } from '../pipeline/lib/validate-ai-copy.mjs';
 import { validateStorePlans } from '../pipeline/lib/validate-plan.mjs';
 import { parseTrip } from './lib/parse.mjs';
 import { answerAsk } from './lib/qa.mjs';
+import { addWish, listWishes, removeWish } from './lib/wishlist.mjs';
 import { llmConfigured, llmModel } from './lib/llm.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT) || 3000;
 
-/* ---------- 存储层装载 + 写入同级校验（fail fast） ---------- */
-const store = JSON.parse(readFileSync(join(root, 'pipeline/data/plans.json'), 'utf8'));
-const errors = [...validateStorePlans(store), ...validateStore(store)];
-if (errors.length) {
-  console.error('✗ 方案库校验未通过，服务拒绝启动：');
-  errors.forEach((e) => console.error('  ✗ ' + e));
+/* ---------- 存储层装载 + 双校验（fail fast）+ 热重载（离线管道写回后无需重启） ---------- */
+const PLANS_PATH = join(root, 'pipeline/data/plans.json');
+let plansMtime = 0;
+
+function loadDB() {
+  const store = JSON.parse(readFileSync(PLANS_PATH, 'utf8'));
+  const errors = [...validateStorePlans(store), ...validateStore(store)];
+  if (errors.length) throw new Error('方案库校验未通过：' + errors[0]);
+  plansMtime = statSync(PLANS_PATH).mtimeMs;
+  return buildServiceDB(store);
+}
+
+let db;
+try {
+  db = loadDB();
+} catch (err) {
+  console.error('✗ ' + err.message + '，服务拒绝启动');
   process.exit(1);
 }
 
-/* ---------- 服务层派生（内存缓存；plans.json 变更需重启或接 watch） ---------- */
-const db = buildServiceDB(store);
+/* mtime 变化即整库重载（装载 + 双校验 + 派生）；新库校验不过时沿用旧库并跳过该版本 */
+function maybeReload() {
+  let mtime;
+  try { mtime = statSync(PLANS_PATH).mtimeMs; } catch { return; }
+  if (mtime === plansMtime) return;
+  try {
+    db = loadDB();
+    console.log('✓ plans.json 变更，方案库已热重载');
+  } catch (err) {
+    console.error('✗ 热重载失败，沿用旧库：' + err.message);
+    plansMtime = mtime;
+  }
+}
+
 const planCount = Object.values(db.routes).reduce((n, r) => n + r.plans.length, 0);
 console.log(`✓ 方案库已装载：${db.cities.length} 城市 · ${Object.keys(db.routes).length} 路线对 · ${planCount} 方案 · ${db.templates.length} 模板`);
 
@@ -64,7 +88,34 @@ app.use(async (ctx, next) => {
 
   /* GET /api/bootstrap → 全量服务层 DB（api.js 预取后原地改写 window.DB） */
   if (path === '/api/bootstrap') {
+    maybeReload();
     ctx.body = { code: 0, data: { cities: db.cities, routes: db.routes, templates: db.templates } };
+    return;
+  }
+
+  /* ---------- 心愿队列（Phase 3）：登记 → 离线管道生成 → 三重守门写回 → 状态回流 ---------- */
+
+  /* GET /api/wishlist → 服务端心愿队列状态 */
+  if (path === '/api/wishlist' && ctx.method === 'GET') {
+    maybeReload();
+    ctx.body = { code: 0, data: listWishes() };
+    return;
+  }
+
+  /* POST /api/wishlist { from, to, date? } → 登记心愿（同路线未完成登记幂等去重）。
+   * 采集执行走离线 AI 工厂（§6.2），此处只入队不做在线生成 */
+  if (path === '/api/wishlist' && ctx.method === 'POST') {
+    const body = await readBody(ctx);
+    const out = addWish({ from: body.from, to: body.to, date: body.date });
+    if (out.error) { ctx.body = { code: 1, msg: out.error }; return; }
+    ctx.body = { code: 0, data: { ...out.item, deduped: !!out.deduped } };
+    return;
+  }
+
+  /* DELETE /api/wishlist/:id → 移除心愿（队列管理：清理误登记） */
+  if (path.startsWith('/api/wishlist/') && ctx.method === 'DELETE') {
+    const id = decodeURIComponent(path.slice('/api/wishlist/'.length));
+    ctx.body = removeWish(id) ? { code: 0 } : { code: 1, msg: '心愿不存在：' + id };
     return;
   }
 

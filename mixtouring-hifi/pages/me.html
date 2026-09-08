@@ -228,6 +228,7 @@
   </nav>
 
   <script src="../assets/mock.js"></script>
+  <script src="../assets/api.js"></script>
   <script src="../assets/app.js"></script>
   <script>
   (function () {
@@ -298,8 +299,13 @@
 
     /* ---------- 我的心愿 ---------- */
     function wishRowHtml(w) {
-      var statusColor = w.status === 'generated' ? '#34c759' : (w.status === 'pending' ? '#FBBF24' : '#7C8089');
-      var statusText = w.status === 'generated' ? '已生成' : (w.status === 'pending' ? '探索中' : '已关闭');
+      var statusColor; var statusText;
+      if (w.status === 'generated') { statusColor = '#34c759'; statusText = '已生成'; }
+      else if (w.status === 'pending') {
+        /* 服务端队列状态（Phase 3）：processing=离线管道生成中；仅文案增强，状态机不变 */
+        statusColor = '#FBBF24';
+        statusText = w.serverStatus === 'processing' ? '生成中' : '探索中';
+      } else { statusColor = '#7C8089'; statusText = '已关闭'; }
       var generated = w.generatedAt ? ' · ' + MT.fmtTs(w.generatedAt) : '';
       return '<div class="detail-card row-card p-4 flex items-center justify-between" data-wish-id="' + MT.esc(w.id) + '" role="button" tabindex="0">' +
         '<div class="flex items-center min-w-0" style="gap:10px;">' +
@@ -328,6 +334,27 @@
         return;
       }
       wrap.innerHTML = list.map(wishRowHtml).join('');
+      bindWishCards(wrap);
+
+      /* Phase 3：拉服务端队列状态合并显示（后端可达时 pending 可见「生成中」；失败静默保持本地状态） */
+      API.fetchWishes().then(function (res) {
+        if (!res || res.code !== 0 || !Array.isArray(res.data)) return;
+        var map = {};
+        res.data.forEach(function (s) { map[s.from + '-' + s.to] = s.status; });
+        var changed = false;
+        list.forEach(function (w) {
+          if (w.status !== 'pending') return;
+          var s = map[w.from + '-' + w.to];
+          if (s && s !== 'generated' && s !== w.serverStatus) { w.serverStatus = s; changed = true; }
+        });
+        if (changed) {
+          wrap.innerHTML = list.map(wishRowHtml).join('');
+          bindWishCards(wrap);
+        }
+      });
+    }
+
+    function bindWishCards(wrap) {
       wrap.querySelectorAll('.row-card').forEach(function (card) {
         function open() {
           var id = card.getAttribute('data-wish-id');

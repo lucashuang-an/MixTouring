@@ -108,6 +108,36 @@ async function main() {
     console.error('✗ /api/ask 库外问题应无 refs：' + JSON.stringify(askNone).slice(0, 200));
   }
 
+  /* ---------- Phase 3 心愿队列：登记（幂等去重）→ 查询 → 清理（测试数据不入库） ---------- */
+  const TEST_WISH = { from: '测甲城', to: '测乙城', date: '2026/10/01' };
+  const wishAddRes = await (await fetch(BASE + '/api/wishlist', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(TEST_WISH) })).json();
+  if (wishAddRes.code === 0 && wishAddRes.data && wishAddRes.data.id && wishAddRes.data.status === 'pending' && !wishAddRes.data.deduped) {
+    console.log('✓ /api/wishlist 登记新心愿');
+  } else { failed++; console.error('✗ /api/wishlist 登记异常：' + JSON.stringify(wishAddRes).slice(0, 200)); }
+
+  const wishDup = await (await fetch(BASE + '/api/wishlist', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(TEST_WISH) })).json();
+  if (wishDup.code === 0 && wishDup.data.deduped && wishDup.data.id === wishAddRes.data.id) {
+    console.log('✓ /api/wishlist 同路线幂等去重');
+  } else { failed++; console.error('✗ /api/wishlist 去重异常：' + JSON.stringify(wishDup).slice(0, 200)); }
+
+  const wishBad = await (await fetch(BASE + '/api/wishlist', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ from: '测甲城' }) })).json();
+  diff('/api/wishlist 缺目的地拒绝', wishBad, { code: 1, msg: '缺少出发地或目的地' });
+
+  const wishSame = await (await fetch(BASE + '/api/wishlist', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ from: '测甲城', to: '测甲城' }) })).json();
+  diff('/api/wishlist 起终点相同拒绝', wishSame, { code: 1, msg: '出发地和目的地不能相同' });
+
+  const wishList = await getJSON('/api/wishlist');
+  if (Array.isArray(wishList) && wishList.some((w) => w.id === wishAddRes.data.id)) {
+    console.log('✓ /api/wishlist GET 含新登记心愿');
+  } else { failed++; console.error('✗ /api/wishlist GET 未包含新登记心愿'); }
+
+  const wishDel = await (await fetch(BASE + '/api/wishlist/' + wishAddRes.data.id, { method: 'DELETE' })).json();
+  diff('DELETE /api/wishlist/:id', wishDel, { code: 0 });
+  const wishListAfter = await getJSON('/api/wishlist');
+  if (!wishListAfter.some((w) => w.id === wishAddRes.data.id)) {
+    console.log('✓ 清理后队列不含测试心愿');
+  } else { failed++; console.error('✗ 测试心愿未清理干净'); }
+
   console.log(failed ? `\n✗ ${failed} 项不一致` : '\n✓ 全部接口与 mock.js 派生结果一致');
   process.exit(failed ? 1 : 0);
 }

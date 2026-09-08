@@ -187,12 +187,38 @@
     });
   }
 
+  /* ---------- 心愿队列（Phase 3）：登记上报 + 服务端状态查询 ----------
+   * localStorage 仍是用户侧权威（无账号体系）；后端可达时同步登记到服务端队列，
+   * 失败静默（离线管道仍可通过运营侧收集）。 */
+
+  /* POST /api/wishlist { from, to, date } → { code, data: { id, status, deduped } } */
+  function wishRegister(rec) {
+    return probe().then(function (ok) {
+      if (!ok) return { code: 1, msg: 'offline' };
+      return fetch('/api/wishlist', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(rec)
+      }).then(function (r) { return r.json(); }).catch(function () { return { code: 1, msg: 'offline' }; });
+    });
+  }
+
+  /* GET /api/wishlist → { code, data: [{ id, from, to, date, status, ... }] } */
+  function fetchWishes() {
+    return probe().then(function (ok) {
+      if (!ok) return { code: 1, msg: 'offline' };
+      return getEnvelope('/api/wishlist').catch(function () { return { code: 1, msg: 'offline' }; });
+    });
+  }
+
   window.API = {
     planSearch: planSearch,
     fetchTemplates: fetchTemplates,
     fetchItem: fetchItem,
     parseNaturalLanguage: parseNaturalLanguage,
     askQ: askQ,
+    wishRegister: wishRegister,
+    fetchWishes: fetchWishes,
     postFeedback: postFeedback
   };
 })();

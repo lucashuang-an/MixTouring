@@ -327,6 +327,7 @@
       }
       btn.addEventListener('click', function () {
         MT.wishAdd({ from: from, to: to, date: date });
+        API.wishRegister({ from: from, to: to, date: date }); /* 同步入服务端队列（Phase 3），失败静默 */
         MT.toast('已登记心愿，AI 离线探索中');
         btn.disabled = true;
         btn.style.opacity = '0.5';
