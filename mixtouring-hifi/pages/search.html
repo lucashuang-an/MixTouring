@@ -460,6 +460,16 @@
           <svg class="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style="color: var(--mixtouring-muted-foreground, #7C8089);"><use href="#hero-calendar"></use></svg>
         </div>
       </div>
+      <!-- Natural-language line -->
+      <div class="mt-4">
+        <div class="text-center text-[13px] mb-1.5" style="color: var(--mixtouring-muted-foreground, #7C8089);">或 用一句话说行程</div>
+        <div class="relative">
+          <input class="search-input" id="nlInput" placeholder="例如：国庆从杭州去喀什" autocomplete="off" style="text-align:left;" />
+          <button id="btnParse" aria-label="解析这句话并为上方表单回填" class="absolute right-1.5 top-1/2 -translate-y-1/2 shrink-0 w-9 h-9 rounded-full flex items-center justify-center" style="background: var(--mixtouring-primary, #111111); color: var(--mixtouring-primary-foreground, #FFFFFF); border: none; cursor: pointer;">
+            <svg class="w-4 h-4" style="color: var(--mixtouring-ring, #C86A4B);"><use href="#hero-sparkles"></use></svg>
+          </button>
+        </div>
+      </div>
       <!-- CTA button -->
       <button id="btnGo" class="cta-btn w-full mt-5 rounded-full flex items-center justify-center gap-1.5" style="background: var(--mixtouring-primary, #111111); color: var(--mixtouring-primary-foreground, #FFFFFF); font-size: 16px; padding: 11px 16px; border: none; cursor: pointer; font-family: inherit;">
         <svg class="w-4 h-4" style="color: var(--mixtouring-ring, #C86A4B);"><use href="#hero-sparkles"></use></svg>
@@ -527,6 +537,7 @@
   </div>
 
   <script src="../assets/mock.js"></script>
+  <script src="../assets/api.js"></script>
   <script src="../assets/app.js"></script>
   <script>
   (function () {
@@ -560,6 +571,29 @@
       var q = new URLSearchParams({ from: from, to: to, date: date });
       location.href = 'loading.html?' + q.toString();
     });
+
+    /* ---------- 自然语言解析：一句话回填起终点/日期（Phase 2 · 触点①） ---------- */
+    var nlInput = document.getElementById('nlInput');
+    var btnParse = document.getElementById('btnParse');
+
+    function doParse() {
+      var q = (nlInput.value || '').trim();
+      if (!q) { MT.toast('先输入一句话，例如「国庆从杭州去喀什」'); return; }
+      API.parseNaturalLanguage(q).then(function (res) {
+        var d = res && res.data;
+        if (!d) { MT.toast('暂时没听懂，换个说法试试'); return; }
+        var fields = 0;
+        if (d.from) { fromInput.value = d.from; fields++; }
+        if (d.to) { toInput.value = d.to; fields++; }
+        if (d.date) { dateDisplay.textContent = d.date; fields++; }
+        if (d.note) MT.toast(d.note);
+        else MT.toast('已回填，核对无误可点出发');
+        if (fields === 0) MT.toast('没识别到城市/日期，请手动选择');
+      }).catch(function () { MT.toast('解析失败，请稍后再试'); });
+    }
+
+    btnParse.addEventListener('click', doParse);
+    nlInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); doParse(); } });
 
     /* ---------- 城市选择底册 ---------- */
     var cityOverlay = document.getElementById('cityOverlay');

@@ -71,6 +71,24 @@ async function main() {
   const fbBody = await fb.json();
   diff('POST /api/feedback', fbBody, { code: 0 });
 
+  /* GET /api/parse · Phase 2 触点①规则版（无 LLM key 时应为 rule 引擎） */
+  const p1 = await getJSON('/api/parse?q=' + encodeURIComponent('国庆从杭州去喀什'));
+  diff('/api/parse 国庆从杭州去喀什.from', p1.from, '杭州');
+  diff('/api/parse 国庆从杭州去喀什.to', p1.to, '喀什');
+  diff('/api/parse 国庆从杭州去喀什.date', p1.date, new Date().getFullYear() + '/10/01');
+
+  const p2 = await getJSON('/api/parse?q=' + encodeURIComponent('上海到昆明明天'));
+  diff('/api/parse 上海到昆明明天.from', p2.from, '上海');
+  diff('/api/parse 上海到昆明明天.to', p2.to, '昆明');
+  diff('/api/parse 上海到昆明明天.date', p2.date, (() => {
+    const d = new Date(); const t = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+    const p = (n) => n < 10 ? '0' + n : '' + n;
+    return `${t.getFullYear()}/${p(t.getMonth() + 1)}/${p(t.getDate())}`;
+  })());
+
+  const p3 = await getJSON('/api/parse?q=' + encodeURIComponent('去玩吧'));
+  diff('/api/parse 去玩吧（无城市不编造）', p3, { from: null, to: null, date: null, conf: 0.4, engine: 'rule', note: '部分字段未识别，请手动补全', llm: false, model: 'rule' });
+
   console.log(failed ? `\n✗ ${failed} 项不一致` : '\n✓ 全部接口与 mock.js 派生结果一致');
   process.exit(failed ? 1 : 0);
 }

@@ -121,6 +121,43 @@
     return Promise.resolve({ code: 0, data: item || null });
   }
 
+  /* ---------- 自然语言行程解析（Phase 2 · 触点①） ---------- */
+
+  /* 本地兜底：轻量规则（能力与后端声明一致，识别不到置 null，绝不编造）。
+   * LLM key 在服务端，本地兜底永远走 rule 引擎（离线优先级）。 */
+  function localParse(q) {
+    var cities = (window.DB && window.DB.cities) || [];
+    var seq = [];
+    cities.forEach(function (c) {
+      var idx = q.indexOf(c);
+      if (idx !== -1) seq.push({ city: c, idx: idx });
+    });
+    seq.sort(function (a, b) { return a.idx - b.idx; });
+    var from = seq.length ? seq[0].city : null;
+    var to = seq.length > 1 ? seq[1].city : null;
+    if (from === to) to = null;
+    function pad(n) { return n < 10 ? '0' + n : '' + n; }
+    var m = q.match(/(\d{1,2})\s*月\s*(\d{1,2})\s*日/) || q.match(/(?:^|[^0-9])(\d{1,2})[/-](\d{1,2})(?!\d)/);
+    var date = null;
+    if (m) { var mo = +m[1], d = +m[2]; var t = new Date(); var dd = new Date(t.getFullYear(), mo - 1, d); date = dd.getFullYear() + '/' + pad(dd.getMonth() + 1) + '/' + pad(dd.getDate()); }
+    else {
+      var rel = ['今天', '今晚'].indexOf(q) >= 0 ? 0 : q.indexOf('明天') >= 0 ? 1 : q.indexOf('后天') >= 0 ? 2 : -1;
+      if (rel >= 0) { var tt = new Date(); var td = new Date(tt.getFullYear(), tt.getMonth(), tt.getDate() + rel); date = td.getFullYear() + '/' + pad(td.getMonth() + 1) + '/' + pad(td.getDate()); }
+    }
+    var fields = (from ? 1 : 0) + (to ? 1 : 0) + (date ? 1 : 0);
+    return { from: from, to: to, date: date, conf: fields >= 3 ? 0.85 : fields === 2 ? 0.65 : 0.4, engine: 'rule', note: fields < 3 ? '部分字段未识别，请手动补全' : null };
+  }
+
+  /* parseNaturalLanguage(q) → { code, data: { from, to, date, conf, engine, note } }
+   * 后端可达时走 /api/parse（LLM 优先、规则兜底）；离线时用本地规则兜底。 */
+  function parseNaturalLanguage(q) {
+    return probe().then(function (ok) {
+      if (!ok) return Promise.resolve({ code: 0, data: localParse(q) });
+      return getEnvelope('/api/parse?q=' + encodeURIComponent(q))
+        .catch(function () { return { code: 0, data: localParse(q) }; });
+    });
+  }
+
   /* POST /api/feedback { id, cost, time, note } → { code }
    * 反馈以 localStorage（MT.addFeedback）为权威；后端可达时同步上报一份，失败静默（无账号体系） */
   function postFeedback(rec) {
@@ -142,6 +179,7 @@
     planSearch: planSearch,
     fetchTemplates: fetchTemplates,
     fetchItem: fetchItem,
+    parseNaturalLanguage: parseNaturalLanguage,
     postFeedback: postFeedback
   };
 })();

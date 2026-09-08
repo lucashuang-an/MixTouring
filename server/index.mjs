@@ -10,6 +10,8 @@ import { dirname, join, normalize, sep } from 'node:path';
 import { buildServiceDB } from '../pipeline/lib/derive.mjs';
 import { validateStore } from '../pipeline/lib/validate-ai-copy.mjs';
 import { validateStorePlans } from '../pipeline/lib/validate-plan.mjs';
+import { parseTrip } from './lib/parse.mjs';
+import { llmConfigured, llmModel } from './lib/llm.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT) || 3000;
@@ -65,6 +67,16 @@ app.use(async (ctx, next) => {
     return;
   }
 
+  /* GET /api/parse?q= → 自然语言行程解析（Phase 2 · 触点①，规则版闭环，注入 key 后切 LLM）
+   * 返回 { from, to, date, conf, engine, note }；识别不到的字段为 null，绝不编造 */
+  if (path === '/api/parse') {
+    const query = qstr(q.q);
+    if (!query) { ctx.body = { code: 1, msg: '缺少 q 参数' }; return; }
+    const parsed = await parseTrip(query, db.cities);
+    ctx.body = { code: 0, data: { ...parsed, llm: llmConfigured(), model: llmModel() } };
+    return;
+  }
+
   /* GET /api/plans?from&to&date → { direct, plans[] }（date 参数预留询价，Phase 1 未启用） */
   if (path === '/api/plans') {
     const route = db.routes[q.from + '-' + q.to] || { direct: null, plans: [] };
@@ -110,6 +122,9 @@ function readBody(ctx) {
     });
   });
 }
+
+/* query 字符串容错：koa 在无该 key 时返回空字符串优先，兼容 |undefined */
+function qstr(v) { return v == null ? '' : String(v).trim(); }
 
 /* ---------- 静态服务：七页原型（让前端以 http 源访问，fetch 可用；轻量实现，零额外依赖） ---------- */
 
