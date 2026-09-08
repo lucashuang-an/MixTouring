@@ -1,0 +1,27 @@
+# CI · 每次推送自动验证（部署守门）：起真后端跑全接口断言 + 七页静态自检
+# 无 LLM key 环境，LLM 路径按「未配置降级」断言；规则版闭环与全部数据契约在此把关
+name: verify
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: 安装后端依赖
+        working-directory: server
+        run: npm ci
+      - name: 启动后端并跑全接口验证（verify.mjs）
+        working-directory: server
+        run: |
+          node index.mjs &
+          sleep 3
+          node verify.mjs
+      - name: 七页静态自检（check-pages.mjs）
+        run: node pipeline/check-pages.mjs

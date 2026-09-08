@@ -12,7 +12,9 @@ const PORT = Number(process.env.PORT) || 3000;
 const store = JSON.parse(readFileSync(join(root, 'pipeline/data/plans.json'), 'utf8'));
 const db = buildServiceDB(store);
 
-const BASE = 'http://localhost:' + PORT;
+/* VERIFY_BASE：对远端部署实例跑同一套验证（如 VERIFY_BASE=https://xxx.onrender.com）；
+ * 缺省验本地。注意：心愿队列断言会在目标实例登记/清理一条测试心愿 */
+const BASE = process.env.VERIFY_BASE || 'http://localhost:' + PORT;
 let failed = 0;
 
 function diff(label, actual, expect) {
