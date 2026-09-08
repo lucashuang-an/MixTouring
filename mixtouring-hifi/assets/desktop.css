@@ -1,25 +1,85 @@
-/* desktop.css · 桌面端响应式适配（≥768px）
+/* desktop.css · 桌面端响应式适配（≥768px）· 侧边栏布局
  * 零构建响应式：仅视觉层覆盖，DOM 与业务逻辑零改动（数据层、api.js 全复用）。
  * 引用方式：页面 </head> 前 <link rel="stylesheet" href="../assets/desktop.css" />
  * 注意：各页 .app-shell 的 430px 列宽定义在 body 内的 critical-layout 样式块（晚于本 link），
- * 故选择器统一加 body 前缀提高特异性（0,1,1+），不依赖级联顺序；
- * nav[data-mobile-nav] 同理稳压 Tailwind 工具类（0,1,0），无需 !important。 */
+ * 故选择器统一加 body 前缀提高特异性，不依赖级联顺序；
+ * nav 内联 box-shadow 无法用常规规则覆盖，是全文件唯一 !important。
+ * 断点以下（移动端）本文件不产生任何规则，底栏导航原样保留。 */
 @media (min-width: 768px) {
 
-  /* 底部胶囊导航 → 顶部悬浮（宽度随内容收缩，保持胶囊形态） */
+  /* ---------- 左侧边栏（品牌区 + 竖排菜单，替代底部胶囊导航） ---------- */
   body nav[data-mobile-nav] {
-    top: 16px;
-    bottom: auto;
-    width: auto;
-    min-width: 340px;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    transform: none;
+    translate: none; /* Tailwind v4 的 -translate-x-1/2 走独立 translate 属性，必须单独归零 */
+    width: 232px;
+    min-width: 232px;
+    max-width: none;
+    height: 100vh;
+    border-radius: 0;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    padding: 20px 12px;
+    box-shadow: none !important; /* nav 有内联 box-shadow，常规规则覆盖不了 */
+    border-right: 0.5px solid var(--mixtouring-border, #E8E9EB);
   }
 
-  /* 内容列：430px 移动列 → 720px 桌面阅读列；为顶栏导航让位 */
+  /* 品牌字标：Mix 近黑 + Touring 陶土橙（呼应页内 Logo 双色） */
+  body nav[data-mobile-nav]::before {
+    content: 'MixTouring';
+    display: block;
+    font-size: 19px;
+    letter-spacing: -0.02em;
+    padding: 2px 12px 22px;
+    background: linear-gradient(90deg,
+      var(--mixtouring-primary, #111111) 58%,
+      var(--mixtouring-ring, #C86A4B) 58%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* 菜单容器：横排 → 竖排 */
+  body nav[data-mobile-nav] > div {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 4px;
+    width: 100%;
+    height: auto;
+    padding: 0;
+  }
+
+  /* 菜单项：图标在上 → 图标在左的横排行（Lovable 式侧栏菜单） */
+  body nav[data-mobile-nav] button {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 12px;
+    width: 100%;
+    height: 44px;
+    min-height: 44px;
+    padding: 0 14px;
+    border-radius: 12px;
+  }
+  body nav[data-mobile-nav] button span { font-size: 14px; }
+  body nav[data-mobile-nav] button:hover { background: var(--mixtouring-muted, #F4F5F7); }
+
+  /* ---------- 内容区：为侧栏让位，720px 阅读列在剩余空间居中 ---------- */
+  /* 各页 body 有内联 padding:0，内联样式只能以 !important 覆盖 */
+  body { padding-left: 232px !important; }
+
   body .app-shell {
     max-width: 720px;
-    padding-top: 84px;
+    padding-top: 32px;
     padding-bottom: 48px;
   }
+
+  /* 搜索页的品牌 Logo 头由侧栏字标代替（me 页的「我的」标题头不受影响） */
+  body .app-shell > header:has(svg[aria-label='MixTouring']) { display: none; }
 
   /* 首页「热门远途」：单列卡流 → 自适应网格（2–3 列） */
   body #hotList {
