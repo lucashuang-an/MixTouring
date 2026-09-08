@@ -1,0 +1,34 @@
+/* desktop.css · 桌面端响应式适配（≥768px）
+ * 零构建响应式：仅视觉层覆盖，DOM 与业务逻辑零改动（数据层、api.js 全复用）。
+ * 引用方式：页面 </head> 前 <link rel="stylesheet" href="../assets/desktop.css" />
+ * 注意：各页 .app-shell 的 430px 列宽定义在 body 内的 critical-layout 样式块（晚于本 link），
+ * 故选择器统一加 body 前缀提高特异性（0,1,1+），不依赖级联顺序；
+ * nav[data-mobile-nav] 同理稳压 Tailwind 工具类（0,1,0），无需 !important。 */
+@media (min-width: 768px) {
+
+  /* 底部胶囊导航 → 顶部悬浮（宽度随内容收缩，保持胶囊形态） */
+  body nav[data-mobile-nav] {
+    top: 16px;
+    bottom: auto;
+    width: auto;
+    min-width: 340px;
+  }
+
+  /* 内容列：430px 移动列 → 720px 桌面阅读列；为顶栏导航让位 */
+  body .app-shell {
+    max-width: 720px;
+    padding-top: 84px;
+    padding-bottom: 48px;
+  }
+
+  /* 首页「热门远途」：单列卡流 → 自适应网格（2–3 列） */
+  body #hotList {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 16px;
+  }
+  body #hotList .route-img-wrap { height: 140px; }
+
+  /* 日历 / 城市选择 / 问问 AI / 回填等底册弹层：稍宽更从容 */
+  body .cal-panel { max-width: 560px; }
+}
