@@ -27,7 +27,8 @@
     border-right: 0.5px solid var(--mixtouring-border, #E8E9EB);
   }
 
-  /* 品牌字标：Mix 近黑 + Touring 陶土橙（呼应页内 Logo 双色） */
+  /* 品牌字标：Mix 近黑 + Touring 陶土橙（呼应页内 Logo 双色）
+   * 渐变断点 ≈ "Mix|Touring" 字符边界（Inter 字宽估算 ~32%，原 58% 落在 MixTo|uring 之间） */
   body nav[data-mobile-nav]::before {
     content: 'MixTouring';
     display: block;
@@ -35,8 +36,8 @@
     letter-spacing: -0.02em;
     padding: 2px 12px 22px;
     background: linear-gradient(90deg,
-      var(--mixtouring-primary, #111111) 58%,
-      var(--mixtouring-ring, #C86A4B) 58%);
+      var(--mixtouring-primary, #111111) 32%,
+      var(--mixtouring-ring, #C86A4B) 32%);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
@@ -68,12 +69,12 @@
   body nav[data-mobile-nav] button span { font-size: 14px; }
   body nav[data-mobile-nav] button:hover { background: var(--mixtouring-muted, #F4F5F7); }
 
-  /* ---------- 内容区：为侧栏让位，720px 阅读列在剩余空间居中 ---------- */
+  /* ---------- 内容区：为侧栏让位，768px 阅读列在剩余空间居中 ---------- */
   /* 各页 body 有内联 padding:0，内联样式只能以 !important 覆盖 */
   body { padding-left: 232px !important; }
 
   body .app-shell {
-    max-width: 720px;
+    max-width: 768px;
     padding-top: 32px;
     padding-bottom: 48px;
   }
@@ -81,14 +82,31 @@
   /* 搜索页的品牌 Logo 头由侧栏字标代替（me 页的「我的」标题头不受影响） */
   body .app-shell > header:has(svg[aria-label='MixTouring']) { display: none; }
 
-  /* 首页「热门远途」：单列卡流 → 自适应网格（2–3 列） */
+  /* 首页「热门远途」：单列卡流 → 自适应网格（768 列下三卡同行，更宽视口 3+ 列） */
   body #hotList {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
     gap: 16px;
   }
   body #hotList .route-img-wrap { height: 140px; }
 
   /* 日历 / 城市选择 / 问问 AI / 回填等底册弹层：稍宽更从容 */
   body .cal-panel { max-width: 560px; }
+
+  /* ---------- 指针设备 hover 反馈（桌面端专属；激活各页已有的 transition 声明） ---------- */
+  body .plan-card:hover,
+  body .hot-card:hover,
+  body .tpl-card:hover,
+  body .row-card:hover,
+  body .demo-chip:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 28px -6px rgba(0, 0, 0, 0.10);
+  }
+  body .cta-btn:hover,
+  body .action-btn:hover,
+  body .link-btn:hover {
+    transform: translateY(-1px);
+    filter: brightness(1.05);
+  }
+  body .seg-pill:not(.active):hover { background: var(--mixtouring-card, #FFFFFF); }
 }
