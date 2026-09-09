@@ -1,0 +1,104 @@
+{
+  "route_pair": {
+    "route_id": "杭州-喀什",
+    "from": "杭州",
+    "to": "喀什",
+    "direct": {
+      "price": 1450,
+      "duration_min": 380,
+      "sampled_at": "2026-09-10T14:00:00+08:00",
+      "source": "web_search 2026-09-10: 浙江在线 2026-03-31 开航报道（杭州⇄喀什直飞 6h20m，国内最远直飞）；天巡同日查询往返最低 ¥2,889 折算单程 ≈¥1,445，开航常态约 ¥1,500，取典型值"
+    }
+  },
+  "plans": [
+    {
+      "id": "p-hzks-1",
+      "type": "plan",
+      "route_id": "杭州-喀什",
+      "from": "杭州",
+      "to": "喀什",
+      "stops": [
+        { "city": "杭州", "kind": "origin", "depart": "06:40", "day_offset": 0 },
+        { "city": "西安", "kind": "transfer", "wait_min": 280 },
+        { "city": "喀什", "kind": "dest", "arrive": "18:40", "day_offset": 0 }
+      ],
+      "segs": [
+        {
+          "mode": "plane",
+          "flight_no": "GJ8153",
+          "from_station": "杭州萧山T3",
+          "to_station": "西安咸阳T5",
+          "dep": "06:40",
+          "dep_day": 0,
+          "arr": "09:15",
+          "arr_day": 0,
+          "duration_min": 155,
+          "fixed_price": null,
+          "price_band": {
+            "min": 420,
+            "max": 700,
+            "sample_count": 2,
+            "sampled_at": "2026-09-10T14:00:00+08:00"
+          },
+          "source": "web_search 2026-09-10: 萧山机场官网早班 GJ8153 06:40 起飞；天巡杭州-西安往返低至 ¥1,000 折算单程 ≈¥500，春秋 1 折促销常态，取折扣舱样本带"
+        },
+        {
+          "mode": "plane",
+          "flight_no": "9C6381",
+          "from_station": "西安咸阳T5",
+          "to_station": "喀什徕宁T2",
+          "dep": "13:55",
+          "dep_day": 0,
+          "arr": "18:40",
+          "arr_day": 0,
+          "duration_min": 285,
+          "fixed_price": null,
+          "price_band": {
+            "min": 600,
+            "max": 1000,
+            "sample_count": 5,
+            "sampled_at": "2026-09-08T00:15:00+08:00"
+          },
+          "source": "复用库内 p-njks-2 采样：flights.ctrip.com 春秋 9C6381 经济舱 5.1 折 ¥1,680/Trip.com HK$926，取折扣舱样本带 ¥600–1,000（2026-09-08）"
+        }
+      ],
+      "risks": [
+        {
+          "factor": "connection",
+          "raw": { "city": "西安", "wait_min": 280, "same_station": true, "transfer_min": 60 },
+          "narrative": ["同航站楼 T5 中转 4h40m，西安机场 MCT 60 分钟，余量充足；首段选准点早班更稳"]
+        },
+        {
+          "factor": "baggage",
+          "raw": { "modes": ["plane", "plane"] },
+          "narrative": ["长龙与春秋无行李直挂，西安需提取再托运"]
+        },
+        {
+          "factor": "refund",
+          "raw": { "plane_fare": "discounted", "ticket_tight": false },
+          "narrative": ["两段折扣舱退改费用高，确定行程再出票"]
+        },
+        {
+          "factor": "transfer",
+          "raw": { "label": "西安咸阳 T5 航站楼内", "km": 0, "min": 0, "same_station": true, "rail_direct": false },
+          "narrative": []
+        }
+      ],
+      "play": {
+        "city": "西安",
+        "lines": [
+          "中转 4h40m，机场进城约 1 小时",
+          "回民街/钟楼一顿饭的工夫可往返",
+          "咸阳机场内有陕西小吃档口，不进城也有味"
+        ]
+      },
+      "ai": {
+        "summary": "早班机经{transfer_city_1}同楼中转，比直飞省 {saved}，顺路加一顿羊肉泡馍",
+        "fit": "不赶时间、想顺路尝西安味的背包客；赶时间或带大件行李请直飞",
+        "notice": "{transfer_city_1}中转窗口 {wait_min_1}，首段务必选准点早班并预留延误余量",
+        "play_intro": "咸阳进城一顿饭的工夫，中转够去回民街吃碗油泼面再回安检",
+        "model": "manual-agent-20260910"
+      }
+    }
+  ]
+}

@@ -133,6 +133,12 @@ export function derivePlan(plan, direct, isTpl) {
   const price = derivePrice(plan, direct);
   const derived = { ...times, price, direct };
   const values = aiValues(plan, derived);
+  /* 样本新鲜度：取各段价格带与直飞基准中最新的 sampled_at（前端据此显示「更新于 X 前」） */
+  const sampled = plan.segs
+    .map((s) => s.price_band && s.price_band.sampled_at)
+    .concat(direct && direct.sampled_at ? [direct.sampled_at] : [])
+    .filter(Boolean)
+    .sort();
   const svc = {
     id: plan.id,
     type: isTpl ? 'tpl' : 'plan',
@@ -146,7 +152,8 @@ export function derivePlan(plan, direct, isTpl) {
     stops: plan.stops.map(fmtStop),
     segs: plan.segs.map(fmtSeg),
     risks: deriveRisks(plan.risks),
-    play: plan.play || null
+    play: plan.play || null,
+    sampledAt: sampled.length ? sampled[sampled.length - 1] : null
   };
   if (plan.ai && plan.ai.status !== 'draft') {
     svc.ai = {

@@ -279,7 +279,16 @@
       <div class="flex flex-col" style="gap: 10px; margin-top: 18px;">
         <input class="fb-input" id="fbCost" placeholder="实际花费（如 ¥1,320）" />
         <input class="fb-input" id="fbTime" placeholder="实际耗时（如 25h）" />
-        <textarea class="fb-input" id="fbNote" rows="3" placeholder="备注：衔接是否顺利、有无踩坑…"></textarea>
+        <!-- 衔接顺利度（MVP §4.7 核心校准字段：单选必填） -->
+        <div>
+          <div style="font-size:12.5px;color:var(--mixtouring-muted-foreground,#7C8089);margin-bottom:6px;">衔接顺利度（必选）</div>
+          <div class="flex" style="gap:6px;" id="fbSmoothGroup">
+            <button type="button" data-smooth="顺利" class="fb-smooth flex-1" style="padding:9px 0;border-radius:9999px;border:0.5px solid var(--mixtouring-border,#E8E9EB);background:var(--mixtouring-card,#FFFFFF);font-size:13px;font-family:inherit;color:var(--mixtouring-foreground,#1E2022);cursor:pointer;">顺利</button>
+            <button type="button" data-smooth="紧张但赶上" class="fb-smooth flex-1" style="padding:9px 0;border-radius:9999px;border:0.5px solid var(--mixtouring-border,#E8E9EB);background:var(--mixtouring-card,#FFFFFF);font-size:13px;font-family:inherit;color:var(--mixtouring-foreground,#1E2022);cursor:pointer;">紧张但赶上</button>
+            <button type="button" data-smooth="误衔接" class="fb-smooth flex-1" style="padding:9px 0;border-radius:9999px;border:0.5px solid var(--mixtouring-border,#E8E9EB);background:var(--mixtouring-card,#FFFFFF);font-size:13px;font-family:inherit;color:var(--mixtouring-foreground,#1E2022);cursor:pointer;">误衔接</button>
+          </div>
+        </div>
+        <textarea class="fb-input" id="fbNote" rows="3" placeholder="备注：有无踩坑、班次变化…"></textarea>
       </div>
       <button id="fbSubmit" class="action-btn w-full rounded-full" style="margin-top: 16px; background: var(--mixtouring-primary, #111111); color: var(--mixtouring-primary-foreground, #FFFFFF); font-size: 15px; padding: 12px 16px;">提交回填</button>
       <p class="text-center" style="font-size: 11.5px; color: var(--mixtouring-muted-foreground, #7C8089); margin-top: 10px;">匿名原型阶段，回填仅保存在本设备</p>
@@ -577,18 +586,33 @@
     function closeSheet() { overlay.classList.remove('active'); }
     overlay.addEventListener('click', function (e) { if (e.target === overlay) closeSheet(); });
     document.getElementById('fbClose').addEventListener('click', closeSheet);
+    /* 衔接顺利度单选（必选，MVP §4.7） */
+    var smoothValue = null;
+    var smoothBtns = [...document.querySelectorAll('.fb-smooth')];
+    smoothBtns.forEach(function (b) {
+      b.addEventListener('click', function () {
+        smoothValue = b.getAttribute('data-smooth');
+        smoothBtns.forEach(function (x) {
+          var on = x === b;
+          x.style.background = on ? 'var(--mixtouring-primary, #111111)' : 'var(--mixtouring-card, #FFFFFF)';
+          x.style.color = on ? 'var(--mixtouring-primary-foreground, #FFFFFF)' : 'var(--mixtouring-foreground, #1E2022)';
+          x.style.borderColor = on ? 'var(--mixtouring-primary, #111111)' : 'var(--mixtouring-border, #E8E9EB)';
+        });
+      });
+    });
     document.getElementById('fbSubmit').addEventListener('click', function () {
       var cost = document.getElementById('fbCost').value.trim();
       var time = document.getElementById('fbTime').value.trim();
       var note = document.getElementById('fbNote').value.trim();
-      if (!cost && !time && !note) { MT.toast('至少填一项再提交'); return; }
+      if (!smoothValue) { MT.toast('先选衔接顺利度'); return; }
+      if (!cost && !time && !note) { MT.toast('顺利度之外至少填一项'); return; }
       var btn = document.getElementById('fbSubmit');
       btn.disabled = true;
       btn.style.opacity = '0.6';
       API.postFeedback({
         id: item.id,
         title: item.from + ' → ' + item.to,
-        cost: cost, time: time, note: note
+        cost: cost, time: time, note: note, smooth: smoothValue
       }).then(function () {
         closeSheet();
         MT.toast('感谢回填，已记录在「我的」');
@@ -597,6 +621,12 @@
         document.getElementById('fbCost').value = '';
         document.getElementById('fbTime').value = '';
         document.getElementById('fbNote').value = '';
+        smoothValue = null;
+        smoothBtns.forEach(function (x) {
+          x.style.background = 'var(--mixtouring-card, #FFFFFF)';
+          x.style.color = 'var(--mixtouring-foreground, #1E2022)';
+          x.style.borderColor = 'var(--mixtouring-border, #E8E9EB)';
+        });
       });
     });
 

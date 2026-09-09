@@ -241,6 +241,7 @@
   </nav>
 
   <script src="../assets/mock.js"></script>
+  <script src="../assets/api.js"></script>
   <script src="../assets/app.js"></script>
   <script>
   (function () {
@@ -258,10 +259,16 @@
 
     MT.wireNav();
 
-    /* 生成仪式（P1）：步骤文案接方案库事实——有数据时带真实中转城市/候选数/直飞基准；
-       无数据不编造细节，保持通用步骤，完成态如实告知无数据 */
+    /* 生成仪式三分支（v0.14.0）：杜绝「伪装实时规划」——
+       有数据 → 完整仪式（步骤接方案库真实事实）；
+       已登记离线探索 → 短过渡如实说明队列状态，不假装在规划；
+       无数据未登记 → 极简过渡如实告知无样本，下一页引导登记 */
     var route = window.DB.routes[from + '-' + to];
-    var steps, headline;
+    var steps, headline, stepMs, holdMs;
+    var wishIdx = MT.wishIndex(from, to);
+    var wish = wishIdx !== -1 ? MT.wishList()[wishIdx] : null;
+    var isPending = wish && (wish.status === 'pending' || wish.status === 'processing');
+
     if (route && route.plans.length) {
       var seen = {};
       var cities = [];
@@ -280,14 +287,22 @@
         '对比直飞基准 ' + route.direct.price + '，按总花费排序'
       ];
       headline = '已找到 ' + route.plans.length + ' 个省钱方案';
+      stepMs = 560; holdMs = 2950;
+    } else if (isPending) {
+      steps = [
+        '已在离线探索队列' + (wish.ts ? ' · 登记于 ' + MT.fmtTs(wish.ts) : ''),
+        '离线工厂按批处理采集真实班次与票价（通常 1–3 天）',
+        '完成后这里自动变为可查看的方案'
+      ];
+      headline = '探索中 · 无需等待';
+      stepMs = 380; holdMs = 1700;
     } else {
       steps = [
-        '扫描火车班次与低价日历',
-        '匹配中转城市的换乘组合',
-        '计算四因子衔接风险',
-        '按总花费排序方案'
+        '方案库暂无这条线的真实样本',
+        '不做编造——下一页可登记离线探索'
       ];
       headline = '这条线暂无组合票数据';
+      stepMs = 360; holdMs = 1400;
     }
 
     var stepList = document.getElementById('stepList');
@@ -306,20 +321,42 @@
       step++;
       if (step < rows.length) {
         rows[step].classList.add('active');
-        bar.style.width = (18 + step * 24) + '%';
+        bar.style.width = (18 + step * Math.round(78 / rows.length)) + '%';
       }
-    }, 560);
+    }, stepMs);
 
     setTimeout(function () {
       clearInterval(timer);
       bar.style.width = '100%';
       document.getElementById('genHeadline').textContent = headline;
-    }, 2300);
+    }, holdMs - 650);
 
     setTimeout(function () {
       var q = new URLSearchParams({ from: from, to: to, date: date });
       location.replace('results.html?' + q.toString());
-    }, 2950);
+    }, holdMs);
+
+    /* 服务端队列补偿：本地无登记但服务端队列有（跨浏览器/运营录入），响应及时就原位升级为探索中文案 */
+    if (!route && !isPending && window.API) {
+      API.fetchWishes().then(function (res) {
+        if (!res || res.code !== 0 || !Array.isArray(res.data)) return;
+        var hit = res.data.find(function (w) {
+          return w.from === from && w.to === to && (w.status === 'pending' || w.status === 'processing');
+        });
+        if (!hit) return;
+        headline = '探索中 · 无需等待';
+        steps = [
+          '已在离线探索队列（服务端登记）',
+          '离线工厂按批处理采集真实班次与票价（通常 1–3 天）',
+          '完成后这里自动变为可查看的方案'
+        ];
+        stepList.innerHTML = steps.map(function (t) {
+          return '<div class="step-row active"><span class="step-dot"></span>' +
+            '<span style="font-size: 13px; color: var(--mixtouring-muted-foreground, #7C8089);">' + MT.esc(t) + '</span></div>';
+        }).join('');
+        document.getElementById('genHeadline').textContent = headline;
+      });
+    }
   })();
   </script>
 </body>

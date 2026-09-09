@@ -137,10 +137,11 @@ export function assessRoute(from, to, transfers, segs = []) {
   });
   const ratio = chain / direct;
   const extraKm = Math.max(0, chain - direct);
-  /* 时长估算：各段按其交通方式时速算链路时长，减「直线基准时长」（按主导方式），得保守绕行代价 */
+  /* 时长估算：各段按其交通方式时速算链路时长，减「直线基准时长」（若链路含飞机则基准按直飞时速，
+   * 纯铁路才按铁路时速——混合方案按慢速算基准会系统性低估绕行代价） */
   const chainHours = legs.reduce((sum, l) => sum + l.km / (l.mode === 'train' ? TRAIN_KMH : PLANE_KMH), 0);
-  const dominant = legs.filter((l) => l.mode === 'train').length >= legs.length / 2 ? TRAIN_KMH : PLANE_KMH;
-  const estExtraHours = Math.max(0, chainHours - direct / dominant);
+  const baseSpeed = legs.some((l) => l.mode === 'plane') ? PLANE_KMH : TRAIN_KMH;
+  const estExtraHours = Math.max(0, chainHours - direct / baseSpeed);
   if (ratio > MAX_DETOUR_RATIO) reasons.push(`链路绕行比 ${Math.round(ratio * 100) / 100} 超出主流范围（≤${MAX_DETOUR_RATIO}）`);
   const verdict = reasons.length ? 'non_mainstream' : 'mainstream';
   return {

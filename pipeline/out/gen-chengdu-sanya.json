@@ -1,0 +1,104 @@
+{
+  "route_pair": {
+    "route_id": "成都-三亚",
+    "from": "成都",
+    "to": "三亚",
+    "direct": {
+      "price": 950,
+      "duration_min": 150,
+      "sampled_at": "2026-09-10T14:00:00+08:00",
+      "source": "web_search 2026-09-10: 天巡十月直飞低至 ¥971（天府/双流出发 ¥1,083 起）；携程 9 月 17 日促销低至 ¥330；取非促销典型值 ¥950"
+    }
+  },
+  "plans": [
+    {
+      "id": "p-cdsy-1",
+      "type": "plan",
+      "route_id": "成都-三亚",
+      "from": "成都",
+      "to": "三亚",
+      "stops": [
+        { "city": "成都", "kind": "origin", "depart": "13:55", "day_offset": 0 },
+        { "city": "海口", "kind": "transfer", "wait_min": 80 },
+        { "city": "三亚", "kind": "dest", "arrive": "19:00", "day_offset": 0 }
+      ],
+      "segs": [
+        {
+          "mode": "plane",
+          "flight_no": "成都⇄海口多班（以午后班为例）",
+          "from_station": "成都天府T2",
+          "to_station": "海口美兰T1",
+          "dep": "13:55",
+          "dep_day": 0,
+          "arr": "16:15",
+          "arr_day": 0,
+          "duration_min": 140,
+          "fixed_price": null,
+          "price_band": {
+            "min": 420,
+            "max": 910,
+            "sample_count": 3,
+            "sampled_at": "2026-09-10T14:00:00+08:00"
+          },
+          "source": "web_search 2026-09-10: 携程时刻表 13:55→16:15 天府T2→美兰T1（空客320）；天巡天府出发 ¥830–910、海航促销约 ¥420，取样本带"
+        },
+        {
+          "mode": "train",
+          "train_no": "海南环岛高铁（以 C7301 为例）",
+          "from_station": "美兰机场站",
+          "to_station": "三亚站",
+          "dep": "17:35",
+          "dep_day": 0,
+          "arr": "19:00",
+          "arr_day": 0,
+          "duration_min": 85,
+          "fixed_price": null,
+          "price_band": {
+            "min": 99,
+            "max": 129,
+            "sample_count": 2,
+            "sampled_at": "2026-09-10T14:00:00+08:00"
+          },
+          "source": "web_search 2026-09-10: 携程海口-三亚高铁 ¥99–129（C7301 ¥129，最快 1h14m）；美兰站与机场无缝、班次密集（日 246 班），时刻以当日实际车次为准"
+        }
+      ],
+      "risks": [
+        {
+          "factor": "connection",
+          "raw": { "city": "海口", "wait_min": 80, "same_station": true, "transfer_min": 45 },
+          "narrative": ["美兰机场站与航站楼无缝，80 分钟余量合理；前段航班延误需改签最近一班高铁"]
+        },
+        {
+          "factor": "baggage",
+          "raw": { "modes": ["plane", "train"] },
+          "narrative": ["航铁无直挂，行李需自行提取并带上高铁"]
+        },
+        {
+          "factor": "refund",
+          "raw": { "plane_fare": "discounted", "ticket_tight": false },
+          "narrative": ["高铁段改签灵活；机票段折扣舱退改费用高，确定行程再出票"]
+        },
+        {
+          "factor": "transfer",
+          "raw": { "label": "美兰机场站（航站楼内）", "km": 0, "min": 5, "same_station": true, "rail_direct": true },
+          "narrative": []
+        }
+      ],
+      "play": {
+        "city": "海口",
+        "lines": [
+          "美兰站进城约 40 分钟，时间紧可不出站",
+          "骑楼老街 + 一碗清补凉是标准搭配",
+          "环岛高铁东侧看海，选 D/E 靠窗座"
+        ]
+      },
+      "ai": {
+        "summary": "飞{transfer_city_1}转环岛高铁，比直飞省 {saved}，美兰站航铁无缝换乘",
+        "fit": "预算敏感、想顺路逛海口骑楼的旅行者；带大件行李多一次搬运会累",
+        "notice": "美兰站换乘窗口 {wait_min_1}，前段航班别买晚到班次；直飞大促价出现时直飞更划算",
+        "play_intro": "时间富余就出站去骑楼老街，一碗清补凉再上车，靠窗看海进城",
+        "model": "manual-agent-20260910"
+      }
+    }
+  ]
+}

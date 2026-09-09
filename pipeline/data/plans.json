@@ -107,6 +107,34 @@
         "p-njks-1",
         "p-njks-2"
       ]
+    },
+    {
+      "route_id": "杭州-喀什",
+      "from": "杭州",
+      "to": "喀什",
+      "direct": {
+        "price": 1450,
+        "duration_min": 380,
+        "sampled_at": "2026-09-10T14:00:00+08:00",
+        "source": "web_search 2026-09-10: 浙江在线 2026-03-31 开航报道（杭州⇄喀什直飞 6h20m，国内最远直飞）；天巡同日查询往返最低 ¥2,889 折算单程 ≈¥1,445，开航常态约 ¥1,500，取典型值"
+      },
+      "plan_ids": [
+        "p-hzks-1"
+      ]
+    },
+    {
+      "route_id": "成都-三亚",
+      "from": "成都",
+      "to": "三亚",
+      "direct": {
+        "price": 950,
+        "duration_min": 150,
+        "sampled_at": "2026-09-10T14:00:00+08:00",
+        "source": "web_search 2026-09-10: 天巡十月直飞低至 ¥971（天府/双流出发 ¥1,083 起）；携程 9 月 17 日促销低至 ¥330；取非促销典型值 ¥950"
+      },
+      "plan_ids": [
+        "p-cdsy-1"
+      ]
     }
   ],
   "plans": [
@@ -1412,6 +1440,268 @@
         "notice": "同一航站楼内中转，衔接窗口 {wait_min_1}，下机后先确认第二程登机口",
         "play_intro": "中转时间足够吃碗油泼面，航站楼里有陕西小吃街",
         "model": "claude-realtime-experiment-20260908"
+      }
+    },
+    {
+      "id": "p-hzks-1",
+      "type": "plan",
+      "route_id": "杭州-喀什",
+      "from": "杭州",
+      "to": "喀什",
+      "stops": [
+        {
+          "city": "杭州",
+          "kind": "origin",
+          "depart": "06:40",
+          "day_offset": 0
+        },
+        {
+          "city": "西安",
+          "kind": "transfer",
+          "wait_min": 280
+        },
+        {
+          "city": "喀什",
+          "kind": "dest",
+          "arrive": "18:40",
+          "day_offset": 0
+        }
+      ],
+      "segs": [
+        {
+          "mode": "plane",
+          "flight_no": "GJ8153",
+          "from_station": "杭州萧山T3",
+          "to_station": "西安咸阳T5",
+          "dep": "06:40",
+          "dep_day": 0,
+          "arr": "09:15",
+          "arr_day": 0,
+          "duration_min": 155,
+          "fixed_price": null,
+          "price_band": {
+            "min": 420,
+            "max": 700,
+            "sample_count": 2,
+            "sampled_at": "2026-09-10T14:00:00+08:00"
+          },
+          "source": "web_search 2026-09-10: 萧山机场官网早班 GJ8153 06:40 起飞；天巡杭州-西安往返低至 ¥1,000 折算单程 ≈¥500，春秋 1 折促销常态，取折扣舱样本带"
+        },
+        {
+          "mode": "plane",
+          "flight_no": "9C6381",
+          "from_station": "西安咸阳T5",
+          "to_station": "喀什徕宁T2",
+          "dep": "13:55",
+          "dep_day": 0,
+          "arr": "18:40",
+          "arr_day": 0,
+          "duration_min": 285,
+          "fixed_price": null,
+          "price_band": {
+            "min": 600,
+            "max": 1000,
+            "sample_count": 5,
+            "sampled_at": "2026-09-08T00:15:00+08:00"
+          },
+          "source": "复用库内 p-njks-2 采样：flights.ctrip.com 春秋 9C6381 经济舱 5.1 折 ¥1,680/Trip.com HK$926，取折扣舱样本带 ¥600–1,000（2026-09-08）"
+        }
+      ],
+      "risks": [
+        {
+          "factor": "connection",
+          "raw": {
+            "city": "西安",
+            "wait_min": 280,
+            "same_station": true,
+            "transfer_min": 60
+          },
+          "narrative": [
+            "同航站楼 T5 中转 4h40m，西安机场 MCT 60 分钟，余量充足；首段选准点早班更稳"
+          ]
+        },
+        {
+          "factor": "baggage",
+          "raw": {
+            "modes": [
+              "plane",
+              "plane"
+            ]
+          },
+          "narrative": [
+            "长龙与春秋无行李直挂，西安需提取再托运"
+          ]
+        },
+        {
+          "factor": "refund",
+          "raw": {
+            "plane_fare": "discounted",
+            "ticket_tight": false
+          },
+          "narrative": [
+            "两段折扣舱退改费用高，确定行程再出票"
+          ]
+        },
+        {
+          "factor": "transfer",
+          "raw": {
+            "label": "西安咸阳 T5 航站楼内",
+            "km": 0,
+            "min": 0,
+            "same_station": true,
+            "rail_direct": false
+          },
+          "narrative": []
+        }
+      ],
+      "play": {
+        "city": "西安",
+        "lines": [
+          "中转 4h40m，机场进城约 1 小时",
+          "回民街/钟楼一顿饭的工夫可往返",
+          "咸阳机场内有陕西小吃档口，不进城也有味"
+        ]
+      },
+      "ai": {
+        "summary": "早班机经{transfer_city_1}同楼中转，比直飞省 {saved}，顺路加一顿羊肉泡馍",
+        "fit": "不赶时间、想顺路尝西安味的背包客；赶时间或带大件行李请直飞",
+        "notice": "{transfer_city_1}中转窗口 {wait_min_1}，首段务必选准点早班并预留延误余量",
+        "play_intro": "咸阳进城一顿饭的工夫，中转够去回民街吃碗油泼面再回安检",
+        "model": "manual-agent-20260910",
+        "status": "verified",
+        "verified_at": "2026-09-09T17:22:09.087Z",
+        "generated_at": "2026-09-09T17:22:09.087Z"
+      }
+    },
+    {
+      "id": "p-cdsy-1",
+      "type": "plan",
+      "route_id": "成都-三亚",
+      "from": "成都",
+      "to": "三亚",
+      "stops": [
+        {
+          "city": "成都",
+          "kind": "origin",
+          "depart": "13:55",
+          "day_offset": 0
+        },
+        {
+          "city": "海口",
+          "kind": "transfer",
+          "wait_min": 80
+        },
+        {
+          "city": "三亚",
+          "kind": "dest",
+          "arrive": "19:00",
+          "day_offset": 0
+        }
+      ],
+      "segs": [
+        {
+          "mode": "plane",
+          "flight_no": "成都⇄海口多班（以午后班为例）",
+          "from_station": "成都天府T2",
+          "to_station": "海口美兰T1",
+          "dep": "13:55",
+          "dep_day": 0,
+          "arr": "16:15",
+          "arr_day": 0,
+          "duration_min": 140,
+          "fixed_price": null,
+          "price_band": {
+            "min": 420,
+            "max": 910,
+            "sample_count": 3,
+            "sampled_at": "2026-09-10T14:00:00+08:00"
+          },
+          "source": "web_search 2026-09-10: 携程时刻表 13:55→16:15 天府T2→美兰T1（空客320）；天巡天府出发 ¥830–910、海航促销约 ¥420，取样本带"
+        },
+        {
+          "mode": "train",
+          "train_no": "海南环岛高铁（以 C7301 为例）",
+          "from_station": "美兰机场站",
+          "to_station": "三亚站",
+          "dep": "17:35",
+          "dep_day": 0,
+          "arr": "19:00",
+          "arr_day": 0,
+          "duration_min": 85,
+          "fixed_price": null,
+          "price_band": {
+            "min": 99,
+            "max": 129,
+            "sample_count": 2,
+            "sampled_at": "2026-09-10T14:00:00+08:00"
+          },
+          "source": "web_search 2026-09-10: 携程海口-三亚高铁 ¥99–129（C7301 ¥129，最快 1h14m）；美兰站与机场无缝、班次密集（日 246 班），时刻以当日实际车次为准"
+        }
+      ],
+      "risks": [
+        {
+          "factor": "connection",
+          "raw": {
+            "city": "海口",
+            "wait_min": 80,
+            "same_station": true,
+            "transfer_min": 45
+          },
+          "narrative": [
+            "美兰机场站与航站楼无缝，80 分钟余量合理；前段航班延误需改签最近一班高铁"
+          ]
+        },
+        {
+          "factor": "baggage",
+          "raw": {
+            "modes": [
+              "plane",
+              "train"
+            ]
+          },
+          "narrative": [
+            "航铁无直挂，行李需自行提取并带上高铁"
+          ]
+        },
+        {
+          "factor": "refund",
+          "raw": {
+            "plane_fare": "discounted",
+            "ticket_tight": false
+          },
+          "narrative": [
+            "高铁段改签灵活；机票段折扣舱退改费用高，确定行程再出票"
+          ]
+        },
+        {
+          "factor": "transfer",
+          "raw": {
+            "label": "美兰机场站（航站楼内）",
+            "km": 0,
+            "min": 5,
+            "same_station": true,
+            "rail_direct": true
+          },
+          "narrative": []
+        }
+      ],
+      "play": {
+        "city": "海口",
+        "lines": [
+          "美兰站进城约 40 分钟，时间紧可不出站",
+          "骑楼老街 + 一碗清补凉是标准搭配",
+          "环岛高铁东侧看海，选 D/E 靠窗座"
+        ]
+      },
+      "ai": {
+        "summary": "飞{transfer_city_1}转环岛高铁，比直飞省 {saved}，美兰站航铁无缝换乘",
+        "fit": "预算敏感、想顺路逛海口骑楼的旅行者；带大件行李多一次搬运会累",
+        "notice": "美兰站换乘窗口 {wait_min_1}，前段航班别买晚到班次；直飞大促价出现时直飞更划算",
+        "play_intro": "时间富余就出站去骑楼老街，一碗清补凉再上车，靠窗看海进城",
+        "model": "manual-agent-20260910",
+        "status": "verified",
+        "verified_at": "2026-09-09T17:22:37.428Z",
+        "generated_at": "2026-09-09T17:22:37.428Z"
       }
     }
   ],

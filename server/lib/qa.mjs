@@ -11,7 +11,8 @@ function mentionedCities(q, cities) {
   return cities.filter((c) => q.includes(c));
 }
 
-/* 两端都提到的路线对优先；只提到一端则给涉及该城市的路线。最多 2 条，控 context 体积 */
+/* 两端都提到的路线对优先；只提到一端则给涉及该城市的路线。最多 2 条，控 context 体积。
+ * 同时返回 missed：问题中提到、但选中路线没有覆盖到的城市（答案必须显式声明这些城市无数据） */
 export function pickRoutes(q, db) {
   const hits = mentionedCities(q, db.cities);
   const both = [];
@@ -21,7 +22,10 @@ export function pickRoutes(q, db) {
     if (hits.includes(from) && hits.includes(to)) both.push({ routeId: key, route: db.routes[key] });
     else if (hits.includes(from) || hits.includes(to)) single.push({ routeId: key, route: db.routes[key] });
   }
-  return (both.length ? both : single).slice(0, 2);
+  const picked = (both.length ? both : single).slice(0, 2);
+  const covered = new Set(picked.flatMap(({ routeId }) => routeId.split('-')));
+  const missed = hits.filter((c) => !covered.has(c));
+  return { picked, missed };
 }
 
 /* ---------- context 构建（全部字段来自服务层派生结果，本身就是 grounding 源） ---------- */
@@ -48,15 +52,19 @@ function buildContext(routes) {
 
 /* ---------- 规则版答案（离线兜底；数字全部来自派生字段，模板拼接不造数） ---------- */
 
-function ruleAnswer(q, routes, db) {
+function ruleAnswer(routes, db, missed) {
   if (!routes.length) {
     const covered = Object.keys(db.routes).map((k) => k.replace('-', '→')).join(' / ');
+    const missedNote = missed.length ? '其中' + missed.join('、') + '暂无数据。' : '';
     return {
-      answer: '我只基于方案库里已有的路线数据回答，这句话里没认出已覆盖的路线。目前库里有：' + covered +
+      answer: '我只基于方案库里已有的路线数据回答，这句话里没认出已覆盖的路线。' + missedNote + '目前库里有：' + covered +
         '。可以问「北京去喀什哪个方案最省」，或者去搜索页登记心愿，AI 会离线探索这条线。',
       refs: []
     };
   }
+  const prefix = missed.length
+    ? '先说明：' + missed.join('、') + '暂无方案库数据，下面只是同出发地/同目的地的参考路线，不是到' + missed.join('、') + '的方案。\n'
+    : '';
   const parts = [];
   const refs = [];
   routes.forEach(({ routeId, route }) => {
@@ -69,18 +77,21 @@ function ruleAnswer(q, routes, db) {
     );
     refs.push(...sorted.map((p) => p.id));
   });
-  return { answer: parts.join('\n'), refs };
+  return { answer: prefix + parts.join('\n'), refs };
 }
 
 /* ---------- LLM 路径（注入 key 后自动启用） ---------- */
 
-const QA_SCHEMA = (ctxJson) =>
+const QA_SCHEMA = (ctxJson, missedNote) =>
   '你是 MixTouring 的站内问答助手，只基于给定 context（方案库事实 JSON）回答用户关于省钱路线的问题。\n' +
   '铁律：\n' +
   '1. 回答中出现的任何数字必须逐字出现在 context 里，禁止心算、换算、编造新数字。\n' +
   '2. 车次/航班/价格/时刻一律以 context 为准；context 没有的信息如实说「方案库暂无该数据」。\n' +
-  '3. 简体中文，不超过 160 字，语气像走过这条线的朋友，克制不夸张。\n' +
-  '4. refs 给出答案引用到的方案 id 数组，必须取自 context 中的 plan.id；没有引用就给空数组。\n' +
+  (missedNote
+    ? '3. 特别约束：' + missedNote + '\n回答第一句必须先声明这一点，且不得把 context 中的参考路线说成到该城市的方案。\n'
+    : '') +
+  '4. 简体中文，不超过 160 字，语气像走过这条线的朋友，克制不夸张。\n' +
+  '5. refs 给出答案引用到的方案 id 数组，必须取自 context 中的 plan.id；没有引用就给空数组。\n' +
   '输出 JSON：{"answer":"...","refs":["p-xxx"]}\n' +
   'context：' + ctxJson;
 
@@ -102,18 +113,22 @@ function numbersGrounded(answer, ctxJson) {
 export async function answerAsk(q, db) {
   const query = String(q || '').trim();
   if (!query) return { answer: '想问什么？比如「北京去喀什哪个方案最省」。', refs: [], engine: 'none' };
-  const routes = pickRoutes(query, db);
+  const { picked: routes, missed } = pickRoutes(query, db);
   const ctxJson = JSON.stringify(buildContext(routes));
+  const missedNote = missed.length
+    ? '用户问题提到的「' + missed.join('、') + '」在方案库中暂无任何数据，context 中的路线只是涉及其他城市的参考。'
+    : '';
 
-  const llmOut = await callJson({ schema_prompt: QA_SCHEMA(ctxJson), user: '用户问题：' + query, kind: 'ask' });
+  const llmOut = await callJson({ schema_prompt: QA_SCHEMA(ctxJson, missedNote), user: '用户问题：' + query, kind: 'ask' });
   if (llmOut && typeof llmOut.answer === 'string' && llmOut.answer.trim()) {
     const answer = llmOut.answer.trim();
     const refs = Array.isArray(llmOut.refs) ? llmOut.refs.filter((id) => ctxJson.includes('"' + id + '"')) : [];
-    /* grounding 不过关（出现 context 外的数字）或引用了不存在的方案 → 整条丢弃，落回规则版 */
-    if (numbersGrounded(answer, ctxJson) && (refs.length > 0 || routes.length === 0)) {
+    /* grounding 校验：context 外数字、不存在引用、以及「该声明无数据却没声明」都整条丢弃落回规则版 */
+    const missedDeclared = !missed.length || missed.every((c) => answer.includes(c));
+    if (numbersGrounded(answer, ctxJson) && (refs.length > 0 || routes.length === 0) && missedDeclared) {
       return { answer, refs, engine: 'llm' };
     }
   }
-  const rule = ruleAnswer(query, routes, db);
+  const rule = ruleAnswer(routes, db, missed);
   return { answer: rule.answer, refs: rule.refs, engine: 'rule' };
 }

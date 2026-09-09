@@ -49,7 +49,7 @@
     var list = feedbackList();
     list.unshift({
       id: rec.id, title: rec.title, cost: rec.cost,
-      time: rec.time, note: rec.note, ts: Date.now()
+      time: rec.time, note: rec.note, smooth: rec.smooth || null, ts: Date.now()
     });
     write(FB_KEY, list);
   }
