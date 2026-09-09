@@ -25,3 +25,5 @@ jobs:
           node verify.mjs
       - name: 七页静态自检（check-pages.mjs）
         run: node pipeline/check-pages.mjs
+      - name: 地理技能自测（check-geo.mjs）
+        run: node pipeline/check-geo.mjs

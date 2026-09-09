@@ -136,6 +136,9 @@
     <symbol id="hero-sparkles" viewBox="0 0 24 24">
       <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423 1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" />
     </symbol>
+    <symbol id="hero-exclamation-triangle" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+    </symbol>
   </defs>
 </svg>
 
@@ -402,6 +405,11 @@
         '<div class="pt-4 pb-1">' + routeBarHtml(p) + '</div>' +
         (p.ai && p.ai.summary
           ? '<p style="font-size:13px;color:var(--mixtouring-foreground,#1E2022);line-height:1.5;padding-top:10px;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;">' + MT.esc(p.ai.summary) + '</p>'
+          : '') +
+        (p.geo && p.geo.verdict === 'non_mainstream' && p.geo.conclusion
+          ? '<div class="flex items-start" style="gap:6px;margin-top:10px;padding:8px 12px;border-radius:12px;background:rgba(251,191,36,0.10);">' +
+            '<svg style="width:13px;height:13px;margin-top:2px;flex-shrink:0;color:var(--state-warning,#FBBF24);"><use href="#hero-exclamation-triangle"></use></svg>' +
+            '<span style="font-size:12px;color:#A16207;line-height:1.5;">地理评估 · ' + MT.esc(p.geo.conclusion) + '</span></div>'
           : '') +
         '<div class="pt-2">' + riskRowHtml(p.risks, p.play) + '</div>' +
         '<div class="flex items-center justify-between" style="padding-top:12px;margin-top:12px;border-top:0.5px solid var(--mixtouring-border,#E8E9EB);">' +

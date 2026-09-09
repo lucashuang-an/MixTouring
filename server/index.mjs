@@ -8,6 +8,7 @@ import { readFileSync, existsSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, normalize, sep } from 'node:path';
 import { buildServiceDB } from '../pipeline/lib/derive.mjs';
+import { enrichWithGeo } from '../pipeline/lib/geo-skill.mjs';
 import { validateStore } from '../pipeline/lib/validate-ai-copy.mjs';
 import { validateStorePlans } from '../pipeline/lib/validate-plan.mjs';
 import { parseTrip } from './lib/parse.mjs';
@@ -27,7 +28,7 @@ function loadDB() {
   const errors = [...validateStorePlans(store), ...validateStore(store)];
   if (errors.length) throw new Error('方案库校验未通过：' + errors[0]);
   plansMtime = statSync(PLANS_PATH).mtimeMs;
-  return buildServiceDB(store);
+  return enrichWithGeo(buildServiceDB(store));
 }
 
 let db;

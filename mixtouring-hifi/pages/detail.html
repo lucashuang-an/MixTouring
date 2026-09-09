@@ -481,7 +481,13 @@
 
       /* 风险透明 */
       var risksHtml = it.risks.map(function (r, i) { return riskHtml(r, i, i === it.risks.length - 1); }).join('');
-      var riskSection = sectionTitle('风险透明') + '<div class="px-4 pt-3"><div class="detail-card p-4" style="padding-bottom:16px;">' + risksHtml + '</div></div>';
+      /* 地理评估（geo-skill 派生）：非主流方案给出客观绕行代价说明 */
+      var geoNotice = it.geo && it.geo.verdict === 'non_mainstream' && it.geo.conclusion
+        ? '<div class="px-4 pt-3"><div class="flex items-start" style="gap:8px;padding:10px 14px;border-radius:12px;background:rgba(251,191,36,0.10);">' +
+          '<svg style="width:14px;height:14px;margin-top:2px;flex-shrink:0;color:var(--state-warning,#FBBF24);"><use href="#hero-exclamation-triangle"></use></svg>' +
+          '<span style="font-size:13px;color:#A16207;line-height:1.5;">地理评估 · ' + MT.esc(it.geo.conclusion) + '</span></div></div>'
+        : '';
+      var riskSection = geoNotice + sectionTitle('风险透明') + '<div class="px-4 pt-3"><div class="detail-card p-4" style="padding-bottom:16px;">' + risksHtml + '</div></div>';
 
       /* 中转顺便玩 */
       var playSection = '';

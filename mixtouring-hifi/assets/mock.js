@@ -1,6 +1,6 @@
 /* MixTouring HIFI — mock.js · 全链路单一数据源
  * ⚠️ 本文件由 pipeline/build-mock.mjs 生成，请勿手改；数据维护在 pipeline/data/plans.json
- * 生成时间：2026-09-08T15:12:41.907Z · 数据版本：0.1.0 */
+ * 生成时间：2026-09-09T15:28:44.228Z · 数据版本：0.1.0 */
 (function () {
   'use strict';
 
@@ -123,6 +123,13 @@
           "fit": "适合时间相对充裕、想大幅压预算的背包客；行李多的话要掂量转运",
           "notice": "银川转机窗口 1h53m，下火车直接奔机场巴士，别在市区逗留",
           "play_intro": "若改签到次日航班，镇北堡西部影城和怀远夜市值得专门留一晚"
+        },
+        "geo": {
+          "verdict": "mainstream",
+          "ratio": 1.03,
+          "extraKm": 99,
+          "estExtraHours": 0,
+          "conclusion": null
         }
       },
       {
@@ -219,6 +226,13 @@
           "fit": "适合把火车当风景的慢旅行者；卧铺两晚，时间成本高",
           "notice": "兰州换乘 3h20m 很从容，备足两顿干粮和充电宝",
           "play_intro": "兰州间隙够吃一碗正经牛肉面，正宁路夜市离车站不远"
+        },
+        "geo": {
+          "verdict": "mainstream",
+          "ratio": 1.06,
+          "extraKm": 218,
+          "estExtraHours": 1.8,
+          "conclusion": null
         }
       },
       {
@@ -316,6 +330,13 @@
           "fit": "适合假期短、愿意用钱换时间的人；衔接紧张，不适合首次独自出行",
           "notice": "西安转机窗口仅 1h09m 且要跨站赶机场，高铁尽量买靠车门座位",
           "play_intro": "若改签到次日航班，兵马俑加回民街刚好一天"
+        },
+        "geo": {
+          "verdict": "mainstream",
+          "ratio": 1.13,
+          "extraKm": 444,
+          "estExtraHours": 0,
+          "conclusion": null
         }
       }
     ]
@@ -421,6 +442,13 @@
           "fit": "适合想看河西走廊风景、不赶时间的人；要在兰州跨站换车",
           "notice": "兰州站换兰州西站，地铁 25 分钟直达，2h15m 的余量不用慌",
           "play_intro": "换乘间隙去正宁路吃碗面，回站前留好地铁时间"
+        },
+        "geo": {
+          "verdict": "mainstream",
+          "ratio": 1.16,
+          "extraKm": 395,
+          "estExtraHours": 3.3,
+          "conclusion": null
         }
       },
       {
@@ -518,6 +546,13 @@
           "fit": "适合想平衡时间与预算的人；转机行李要自己搬运",
           "notice": "银川机场巴士整点发车，下火车先看时刻表，2h40m 的窗口别误车",
           "play_intro": "早到银川先吃碗羊杂碎，河东机场安检体验友好"
+        },
+        "geo": {
+          "verdict": "mainstream",
+          "ratio": 1.06,
+          "extraKm": 142,
+          "estExtraHours": 0,
+          "conclusion": null
         }
       }
     ]
@@ -621,6 +656,13 @@
           "fit": "适合不想折腾行李、追求稳妥的人",
           "notice": "贵阳北换乘通道步行约 12 分钟，2h12m 足够吃口饭",
           "play_intro": "间隙试试站内丝娃娃，或者打车去看甲秀楼"
+        },
+        "geo": {
+          "verdict": "mainstream",
+          "ratio": 1,
+          "extraKm": 0,
+          "estExtraHours": 0,
+          "conclusion": null
         }
       },
       {
@@ -717,6 +759,13 @@
           "fit": "适合沪杭出发、想把路上时间压到最短的人",
           "notice": "杭州东到萧山机场地铁 50 分钟直达，别贪玩误机",
           "play_intro": "若改签次日，西湖骑行半日再飞"
+        },
+        "geo": {
+          "verdict": "mainstream",
+          "ratio": 1.01,
+          "extraKm": 16,
+          "estExtraHours": 0,
+          "conclusion": null
         }
       }
     ]
@@ -823,6 +872,13 @@
           "fit": "适合能睡卧铺、想压预算的背包客；怕折腾的选直达火车方案更省心",
           "notice": "兰州站到中川机场 70 公里，城际 50 分钟，衔接窗口 3h10m，下车直奔城际候车厅",
           "play_intro": "若改签到傍晚航班，兰州的牛肉面和中山桥值得留半天"
+        },
+        "geo": {
+          "verdict": "mainstream",
+          "ratio": 1.08,
+          "extraKm": 171,
+          "estExtraHours": 0,
+          "conclusion": null
         }
       },
       {
@@ -889,6 +945,13 @@
           "fit": "适合时间大把、预算极紧的背包客；全程 37h21m，怕久坐慎选",
           "notice": "进疆长线卧铺紧张，旺季退票后未必买得回原班次，定好行程再出票",
           "play_intro": "把长途当体验：过了嘉峪关，车窗外就是戈壁与风车"
+        },
+        "geo": {
+          "verdict": "mainstream",
+          "ratio": 1,
+          "extraKm": 0,
+          "estExtraHours": 0,
+          "conclusion": null
         }
       }
     ]
@@ -995,6 +1058,13 @@
           "fit": "适合预算敏感、能睡卧铺的背包客；想当日达的选直飞或飞机+飞机",
           "notice": "西安站到咸阳机场 40 公里，机场大巴约 70 分钟，衔接窗口 4h36m，别在市区多逗留",
           "play_intro": "若改签到傍晚航班，西安的城墙骑行和回民街小吃值得留一晚"
+        },
+        "geo": {
+          "verdict": "mainstream",
+          "ratio": 1,
+          "extraKm": 7,
+          "estExtraHours": 0,
+          "conclusion": null
         }
       },
       {
@@ -1082,6 +1152,13 @@
           "fit": "适合想省时间、能接受早起的背包客；行李多慎选两段托运",
           "notice": "同一航站楼内中转，衔接窗口 4h20m，下机后先确认第二程登机口",
           "play_intro": "中转时间足够吃碗油泼面，航站楼里有陕西小吃街"
+        },
+        "geo": {
+          "verdict": "mainstream",
+          "ratio": 1,
+          "extraKm": 7,
+          "estExtraHours": 0,
+          "conclusion": null
         }
       }
     ]

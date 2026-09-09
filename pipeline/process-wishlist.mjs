@@ -8,6 +8,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { getWishlist, saveWishlist } from './wishlist-store.mjs';
+import { geoPromptBlock } from './lib/geo-skill.mjs';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const store = JSON.parse(readFileSync(join(root, 'data/plans.json'), 'utf8'));
@@ -25,7 +26,7 @@ if (!pending.length) { console.log('✓ 暂无 pending 心愿'); process.exit(0)
 if (!doGenerate) {
   const prompts = pending.map((w) => ({
     wish_id: w.id, from: w.from, to: w.to, date: w.date,
-    prompt: `生成 ${w.from} → ${w.to} 的火车×飞机混搭方案。要求：至少 1 个混搭 + 1 个直达火车或飞机对照；所有价格须来自真实网络采样并标注来源； stops/segs/risks 必须符合 MixTouring 方案库 Schema；AI 文案中的数字只能以 {saved}/{price_mid}/{total_time}/{wait_min_1}/{transfer_min_1}/{transfer_km_1} 等占位符出现。`,
+    prompt: `生成 ${w.from} → ${w.to} 的火车×飞机混搭方案。要求：至少 1 个混搭 + 1 个直达火车或飞机对照；所有价格须来自真实网络采样并标注来源； stops/segs/risks 必须符合 MixTouring 方案库 Schema；AI 文案中的数字只能以 {saved}/{price_mid}/{total_time}/{wait_min_1}/{transfer_min_1}/{transfer_km_1} 等占位符出现。\n${geoPromptBlock(w.from, w.to)}`,
     route_exists_now: routeExists(w.from, w.to)
   }));
   const out = join(root, 'out/gen-prompts.json');

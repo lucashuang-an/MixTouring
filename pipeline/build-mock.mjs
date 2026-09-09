@@ -6,6 +6,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { buildServiceDB } from './lib/derive.mjs';
+import { enrichWithGeo } from './lib/geo-skill.mjs';
 import { validateStore } from './lib/validate-ai-copy.mjs';
 import { validateStorePlans } from './lib/validate-plan.mjs';
 
@@ -19,7 +20,7 @@ if (errors.length) {
   process.exit(1);
 }
 
-const db = buildServiceDB(store);
+const db = enrichWithGeo(buildServiceDB(store));
 
 function findPlanSource(id) {
   return store.plans.find((p) => p.id === id) || store.templates.find((t) => t.id === id) || null;

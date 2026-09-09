@@ -6,11 +6,12 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { buildServiceDB } from '../pipeline/lib/derive.mjs';
+import { enrichWithGeo } from '../pipeline/lib/geo-skill.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT) || 3000;
 const store = JSON.parse(readFileSync(join(root, 'pipeline/data/plans.json'), 'utf8'));
-const db = buildServiceDB(store);
+const db = enrichWithGeo(buildServiceDB(store));
 
 /* VERIFY_BASE：对远端部署实例跑同一套验证（如 VERIFY_BASE=https://xxx.onrender.com）；
  * 缺省验本地。注意：心愿队列断言会在目标实例登记/清理一条测试心愿 */
@@ -39,6 +40,18 @@ async function getJSON(path) {
 }
 
 async function main() {
+  /* 地理增强（geo-skill）：每条方案有 geo 字段；非主流方案垫底且 ≤2 条 */
+  for (const [routeId, route] of Object.entries(db.routes)) {
+    const nonIdx = route.plans.map((p) => p.geo?.verdict).indexOf('non_mainstream');
+    const nonCount = route.plans.filter((p) => p.geo?.verdict === 'non_mainstream').length;
+    if (nonCount <= 2 && (nonIdx === -1 || route.plans.slice(nonIdx).every((p) => p.geo.verdict === 'non_mainstream'))) {
+      console.log(`✓ geo 增强 ${routeId}（非主流 ${nonCount} 条，垫底且 ≤2）`);
+    } else {
+      failed++;
+      console.error(`✗ geo 增强 ${routeId} 异常：非主流 ${nonCount} 条，垫底顺序错误`);
+    }
+  }
+
   /* bootstrap 全量 DB */
   diff('/api/bootstrap', await getJSON('/api/bootstrap'), { cities: db.cities, routes: db.routes, templates: db.templates });
 
