@@ -89,7 +89,8 @@ async function main() {
   })());
 
   const p3 = await getJSON('/api/parse?q=' + encodeURIComponent('去玩吧'));
-  diff('/api/parse 去玩吧（无城市不编造）', p3, { from: null, to: null, date: null, conf: 0.4, engine: 'rule', note: '部分字段未识别，请手动补全', llm: false, model: 'rule' });
+  /* llm/model 为环境相关字段（是否注入 key），期望值从同环境 p1 响应动态取 */
+  diff('/api/parse 去玩吧（无城市不编造）', p3, { from: null, to: null, date: null, conf: 0.4, engine: 'rule', note: '部分字段未识别，请手动补全', llm: p1.llm, model: p1.model });
 
   /* GET /api/ask · Phase 2 触点③ grounded 问答：库内路线必须锚定真实方案 id；库外问题如实说没有 */
   const askRoute = await getJSON('/api/ask?q=' + encodeURIComponent('北京去喀什哪个方案最省钱'));

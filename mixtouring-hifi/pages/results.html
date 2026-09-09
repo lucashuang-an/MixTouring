@@ -368,8 +368,8 @@
       });
       return html + '</div>';
     }
-    /* 风险四因子 mini 行：原始值+判级，无总分 */
-    function riskRowHtml(risks) {
+    /* 风险四因子 mini 行：原始值+判级，无总分；play 有数据时追加「中转可玩」chip（§4.3 卡片要素） */
+    function riskRowHtml(risks, play) {
       var html = '<div class="flex items-center flex-wrap" style="gap:6px;">';
       risks.forEach(function (r) {
         var short = r.title.slice(0, 2);
@@ -378,6 +378,11 @@
           '<span style="width:6px;height:6px;border-radius:9999px;background:' + c + ';"></span>' +
           MT.esc(short) + ' <span style="color:' + c + ';">' + MT.esc(r.level) + '</span></span>';
       });
+      if (play && play.city) {
+        html += '<span class="flex items-center" style="gap:4px;font-size:11px;padding:3px 8px;border-radius:9999px;background:rgba(200,106,75,0.08);color:#A8543A;" title="中转城市可玩内容，详见方案详情">' +
+          '<svg style="width:11px;height:11px;"><use href="#hero-map-pin"></use></svg>' +
+          MT.esc(play.city) + '可玩</span>';
+      }
       return html + '</div>';
     }
 
@@ -398,7 +403,7 @@
         (p.ai && p.ai.summary
           ? '<p style="font-size:13px;color:var(--mixtouring-foreground,#1E2022);line-height:1.5;padding-top:10px;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;">' + MT.esc(p.ai.summary) + '</p>'
           : '') +
-        '<div class="pt-2">' + riskRowHtml(p.risks) + '</div>' +
+        '<div class="pt-2">' + riskRowHtml(p.risks, p.play) + '</div>' +
         '<div class="flex items-center justify-between" style="padding-top:12px;margin-top:12px;border-top:0.5px solid var(--mixtouring-border,#E8E9EB);">' +
           '<span style="font-size:12px;padding:3px 10px;border-radius:9999px;background:rgba(52,199,89,0.08);color:#34c759;">' + MT.esc(p.saved) + '</span>' +
           '<span class="flex items-center" style="font-size:13px;color:var(--mixtouring-muted-foreground,#7C8089);">详情<svg style="width:14px;height:14px;margin-left:2px;"><use href="#hero-chevron-right"></use></svg></span>' +

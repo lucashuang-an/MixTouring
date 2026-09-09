@@ -371,13 +371,13 @@
       var modeLabel = seg.mode === 'plane' ? '飞机' : '火车';
       var arrNote = seg.arrNote ? ' <span style="font-size:11px;color:var(--mixtouring-muted-foreground,#7C8089);">' + MT.esc(seg.arrNote) + '</span>' : '';
       return '<div class="flex" style="gap:12px;">' +
-        '<div class="flex flex-col items-center" style="width:56px;flex-shrink:0;">' +
-          '<div class="w-full text-center px-2 py-0.5" style="border-radius:8px;background:var(--mixtouring-muted,#F4F5F7);font-size:11px;color:var(--mixtouring-foreground,#1E2022);">' + MT.esc(seg.fromStation) + '</div>' +
+        '<div class="flex flex-col items-center" style="min-width:56px;flex-shrink:0;">' +
+          '<div class="w-full text-center px-2 py-0.5" style="border-radius:8px;background:var(--mixtouring-muted,#F4F5F7);font-size:11px;color:var(--mixtouring-foreground,#1E2022);white-space:nowrap;">' + MT.esc(seg.fromStation) + '</div>' +
           '<div class="w-px flex-1" style="min-height:16px;background:var(--mixtouring-border,#E8E9EB);"></div>' +
           '<div class="w-6 h-6 rounded-full flex items-center justify-center" style="background:var(--mixtouring-muted,#F4F5F7);">' +
             modeIcon(seg.mode, 12, seg.mode === 'plane' ? 'var(--mixtouring-ring,#C86A4B)' : 'var(--mixtouring-foreground,#1E2022)') + '</div>' +
           '<div class="w-px flex-1" style="min-height:16px;background:var(--mixtouring-border,#E8E9EB);"></div>' +
-          '<div class="w-full text-center px-2 py-0.5" style="border-radius:8px;background:var(--mixtouring-muted,#F4F5F7);font-size:11px;color:var(--mixtouring-foreground,#1E2022);">' + MT.esc(seg.toStation) + '</div>' +
+          '<div class="w-full text-center px-2 py-0.5" style="border-radius:8px;background:var(--mixtouring-muted,#F4F5F7);font-size:11px;color:var(--mixtouring-foreground,#1E2022);white-space:nowrap;">' + MT.esc(seg.toStation) + '</div>' +
         '</div>' +
         '<div class="flex-1 min-w-0 flex flex-col justify-between" style="padding:1px 0;">' +
           '<div class="flex items-start justify-between gap-2">' +

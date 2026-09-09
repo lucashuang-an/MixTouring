@@ -144,12 +144,14 @@ function assignFromTo(text, seq) {
 
 /* ---------- LLM 优先，规则兜底 ---------- */
 
-const SCHEMA_PROMPT = (citiesJson) =>
+const SCHEMA_PROMPT = (citiesJson, today, exampleYear) =>
   `你是 MixTouring 的行程解析器。把用户那句中文自然语言解析成一次出行的字段。` +
+  `今天是 ${today}。` +
   `只输出 JSON 对象，字段：from（出发城市）、to（目的地）、date（出发日期 YYYY/M/D）。` +
   `城市必须取自此列表：${citiesJson}；识别不到就置 null，绝不编造。` +
-  `日期可用今天/明天/后天/本周X/国庆/五一/元旦等口语，转成具体 YYYY/M/D；识别不到置 null。` +
-  `输出示例：{"from":"杭州","to":"喀什","date":"2026/10/1"}`;
+  `日期可用今天/明天/后天/本周X/国庆/五一/元旦等口语，转成具体 YYYY/M/D；` +
+  `解析出的日期不得早于今天——节日或日期已过就顺延到下一个该节日（明年）；识别不到置 null。` +
+  `输出示例：{"from":"杭州","to":"喀什","date":"${exampleYear}/10/1"}`;
 
 /**
  * 解析一句自然语言行程描述。
@@ -161,16 +163,25 @@ export async function parseTrip(text, cities) {
   const q = String(text || '').trim();
   if (!q) return { from: null, to: null, date: null, conf: 0, engine: 'none', note: '空输入' };
   const citiesJson = JSON.stringify(cities);
+  const today = fmtDate(new Date());
+  const exampleYear = new Date().getFullYear() + 1;
 
   // 1) LLM 优先（注入 key 后自动启用，schema 约束只出字段）
   const llmOut = await callJson({
-    schema_prompt: SCHEMA_PROMPT(citiesJson),
+    schema_prompt: SCHEMA_PROMPT(citiesJson, today, exampleYear),
     user: '行程：' + q
   });
   if (llmOut && typeof llmOut === 'object') {
     const from = llmOut.from && cities.includes(llmOut.from) ? llmOut.from : null;
     const to = llmOut.to && cities.includes(llmOut.to) ? llmOut.to : null;
-    const date = /^\d{4}\/\d{1,2}\/\d{1,2}$/.test(llmOut.date) ? llmOut.date : null;
+    let date = /^\d{4}\/\d{1,2}\/\d{1,2}$/.test(llmOut.date) ? llmOut.date : null;
+    /* 代码层兜底：LLM 无视「不得早于今天」返回过去日期时，顺延年份直到不早于今天（防幻觉） */
+    if (date) {
+      const d = new Date(+date.slice(0, 4), +date.split('/')[1] - 1, +date.split('/')[2]);
+      const now = new Date(); now.setHours(0, 0, 0, 0);
+      while (d < now) d.setFullYear(d.getFullYear() + 1);
+      date = fmtDate(d);
+    }
     if (from || to || date) {
       return {
         from, to,
