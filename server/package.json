@@ -8,6 +8,9 @@
     "start": "node --env-file-if-exists=.env index.mjs",
     "verify": "node verify.mjs"
   },
+  "engines": {
+    "node": ">=22.9"
+  },
   "dependencies": {
     "koa": "^2.15.3"
   }

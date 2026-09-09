@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22  # start 脚本用 --env-file-if-exists（Node ≥22.9），CI 与运行要求对齐
       - name: 安装后端依赖
         working-directory: server
         run: npm ci
