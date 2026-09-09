@@ -138,7 +138,7 @@ if (genIdx > -1) {
   const items = [];
   for (const plan of pending) {
     console.log('· 生成 ' + plan.id + ' …');
-    const out = await callJson({ schema_prompt: SCHEMA_PROMPT, user: '方案事实：' + JSON.stringify(planFacts(plan)) });
+    const out = await callJson({ schema_prompt: SCHEMA_PROMPT, user: '方案事实：' + JSON.stringify(planFacts(plan)), kind: 'copy' });
     if (!out || typeof out !== 'object') {
       console.error('✗ LLM 未返回有效 JSON，中止；已生成 ' + items.length + ' 份未写盘');
       process.exit(1);

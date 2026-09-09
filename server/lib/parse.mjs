@@ -169,7 +169,8 @@ export async function parseTrip(text, cities) {
   // 1) LLM 优先（注入 key 后自动启用，schema 约束只出字段）
   const llmOut = await callJson({
     schema_prompt: SCHEMA_PROMPT(citiesJson, today, exampleYear),
-    user: '行程：' + q
+    user: '行程：' + q,
+    kind: 'parse'
   });
   if (llmOut && typeof llmOut === 'object') {
     const from = llmOut.from && cities.includes(llmOut.from) ? llmOut.from : null;

@@ -105,7 +105,7 @@ export async function answerAsk(q, db) {
   const routes = pickRoutes(query, db);
   const ctxJson = JSON.stringify(buildContext(routes));
 
-  const llmOut = await callJson({ schema_prompt: QA_SCHEMA(ctxJson), user: '用户问题：' + query });
+  const llmOut = await callJson({ schema_prompt: QA_SCHEMA(ctxJson), user: '用户问题：' + query, kind: 'ask' });
   if (llmOut && typeof llmOut.answer === 'string' && llmOut.answer.trim()) {
     const answer = llmOut.answer.trim();
     const refs = Array.isArray(llmOut.refs) ? llmOut.refs.filter((id) => ctxJson.includes('"' + id + '"')) : [];

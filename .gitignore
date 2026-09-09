@@ -26,3 +26,6 @@ TraeWork Copy/
 .trae-html-share-packages/
 travel-app-hifi/
 travel-booking-app/
+
+# LLM 用量日志
+server/logs/
