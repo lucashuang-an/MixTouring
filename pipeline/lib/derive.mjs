@@ -22,6 +22,7 @@ function gradeConnection(raw) {
 }
 
 function gradeBaggage(raw) {
+  raw.modes = Array.isArray(raw.modes) ? raw.modes : [];
   const planeTransfers = raw.modes.filter((m, i) => m === 'plane' && i > 0).length;
   const level = planeTransfers === 0 ? '低' : planeTransfers === 1 ? '中' : '高';
   const ruleLine = level === '低' ? '全程火车，随身带上车'
@@ -49,7 +50,8 @@ const GRADERS = { connection: gradeConnection, baggage: gradeBaggage, refund: gr
 export function deriveRisks(risks) {
   return risks.map((r) => {
     if (r.factor === 'advisory') return { title: r.title, level: r.level, lines: r.lines };
-    const g = GRADERS[r.factor](r.raw);
+    const raw = (r.raw && typeof r.raw === 'object' && !Array.isArray(r.raw)) ? r.raw : {};
+    const g = GRADERS[r.factor](raw);
     return { title: g.title, level: g.level, lines: [g.ruleLine, ...(r.narrative || [])] };
   });
 }

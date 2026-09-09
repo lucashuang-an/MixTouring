@@ -154,6 +154,12 @@ async function main() {
     console.log('✓ 清理后队列不含测试心愿');
   } else { failed++; console.error('✗ 测试心愿未清理干净'); }
 
+  /* POST /api/wishlist/process（不显式 run：只报数不触发 LLM，CI 安全） */
+  const procRes = await (await fetch(BASE + '/api/wishlist/process', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({}) })).json();
+  if (procRes.code === 0 && procRes.data && procRes.data.accepted === false && typeof procRes.data.pending === 'number') {
+    console.log('✓ /api/wishlist/process 探测模式（accepted:false，pending ' + procRes.data.pending + '）');
+  } else { failed++; console.error('✗ /api/wishlist/process 探测异常：' + JSON.stringify(procRes).slice(0, 200)); }
+
   console.log(failed ? `\n✗ ${failed} 项不一致` : '\n✓ 全部接口与 mock.js 派生结果一致');
   process.exit(failed ? 1 : 0);
 }

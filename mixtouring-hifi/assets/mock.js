@@ -1,6 +1,6 @@
 /* MixTouring HIFI — mock.js · 全链路单一数据源
  * ⚠️ 本文件由 pipeline/build-mock.mjs 生成，请勿手改；数据维护在 pipeline/data/plans.json
- * 生成时间：2026-09-09T17:22:37.518Z · 数据版本：0.1.0 */
+ * 生成时间：2026-09-09T18:13:53.215Z · 数据版本：0.1.0 */
 (function () {
   'use strict';
 

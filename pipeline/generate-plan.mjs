@@ -4,64 +4,16 @@
  * 守门：结构一致性（validate-plan）+ AI 文案（validate-ai-copy）+ 合并后全库校验，任一不过不写回。
  * 默认 AI 文案强制 draft（人工 review 后改 verified 再上页）；--verified 表示已在会话内 review。
  * 写回成功后自动把心愿队列（wishlist.json）中对应的 pending 心愿回流为 generated（Phase 3 闭环）。
- * 核心写回逻辑导出为 mergeGenerated（server 侧复用同一守门）。 */
+ * 核心守门在 pipeline/lib/merge-generated.mjs（collect-wish 采集执行器复用同一实现）。 */
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { validateStorePlans } from './lib/validate-plan.mjs';
-import { validateAICopy } from './lib/validate-ai-copy.mjs';
+import { mergeGenerated } from './lib/merge-generated.mjs';
 import { getWishlist, saveWishlist } from './wishlist-store.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const dataPath = join(root, 'pipeline/data/plans.json');
-
-/* 三重守门合并（不写盘）：结构校验 → AI 文案校验 → 合并后全库校验。
- * @returns {{ok:boolean, errors:string[], log:string[]}} ok=false 时 store 可能已被部分合并，调用方应弃用 */
-export function mergeGenerated(store, gen, { verified = false } = {}) {
-  const errors = [];
-  const log = [];
-  if (!gen || !gen.route_pair || !Array.isArray(gen.plans) || !gen.plans.length) {
-    return { ok: false, errors: ['输入须含 route_pair 与非空 plans[]'], log };
-  }
-  const now = new Date().toISOString();
-  gen.plans.forEach((p) => {
-    if (p.ai) {
-      p.ai.status = verified ? 'verified' : 'draft';
-      if (verified && !p.ai.verified_at) p.ai.verified_at = now;
-      if (!p.ai.generated_at) p.ai.generated_at = now;
-    }
-  });
-
-  /* 合并：新路线对 / 追加到既有路线对 */
-  const rp = gen.route_pair;
-  const existRp = store.route_pairs.find((x) => x.route_id === rp.route_id);
-  if (existRp) {
-    for (const p of gen.plans) {
-      if (store.plans.some((x) => x.id === p.id)) return { ok: false, errors: [`${p.id} 已存在`], log };
-      store.plans.push(p);
-      existRp.plan_ids.push(p.id);
-    }
-    log.push(`向既有路线 ${rp.route_id} 追加 ${gen.plans.length} 个方案`);
-  } else {
-    if (rp.route_id !== `${rp.from}-${rp.to}`) return { ok: false, errors: ['route_id 须为 from-to'], log };
-    store.route_pairs.push({ ...rp, plan_ids: gen.plans.map((p) => p.id) });
-    gen.plans.forEach((p) => store.plans.push(p));
-    log.push(`新增路线 ${rp.route_id}（${gen.plans.length} 个方案）`);
-  }
-
-  /* 城市覆盖补齐 */
-  gen.plans.forEach((p) => {
-    [p.from, p.to, ...p.stops.map((s) => s.city)].forEach((c) => {
-      if (!store.cities.includes(c)) { store.cities.push(c); log.push(`城市列表新增「${c}」`); }
-    });
-  });
-
-  /* 合并后全库一致性 + AI 文案（三重守门最后一道） */
-  errors.push(...validateStorePlans(store));
-  store.plans.concat(store.templates.filter((t) => !t.ref)).forEach((p) => errors.push(...validateAICopy(p.ai, p.id)));
-  return { ok: errors.length === 0, errors, log };
-}
 
 /* CLI 入口 */
 const args = process.argv.slice(2);

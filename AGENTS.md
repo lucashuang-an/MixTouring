@@ -15,7 +15,8 @@
 | 地理技能自测 | `node pipeline/check-geo.mjs` | 纯函数，无需起服务 |
 | 重建前端数据 | `node pipeline/build-mock.mjs` | `mock.js` 是生成文件，**勿手改** |
 | AI 文案生成（离线） | `node pipeline/generate-ai-copy.mjs --generate` | 需 `LLM_API_KEY`；产出过防幻觉守门才写盘 |
-| CI | push 自动触发 | GitHub Actions 跑 verify + check-pages + check-geo |
+| 心愿自动采集 | `node --env-file-if-exists=server/.env pipeline/collect-wish.mjs --all --limit 2` | 联网采样→守门写回→心愿回流；失败自动计数转人工 |
+| CI | push 自动触发 | GitHub Actions 跑 verify + check-pages + check-geo；collect 定时任务需配 Secrets 并设 `LLM_COLLECT=1` |
 
 **提交前三件套（必跑，全绿才提交）**：`check-pages` + `check-geo` + `verify`。
 
@@ -102,10 +103,10 @@ MIXTOURING/
 |---|---|
 | Phase 1 薄后端读接口（Koa 包 derive 为服务层，api.js 桩切 fetch） | ✅ v0.6.0 |
 | Phase 2 LLM 三触点（①自然语言搜索解析 ②AI 文案生成 ③站内 grounded 问答） | ✅ v0.7.0–0.8.0，真模型 v0.11.x |
-| Phase 3 心愿单异步闭环（服务端队列+守门写回+热重载+状态回流） | ✅ v0.9.0 |
+| Phase 3 心愿单异步闭环（服务端队列+守门写回+热重载+状态回流+采集执行器） | ✅ v0.9.0 + v0.15.0 |
 | Phase 4 数据源正规化（聚合商 API 或策展库扩线） | ⬜ 长期 |
 
-**当前：产品功能调优打磨期**——先以用户视角全量走查评估，按优先级逐项改进；每项改进遵守 §1 工作流。
+**当前：产品功能调优打磨期**——P1 已清空（v0.14.0），采集执行器已自动化（v0.15.0，瓶颈=glm-4-flash 检索采样质量）；剩余 P2/P3 按 `工作记录.md` v0.13.1 清单推进；每项改进遵守 §1 工作流。
 
 ### 6.3 资产转正映射
 

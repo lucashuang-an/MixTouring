@@ -48,32 +48,40 @@ function logUsage(kind, usage) {
 /**
  * 让 LLM 返回一个 JSON 对象（OpenAI 兼容 /chat/completions）。
  * 未配置 key 时 resolve(null)，调用方应回退到规则/词典实现（保持闭环可离线运行）。
- * @param {object} opts { schema_prompt, user, kind }  kind 为任务标识（parse/ask/copy），用于用量归因
+ * @param {object} opts { schema_prompt, user, kind, webSearch, timeoutMs }
+ *   kind 为任务标识（parse/ask/copy/collect），用于用量归因；
+ *   webSearch=true 开启智谱内置联网检索（采集执行器采样用）；开检索时放弃 json_object 严格模式（二者不兼容），靠正则提取 JSON。
  * @returns {Promise<object|null>}
  */
 export async function callJson(opts) {
   if (!llmConfigured()) return null;
   try {
+    const body = {
+      model: MODEL,
+      temperature: opts.webSearch ? 0.3 : 0.2,
+      messages: [
+        { role: 'system', content: opts.schema_prompt || '只输出 JSON 对象。' },
+        { role: 'user', content: opts.user }
+      ]
+    };
+    if (opts.webSearch) {
+      body.tools = [{ type: 'web_search', web_search: { enable: true, search_count: 8 } }];
+    } else {
+      body.response_format = { type: 'json_object' };
+    }
     const res = await fetch(`${BASE}/chat/completions`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
         authorization: `Bearer ${KEY}`
       },
-      body: JSON.stringify({
-        model: MODEL,
-        temperature: 0.2,
-        response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: opts.schema_prompt || '只输出 JSON 对象。' },
-          { role: 'user', content: opts.user }
-        ]
-      })
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(opts.timeoutMs || 30000)
     });
     if (!res.ok) throw new Error('LLM HTTP ' + res.status);
-    const body = await res.json();
-    logUsage(opts.kind, body.usage);
-    const raw = body.choices?.[0]?.message?.content;
+    const resBody = await res.json();
+    logUsage(opts.kind, resBody.usage);
+    const raw = resBody.choices?.[0]?.message?.content;
     if (!raw) return null;
     // 兼容模型可能在代码块里包 JSON
     const m = raw.match(/\{[\s\S]*\}/);

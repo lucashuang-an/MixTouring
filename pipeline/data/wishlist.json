@@ -6,7 +6,10 @@
       "to": "拉萨",
       "date": "2026/10/01",
       "status": "pending",
-      "ts": 1772985600000
+      "ts": 1772985600000,
+      "attempts": 2,
+      "lastError": "守门未过：输入须含 route_pair 与非空 plans[]",
+      "lastAttemptAt": "2026-09-09T18:15:55.232Z"
     },
     {
       "id": "wish-nj-ks-1788874268300",

@@ -126,6 +126,27 @@ app.use(async (ctx, next) => {
     return;
   }
 
+  /* POST /api/wishlist/process → 触发采集执行器（后台 detached 子进程，不阻塞服务）
+   * body { run:true } 才真正执行；缺省只报数（verify/前端探测用，避免误触发 LLM 消耗） */
+  if (path === '/api/wishlist/process' && ctx.method === 'POST') {
+    const pendingCount = listWishes().filter((w) => w.status === 'pending' && (w.attempts || 0) < 3).length;
+    const body = await readBody(ctx);
+    if (body.run !== true) {
+      ctx.body = { code: 0, data: { accepted: false, pending: pendingCount } };
+      return;
+    }
+    if (!llmConfigured()) { ctx.body = { code: 1, msg: 'LLM_API_KEY 未配置，采集执行器不可用' }; return; }
+    if (!pendingCount) { ctx.body = { code: 0, data: { accepted: false, pending: 0, note: '无可处理心愿' } }; return; }
+    const { spawn } = await import('node:child_process');
+    const child = spawn(process.execPath, [join(root, 'pipeline/collect-wish.mjs'), '--all'], {
+      cwd: root, detached: true, stdio: 'ignore'
+    });
+    child.unref();
+    console.log(`▶ 采集执行器已后台启动（PID ${child.pid}，pending ${pendingCount}）`);
+    ctx.body = { code: 0, data: { accepted: true, pending: pendingCount } };
+    return;
+  }
+
   /* GET /api/parse?q= → 自然语言行程解析（Phase 2 · 触点①，规则版闭环，注入 key 后切 LLM）
    * 返回 { from, to, date, conf, engine, note }；识别不到的字段为 null，绝不编造 */
   if (path === '/api/parse') {
