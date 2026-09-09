@@ -5,7 +5,7 @@
   "type": "module",
   "description": "MixTouring Phase 1 · 薄后端读接口（原生 Koa + derive.mjs 服务层）",
   "scripts": {
-    "start": "node index.mjs",
+    "start": "node --env-file-if-exists=.env index.mjs",
     "verify": "node verify.mjs"
   },
   "dependencies": {

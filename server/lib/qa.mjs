@@ -84,9 +84,13 @@ const QA_SCHEMA = (ctxJson) =>
   '输出 JSON：{"answer":"...","refs":["p-xxx"]}\n' +
   'context：' + ctxJson;
 
-/* 数字锚定校验：答案里的每个数字串都必须在 context 原文中出现 */
+/* 数字锚定校验：答案里的每个数字串都必须在 context 原文中出现。
+ * 两边统一去掉千分位逗号后比对（库内价格「¥1,753」与 LLM 输出「1753」视为同一数字） */
+function normNum(s) { return String(s).replace(/,/g, ''); }
+
 function numbersGrounded(answer, ctxJson) {
-  return (answer.match(/[0-9][0-9,.]*/g) || []).every((n) => ctxJson.includes(n.replace(/,/g, '')));
+  const ctxNorm = normNum(ctxJson);
+  return (answer.match(/[0-9][0-9,.]*/g) || []).every((n) => ctxNorm.includes(normNum(n)));
 }
 
 /**
