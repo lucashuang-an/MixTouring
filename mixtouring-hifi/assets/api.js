@@ -158,13 +158,13 @@
     });
   }
 
-  /* GET /api/ask?q= → { code, data: { answer, refs, engine, model } }
-   * Phase 2 触点③：站内 grounded 问答（答案只基于方案库数据）。问答必须走服务端（LLM key 在服务端），
-   * 后端不可达时返回 code:1，本地不编造答案 */
+  /* GET /api/ask?q=&collect=1 → { code, data: { answer, refs, engine, model, followUp? } }
+   * Phase 2 触点③ + Phase 3 衔接：collect=1 时缺数据路线自动登记心愿并触发 AI 采集，
+   * followUp = { wishRegistered, wishId, from, to, collecting, note? }。问答必须走服务端，本地不编造答案 */
   function askQ(q) {
     return probe().then(function (ok) {
       if (!ok) return { code: 1, msg: '问问 AI 需要启动后端服务' };
-      return getEnvelope('/api/ask?q=' + encodeURIComponent(q)).catch(function () {
+      return getEnvelope('/api/ask?q=' + encodeURIComponent(q) + '&collect=1').catch(function () {
         return { code: 1, msg: '问答服务暂时不可用' };
       });
     });

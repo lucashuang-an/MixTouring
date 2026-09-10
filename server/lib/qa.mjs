@@ -31,6 +31,28 @@ function unmatchedGeoCities(q, routes) {
   return missed;
 }
 
+/* 心愿衔接建议（Phase 3×QA）：问答缺数据时，若能识别出明确的出发地+目的地双城
+ *（词典或地理库），返回 {from,to} 供上层登记心愿并触发采集；已有路线/单城/不相关返回 null */
+export function suggestWish(q, db) {
+  const hits = [];
+  for (const c of db.cities) {
+    const i = q.indexOf(c);
+    if (i !== -1) hits.push({ city: c, idx: i });
+  }
+  for (const name of loadGeo().byName.keys()) {
+    if (db.cities.includes(name)) continue;
+    const i = q.indexOf(name);
+    if (i !== -1) hits.push({ city: name, idx: i });
+  }
+  if (hits.length < 2) return null;
+  hits.sort((a, b) => a.idx - b.idx);
+  const from = hits[0].city;
+  const to = hits[hits.length - 1].city;
+  if (from === to) return null;
+  if (db.routes[from + '-' + to]) return null; /* 已有数据，无需生成 */
+  return { from, to };
+}
+
 /* 两端都提到的路线对优先；只提到一端则给涉及该城市的路线。最多 2 条，控 context 体积。
  * 同时返回 missed：问题中提到（含词典外地理城市）、但选中路线没有覆盖到的城市（答案必须显式声明无数据） */
 export function pickRoutes(q, db) {

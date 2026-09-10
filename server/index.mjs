@@ -12,7 +12,7 @@ import { enrichWithGeo } from '../pipeline/lib/geo-skill.mjs';
 import { validateStore } from '../pipeline/lib/validate-ai-copy.mjs';
 import { validateStorePlans } from '../pipeline/lib/validate-plan.mjs';
 import { parseTrip } from './lib/parse.mjs';
-import { answerAsk } from './lib/qa.mjs';
+import { answerAsk, suggestWish } from './lib/qa.mjs';
 import { addWish, listWishes, removeWish } from './lib/wishlist.mjs';
 import { llmConfigured, llmModel } from './lib/llm.mjs';
 
@@ -157,14 +157,43 @@ app.use(async (ctx, next) => {
     return;
   }
 
-  /* GET /api/ask?q= → 站内问答（Phase 2 · 触点③，grounded：答案数字必须来自库内数据）
-   * 返回 { answer, refs, engine, model }；refs 为引用的方案 id，前端渲染成详情跳转 */
+  /* GET /api/ask?q=&collect=1 → 站内问答（Phase 2 · 触点③，grounded：答案数字必须来自库内数据）
+   * 返回 { answer, refs, engine, model, followUp? }；refs 为引用的方案 id，前端渲染成详情跳转。
+   * collect=1（前端问答带此参）：缺数据且能识别双城时，自动登记心愿并后台触发采集执行器
+   * （两步流：①查库 ②缺→进 AI 生成环节）；verify/CI 不带此参，零副作用 */
   if (path === '/api/ask') {
     const query = qstr(q.q);
     if (!query) { ctx.body = { code: 1, msg: '缺少 q 参数' }; return; }
     try {
       const out = await answerAsk(query, db);
-      ctx.body = { code: 0, data: { ...out, model: out.engine === 'llm' ? llmModel() : 'rule' } };
+      let followUp = null;
+      if (q.collect === '1') {
+        const sug = suggestWish(query, db);
+        if (sug) {
+          const added = addWish({ from: sug.from, to: sug.to, date: '' });
+          if (added.item) {
+            followUp = { wishRegistered: true, wishId: added.item.id, from: sug.from, to: sug.to, collecting: false };
+            if (llmConfigured()) {
+              const pendingWish = listWishes().find((w) => w.id === added.item.id);
+              const exhausted = pendingWish && (pendingWish.attempts || 0) >= 3;
+              if (!exhausted) {
+                const { spawn } = await import('node:child_process');
+                const child = spawn(process.execPath, [join(root, 'pipeline/collect-wish.mjs'), '--wish', added.item.id], {
+                  cwd: root, detached: true, stdio: 'ignore'
+                });
+                child.unref();
+                followUp.collecting = true;
+                console.log(`▶ 问答衔接采集：${sug.from} → ${sug.to}（${added.item.id}，PID ${child.pid}）`);
+              } else {
+                followUp.note = '该路线此前多次采集未获合格方案，已转人工评估';
+              }
+            } else {
+              followUp.note = '已登记，采集服务未配置（LLM_API_KEY 缺失）';
+            }
+          }
+        }
+      }
+      ctx.body = { code: 0, data: { ...out, followUp, model: out.engine === 'llm' ? llmModel() : 'rule' } };
     } catch (err) {
       console.error('✗ /api/ask：' + err.message);
       ctx.body = { code: 0, data: { answer: '问答服务出了点问题，请稍后再试。', refs: [], engine: 'rule', model: 'rule' } };

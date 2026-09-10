@@ -36,6 +36,17 @@
       "date": "2026/09/27",
       "status": "pending",
       "ts": 1789052347024
+    },
+    {
+      "id": "wish-1789053342291-666",
+      "from": "北京",
+      "to": "西双版纳",
+      "date": "",
+      "status": "pending",
+      "ts": 1789053342291,
+      "attempts": 1,
+      "lastError": "守门未过：输入须含 route_pair 与非空 plans[]",
+      "lastAttemptAt": "2026-09-10T15:17:02.171Z"
     }
   ]
 }

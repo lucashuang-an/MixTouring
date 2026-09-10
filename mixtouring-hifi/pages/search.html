@@ -554,6 +554,7 @@
         <button class="cal-nav-btn" id="qaClose" aria-label="关闭"><svg class="w-4 h-4" style="color: var(--mixtouring-foreground, #1E2022);"><use href="#hero-x-mark"></use></svg></button>
       </div>
       <div id="qaAnswer" class="text-[13.5px]" style="color: var(--mixtouring-foreground, #1E2022); line-height: 1.7; white-space: pre-line; min-height: 72px; max-height: 40vh; overflow-y: auto;">答案只基于方案库真实数据：问库里有哪条线、哪个最省、衔接要注意什么。例：「北京去喀什哪个方案最省？」</div>
+      <div id="qaFollowUp" style="display:none;margin-top:10px;padding:8px 12px;border-radius:12px;background:rgba(200,106,75,0.08);font-size:12.5px;color:#A8543A;line-height:1.6;"></div>
       <div id="qaRefs" class="flex flex-wrap gap-2" style="margin-top: 10px;"></div>
       <div class="flex items-center gap-2" style="margin-top: 14px;">
         <input id="qaInput" class="flex-1 min-w-0" type="text" placeholder="例如：北京去喀什哪个方案最省" aria-label="问问 AI"
@@ -644,6 +645,17 @@
           return;
         }
         qaAnswer.textContent = res.data.answer || '没答上来，换个问法试试';
+        /* 缺数据路线自动衔接生成环节：展示登记/采集状态（Phase 3×QA 两步流） */
+        var fu = res.data.followUp;
+        var fuLine = document.getElementById('qaFollowUp');
+        if (fu && fu.wishRegistered) {
+          fuLine.textContent = fu.collecting
+            ? '✦ 已自动登记 ' + fu.from + ' → ' + fu.to + ' 离线探索，AI 正在联网采集（约 1–2 分钟），完成后「我的」页可见'
+            : '✦ 已自动登记 ' + fu.from + ' → ' + fu.to + ' 离线探索' + (fu.note ? '（' + fu.note + '）' : '') + '，可在「我的」页跟踪';
+          fuLine.style.display = 'block';
+        } else {
+          fuLine.style.display = 'none';
+        }
         (res.data.refs || []).forEach(function (id) {
           var b = document.createElement('button');
           b.className = 'rounded-full';
