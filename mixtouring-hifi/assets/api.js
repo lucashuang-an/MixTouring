@@ -203,11 +203,24 @@
     });
   }
 
-  /* GET /api/wishlist → { code, data: [{ id, from, to, date, status, ... }] } */
+  /* GET /api/wishlist → { code, data: [{ id, from, to, date, status, stage?, ... }] } */
   function fetchWishes() {
     return probe().then(function (ok) {
       if (!ok) return { code: 1, msg: 'offline' };
       return getEnvelope('/api/wishlist').catch(function () { return { code: 1, msg: 'offline' }; });
+    });
+  }
+
+  /* POST /api/wishlist/process { run:true, id? } → 触发采集执行器（id 缺省为全量 pending）
+   * → { code, data: { accepted, note?, collecting? } } */
+  function wishProcess(rec) {
+    return probe().then(function (ok) {
+      if (!ok) return { code: 1, msg: 'offline' };
+      return fetch('/api/wishlist/process', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(rec)
+      }).then(function (r) { return r.json(); }).catch(function () { return { code: 1, msg: 'offline' }; });
     });
   }
 
@@ -219,6 +232,7 @@
     askQ: askQ,
     wishRegister: wishRegister,
     fetchWishes: fetchWishes,
+    wishProcess: wishProcess,
     postFeedback: postFeedback
   };
 })();

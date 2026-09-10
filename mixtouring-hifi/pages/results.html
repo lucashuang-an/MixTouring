@@ -253,7 +253,7 @@
         <svg style="width: 26px; height: 26px; color: var(--mixtouring-muted-foreground, #7C8089);"><use href="#hero-map"></use></svg>
       </div>
       <div style="font-size: 17px; color: var(--mixtouring-foreground, #1E2022); margin-top: 16px;">这条线路还没有方案数据</div>
-      <div style="font-size: 13px; color: var(--mixtouring-muted-foreground, #7C8089); margin-top: 8px; line-height: 1.6;">MixTouring 只展示有真实样本的路线，不为这条线路编造价格。可以让 AI 离线探索，生成后提醒你。</div>
+      <div style="font-size: 13px; color: var(--mixtouring-muted-foreground, #7C8089); margin-top: 8px; line-height: 1.6;">MixTouring 只展示有真实样本的路线，不为这条线路编造价格。可以让 AI 联网探索这条线，生成后弹窗通知你。</div>
       <div id="wishWrap" class="flex flex-col items-center" style="gap: 10px; margin-top: 18px; width: 100%;">
         <button id="btnWish" class="demo-chip" style="width: calc(100% - 64px); max-width: 280px; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; color: var(--mixtouring-primary-foreground, #FFFFFF); background: var(--mixtouring-primary, #111111); border: none; border-radius: 9999px; padding: 12px 20px; cursor: pointer; font-family: inherit; box-shadow: var(--shadow-card-soft, 0 4px 20px -2px rgba(0,0,0,0.08));">
           <svg style="width:14px;height:14px;"><use href="#hero-sparkles"></use></svg>
@@ -308,36 +308,101 @@
     });
     MT.wireNav();
 
-    /* ---------- 心愿单登记 ---------- */
+    /* ---------- 心愿单登记（v0.17：无数据路线即查即采——登记/已在采集 → 原位进度条 → 完成弹窗） ---------- */
     function initWish() {
       var btn = document.getElementById('btnWish');
       var hint = document.getElementById('wishHint');
+      var wrap = document.getElementById('wishWrap');
       var idx = MT.wishIndex(from, to);
-      if (idx !== -1) {
-        var w = MT.wishList()[idx];
-        btn.disabled = true;
-        btn.style.opacity = '0.5';
-        if (w.status === 'generated') {
-          btn.innerHTML = '<svg style="width:14px;height:14px;"><use href="#hero-sparkles"></use></svg><span>已生成，点此查看</span>';
-          btn.style.opacity = '1';
-          btn.disabled = false;
-          btn.addEventListener('click', function () { location.href = 'loading.html?' + new URLSearchParams({ from: from, to: to, date: date }); });
-        } else {
-          btn.innerHTML = '<svg style="width:14px;height:14px;"><use href="#hero-sparkles"></use></svg><span>已在探索中</span>';
-          hint.textContent = '已登记，生成后可在「我的」查看进度';
-          hint.style.display = 'block';
-        }
-        return;
+      var localWish = idx !== -1 ? MT.wishList()[idx] : null;
+
+      function goView() { MT.go('loading.html', { from: from, to: to, date: date }); }
+      function showGeneratedChip() {
+        wrap.innerHTML = '<button id="btnViewGen" class="demo-chip" style="width: calc(100% - 64px); max-width: 280px; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; color: var(--mixtouring-primary-foreground, #FFFFFF); background: var(--mixtouring-primary, #111111); border: none; border-radius: 9999px; padding: 12px 20px; cursor: pointer; font-family: inherit;">' +
+          '<svg style="width:14px;height:14px;"><use href="#hero-sparkles"></use></svg><span>方案已生成，点此查看</span></button>';
+        document.getElementById('btnViewGen').addEventListener('click', goView);
       }
-      btn.addEventListener('click', function () {
-        MT.wishAdd({ from: from, to: to, date: date });
-        API.wishRegister({ from: from, to: to, date: date }); /* 同步入服务端队列（Phase 3），失败静默 */
-        MT.toast('已登记心愿，AI 离线探索中');
+      function mountProgress() {
+        btn.style.display = 'none';
+        hint.style.display = 'none';
+        var mount = document.createElement('div');
+        mount.style.cssText = 'width: calc(100% - 64px); max-width: 320px; padding: 12px 16px; border-radius: 16px; background: rgba(200,106,75,0.06); border: 0.5px solid var(--mixtouring-border, #E8E9EB); text-align: left;';
+        wrap.appendChild(mount);
+        return MT.wishProgress({
+          from: from, to: to, mount: mount,
+          onDone: function () {
+            showGeneratedChip();
+            MT.modal({
+              title: '省钱方案已生成 ✦',
+              body: from + ' → ' + to + ' 的联网探索完成，方案已按总花费排好序',
+              actions: [
+                { label: '查看方案', primary: true, onClick: goView },
+                { label: '留在本页', onClick: showGeneratedChip }
+              ]
+            });
+          },
+          onFail: function (info) {
+            var msg = info && info.reason === 'timeout'
+              ? '采集时间较长，已转入探索队列，完成后「我的」页可见'
+              : '这一轮没能生成出比直飞更省的组合，已如实记录，稍后自动重试';
+            mount.remove();
+            btn.style.display = 'flex';
+            btn.disabled = true;
+            btn.style.opacity = '0.5';
+            btn.innerHTML = '<svg style="width:14px;height:14px;"><use href="#hero-sparkles"></use></svg><span>探索中</span>';
+            hint.textContent = msg;
+            hint.style.display = 'block';
+          }
+        });
+      }
+      function staticPending(text) {
         btn.disabled = true;
         btn.style.opacity = '0.5';
-        btn.innerHTML = '<svg style="width:14px;height:14px;"><use href="#hero-sparkles"></use></svg><span>已在探索中</span>';
+        btn.innerHTML = '<svg style="width:14px;height:14px;"><use href="#hero-sparkles"></use></svg><span>' + (text || '已在探索中') + '</span>';
         hint.textContent = '已登记，生成后可在「我的」查看进度';
         hint.style.display = 'block';
+      }
+
+      /* 本地已生成（旧记录）：保留原查看入口 */
+      if (localWish && localWish.status === 'generated') {
+        btn.disabled = true;
+        btn.style.opacity = '0.5';
+        btn.innerHTML = '<svg style="width:14px;height:14px;"><use href="#hero-sparkles"></use></svg><span>已生成，点此查看</span>';
+        btn.style.opacity = '1';
+        btn.disabled = false;
+        btn.addEventListener('click', goView);
+        return;
+      }
+
+      /* 服务端队列核对：已登记 → 原位起进度条（pending 顺带触发执行器，幂等防并发）；
+       * 未登记 → 自动登记并调起采集 API（v0.17：查询无数据路线即开始服务，无需再点一次） */
+      API.fetchWishes().then(function (res) {
+        var serverWish = null;
+        if (res && res.code === 0 && Array.isArray(res.data)) {
+          res.data.forEach(function (x) { if (x.from === from && x.to === to) serverWish = x; });
+        }
+        if (serverWish && (serverWish.status === 'pending' || serverWish.status === 'processing')) {
+          if ((serverWish.attempts || 0) >= 3) {
+            staticPending('已转人工评估');
+            hint.textContent = '这条线多轮采集未获合格省钱组合，已如实记录待人工评估';
+            return;
+          }
+          if (serverWish.status === 'pending') API.wishProcess({ run: true, id: serverWish.id });
+          mountProgress();
+          return;
+        }
+        /* 未登记：自动登记 + 调起采集 API + 进度条；后端不可达/未配 key 时回落静态登记态 */
+        API.wishRegister({ from: from, to: to, date: date }).then(function (r) {
+          var item = r && r.code === 0 && r.data && r.data.item;
+          if (!item) { staticPending(); return; }
+          API.wishProcess({ run: true, id: item.id }).then(function (pr) {
+            var ok = pr && pr.code === 0 && pr.data && (pr.data.accepted || pr.data.collecting);
+            var human = pr && pr.code === 0 && pr.data && pr.data.note;
+            if (human) { staticPending('已转人工评估'); hint.textContent = pr.data.note; return; }
+            if (!ok) { staticPending(); return; }
+            mountProgress();
+          });
+        });
       });
     }
 

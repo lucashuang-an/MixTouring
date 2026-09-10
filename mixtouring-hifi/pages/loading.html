@@ -290,18 +290,18 @@
       stepMs = 560; holdMs = 2950;
     } else if (isPending) {
       steps = [
-        '已在离线探索队列' + (wish.ts ? ' · 登记于 ' + MT.fmtTs(wish.ts) : ''),
-        '离线工厂按批处理采集真实班次与票价（通常 1–3 天）',
-        '完成后这里自动变为可查看的方案'
+        '已在探索队列' + (wish.ts ? ' · 登记于 ' + MT.fmtTs(wish.ts) : ''),
+        'AI 联网采集真实班次与票价，通常 1–2 分钟',
+        '完成后搜索页问答入口与「我的」页可见进度'
       ];
       headline = '探索中 · 无需等待';
       stepMs = 380; holdMs = 1700;
     } else {
       steps = [
         '方案库暂无这条线的真实样本',
-        '不做编造——下一页可登记离线探索'
+        '不做编造——下一页自动开始 AI 联网探索（约 1–2 分钟）'
       ];
-      headline = '这条线暂无组合票数据';
+      headline = '这条线暂无样本 · 即刻 AI 探索';
       stepMs = 360; holdMs = 1400;
     }
 
@@ -346,9 +346,9 @@
         if (!hit) return;
         headline = '探索中 · 无需等待';
         steps = [
-          '已在离线探索队列（服务端登记）',
-          '离线工厂按批处理采集真实班次与票价（通常 1–3 天）',
-          '完成后这里自动变为可查看的方案'
+          '已在探索队列（服务端登记）',
+          'AI 联网采集真实班次与票价，通常 1–2 分钟',
+          '完成后搜索页问答入口与「我的」页可见进度'
         ];
         stepList.innerHTML = steps.map(function (t) {
           return '<div class="step-row active"><span class="step-dot"></span>' +

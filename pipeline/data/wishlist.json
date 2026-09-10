@@ -52,6 +52,30 @@
       "lastAttemptAt": "2026-09-10T15:40:22.494Z",
       "processingAt": "2026-09-10T15:39:23.299Z",
       "generatedAt": "2026-09-10T16:04:13.412Z"
+    },
+    {
+      "id": "wish-1789056720025-805",
+      "from": "杭州",
+      "to": "西双版纳",
+      "date": "",
+      "status": "pending",
+      "ts": 1789056720026,
+      "processingAt": "2026-09-10T17:08:01.826Z",
+      "attempts": 3,
+      "lastError": "摘要不足以组装出含时刻的合格方案（LLM 未返回有效结构或如实放弃）",
+      "lastAttemptAt": "2026-09-10T17:08:34.776Z"
+    },
+    {
+      "id": "wish-1789059531033-974",
+      "from": "西安",
+      "to": "丽江",
+      "date": "",
+      "status": "pending",
+      "ts": 1789059531033,
+      "processingAt": "2026-09-10T17:05:37.519Z",
+      "attempts": 2,
+      "lastError": "摘要不足以组装出含时刻的合格方案（LLM 未返回有效结构或如实放弃）",
+      "lastAttemptAt": "2026-09-10T17:06:45.724Z"
     }
   ]
 }

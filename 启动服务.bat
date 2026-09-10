@@ -5,5 +5,5 @@ chcp 65001 > nul
 cd /d "%~dp0server"
 echo 正在启动 MixTouring 本地服务...
 start "" http://localhost:3000/index.html
-node index.mjs
+node --env-file-if-exists=.env index.mjs
 pause

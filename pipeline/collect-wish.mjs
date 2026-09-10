@@ -18,6 +18,19 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const dataPath = join(root, 'pipeline/data/plans.json');
 const MAX_ATTEMPTS = 3;
 
+/* 阶段进度落盘（v0.17）：采集执行中把 stage 写进心愿，前端进度条轮询 /api/wishlist 实时映射百分比；
+ * 写失败只影响进度显示，不阻断采集主流程 */
+function setStage(id, stage) {
+  try {
+    const items = getWishlist().items;
+    const w = items.find((x) => x.id === id);
+    if (w && w.status === 'processing') {
+      w.stage = stage;
+      saveWishlist(items);
+    }
+  } catch { /* 进度标记失败不阻断采集 */ }
+}
+
 const args = process.argv.slice(2);
 const wishIdIdx = args.indexOf('--wish');
 const dry = args.includes('--dry');
@@ -37,12 +50,11 @@ const SEARCH_QUERIES = (w, candNames) => ([
 
 async function collectFacts(w, candNames) {
   const queries = SEARCH_QUERIES(w, candNames);
-  const factParts = [];
-  for (const qy of queries) {
-    const results = await searchWeb(qy, { limit: 4 });
-    if (results && results.length) factParts.push({ query: qy, results });
-  }
-  return factParts;
+  /* 并行检索（v0.17 提速）：6 组查询同时发出，总耗时 ≈ 最慢一路，而非串行累加 */
+  const settled = await Promise.all(queries.map((qy) =>
+    searchWeb(qy, { limit: 4 }).then((results) => (results && results.length) ? { query: qy, results } : null)
+  ));
+  return settled.filter(Boolean);
 }
 
 function buildStructurePrompt(w, factsJson) {
@@ -55,7 +67,8 @@ function buildStructurePrompt(w, factsJson) {
     '规则：',
     '1. 一切价格/车次/航班号/时刻必须逐字来自搜索摘要的 title/content；摘要没给的时段就省略该方案，绝不推测。',
     '2. 中转城市必须取自地理候选；混搭优先；跨天则 arr_day 设 1。',
-    '3. 不要输出 ai 字段；输出只含一个 JSON 对象。'
+    '3. 最多输出 3 个方案，只挑摘要里有完整时刻与价格的；没有合格方案就输出空数组，绝不凑数。',
+    '4. 不要输出 ai 字段；输出只含一个 JSON 对象，不要任何解释文字。'
   ].join('\n');
 }
 
@@ -236,12 +249,14 @@ async function collectOne(wish, store) {
   console.log(`· 采集 ${wish.from} → ${wish.to}（web_search API 确定性检索 + ${process.env.LLM_MODEL_COLLECT || '默认'} 组装）…`);
   const collectModel = process.env.LLM_MODEL_COLLECT;
   /* 阶段①：确定性联网检索（专用 web_search API，不依赖模型触发） */
+  setStage(wish.id, 'search');
   const candNames = candidatesBetween(wish.from, wish.to).slice(0, 2).map((c) => c.name);
   const factParts = await collectFacts(wish, candNames);
   if (!factParts.length) {
     return { outcome: 'failed', note: '阶段①联网检索（web_search API）无结果或不可用' };
   }
   /* 阶段②：无检索，搜索摘要 → 存储层结构（算术字段由 normalizeGen 代码推导） */
+  setStage(wish.id, 'assemble');
   const raw = await callJson({
     schema_prompt: buildStructurePrompt(wish, JSON.stringify(factParts)),
     user: '联网搜索摘要 JSON：' + JSON.stringify(factParts),
@@ -258,8 +273,13 @@ async function collectOne(wish, store) {
   } catch (err) {
     return { outcome: 'failed', note: '结构归一化失败：' + err.message };
   }
+  /* 滤空如实报：全部候选都不比直飞基准便宜（或直飞采样不可信）时，明确记因而非抛守门的笼统报错 */
+  if (!gen.plans.length) {
+    return { outcome: 'failed', note: '采到的组合都不比直飞基准便宜，按「只做省钱方案」原则如实不产卡' };
+  }
 
   try {
+    setStage(wish.id, 'gate');
     const fresh = JSON.parse(readFileSync(dataPath, 'utf8'));
     const result = mergeGenerated(fresh, gen, { verified: false });
     result.log.forEach((l) => console.log('  ✓ ' + l));
@@ -268,7 +288,8 @@ async function collectOne(wish, store) {
     }
     if (!dry) {
       writeFileSync(dataPath, JSON.stringify(fresh, null, 2) + '\n', 'utf8');
-      spawnSync('node', [join(root, 'pipeline/build-mock.mjs')], { stdio: 'inherit' });
+      /* mock 重建移到主流程状态回流之后（v0.17 提速）：前端弹窗不必等 build-mock */
+      return { outcome: 'generated', note: result.log.join('；'), needMock: true };
     }
     return { outcome: 'generated', note: result.log.join('；') };
   } catch (err) {
@@ -301,18 +322,24 @@ for (const w of targets) {
   /* 处理中状态先行落盘：前端「我的」页实时显示「生成中」（而非一直探索中） */
   const marking = getWishlist().items;
   const mk = marking.find((x) => x.id === w.id);
-  if (mk && mk.status === 'pending') { mk.status = 'processing'; mk.processingAt = new Date().toISOString(); saveWishlist(marking); }
-  let outcome, note;
-  try {
-    ({ outcome, note } = await collectOne(w, JSON.parse(readFileSync(dataPath, 'utf8'))));
-  } catch (err) {
-    outcome = 'failed';
-    note = '执行器异常：' + err.message;
+  if (mk && mk.status === 'pending') {
+    mk.status = 'processing';
+    mk.processingAt = new Date().toISOString();
+    mk.stage = 'starting';
+    saveWishlist(marking);
   }
-  /* 重新读队列（collectOne 写盘后 build-mock 不动 wishlist，但保持一致性） */
+  let r;
+  try {
+    r = await collectOne(w, JSON.parse(readFileSync(dataPath, 'utf8')));
+  } catch (err) {
+    r = { outcome: 'failed', note: '执行器异常：' + err.message };
+  }
+  const { outcome, note } = r;
+  /* 重新读队列（collectOne 写盘后保持一致性）；阶段字段随终态清除 */
   const items = getWishlist().items;
   const cur = items.find((x) => x.id === w.id);
   if (cur) {
+    delete cur.stage;
     if (outcome === 'generated') {
       cur.status = 'generated';
       cur.generatedAt = new Date().toISOString();
@@ -326,6 +353,10 @@ for (const w of targets) {
       cur.lastAttemptAt = new Date().toISOString();
     }
     saveWishlist(items);
+  }
+  /* 状态先行回流（进度条/弹窗即刻可见），mock 重建随后（离线兜底，不在在线链路上） */
+  if (outcome === 'generated' && r.needMock) {
+    spawnSync('node', [join(root, 'pipeline/build-mock.mjs')], { stdio: 'inherit' });
   }
   console.log(`${outcome === 'generated' ? '✓' : '✗'} ${w.from} → ${w.to}：${note}`);
 }

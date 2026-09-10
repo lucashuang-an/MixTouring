@@ -127,7 +127,8 @@ app.use(async (ctx, next) => {
   }
 
   /* POST /api/wishlist/process → 触发采集执行器（后台 detached 子进程，不阻塞服务）
-   * body { run:true } 才真正执行；缺省只报数（verify/前端探测用，避免误触发 LLM 消耗） */
+   * body { run:true } 全量执行；{ run:true, id } 只处理指定心愿（搜索页/结果页「无数据即起采集」用）；
+   * 缺省只报数（verify/前端探测用，避免误触发 LLM 消耗） */
   if (path === '/api/wishlist/process' && ctx.method === 'POST') {
     const pendingCount = listWishes().filter((w) => w.status === 'pending' && (w.attempts || 0) < 3).length;
     const body = await readBody(ctx);
@@ -136,6 +137,27 @@ app.use(async (ctx, next) => {
       return;
     }
     if (!llmConfigured()) { ctx.body = { code: 1, msg: 'LLM_API_KEY 未配置，采集执行器不可用' }; return; }
+    const targetId = typeof body.id === 'string' ? body.id : null;
+    if (targetId) {
+      const w = listWishes().find((x) => x.id === targetId);
+      if (!w) { ctx.body = { code: 1, msg: '心愿不存在：' + targetId }; return; }
+      if ((w.attempts || 0) >= 3) {
+        ctx.body = { code: 0, data: { accepted: false, note: '该路线此前多次采集未获合格方案，已转人工评估' } };
+        return;
+      }
+      if (w.status === 'processing') {
+        ctx.body = { code: 0, data: { accepted: false, collecting: true, note: '该心愿正在采集中' } };
+        return;
+      }
+      const { spawn } = await import('node:child_process');
+      const child = spawn(process.execPath, [join(root, 'pipeline/collect-wish.mjs'), '--wish', targetId], {
+        cwd: root, detached: true, stdio: 'ignore'
+      });
+      child.unref();
+      console.log(`▶ 采集执行器已后台启动（PID ${child.pid}，指定心愿 ${w.from} → ${w.to}）`);
+      ctx.body = { code: 0, data: { accepted: true, pending: 1 } };
+      return;
+    }
     if (!pendingCount) { ctx.body = { code: 0, data: { accepted: false, pending: 0, note: '无可处理心愿' } }; return; }
     const { spawn } = await import('node:child_process');
     const child = spawn(process.execPath, [join(root, 'pipeline/collect-wish.mjs'), '--all'], {
@@ -172,21 +194,24 @@ app.use(async (ctx, next) => {
         if (sug) {
           const added = addWish({ from: sug.from, to: sug.to, date: '' });
           if (added.item) {
-            followUp = { wishRegistered: true, wishId: added.item.id, from: sug.from, to: sug.to, collecting: false };
-            if (llmConfigured()) {
-              const pendingWish = listWishes().find((w) => w.id === added.item.id);
-              const exhausted = pendingWish && (pendingWish.attempts || 0) >= 3;
-              if (!exhausted) {
-                const { spawn } = await import('node:child_process');
-                const child = spawn(process.execPath, [join(root, 'pipeline/collect-wish.mjs'), '--wish', added.item.id], {
-                  cwd: root, detached: true, stdio: 'ignore'
-                });
-                child.unref();
-                followUp.collecting = true;
-                console.log(`▶ 问答衔接采集：${sug.from} → ${sug.to}（${added.item.id}，PID ${child.pid}）`);
-              } else {
-                followUp.note = '该路线此前多次采集未获合格方案，已转人工评估';
-              }
+            const w = listWishes().find((x) => x.id === added.item.id);
+            followUp = {
+              wishRegistered: true, wishId: w.id, from: sug.from, to: sug.to,
+              deduped: !!added.deduped, collecting: false
+            };
+            const exhausted = (w.attempts || 0) >= 3;
+            if (exhausted) {
+              followUp.note = '该路线此前多次采集未获合格方案，已转人工评估';
+            } else if (w.status === 'processing') {
+              followUp.collecting = true; /* 已在采集（重复问同一路线），前端直接附实时进度 */
+            } else if (llmConfigured()) {
+              const { spawn } = await import('node:child_process');
+              const child = spawn(process.execPath, [join(root, 'pipeline/collect-wish.mjs'), '--wish', w.id], {
+                cwd: root, detached: true, stdio: 'ignore'
+              });
+              child.unref();
+              followUp.collecting = true;
+              console.log(`▶ 问答衔接采集：${sug.from} → ${sug.to}（${w.id}，PID ${child.pid}）`);
             } else {
               followUp.note = '已登记，采集服务未配置（LLM_API_KEY 缺失）';
             }

@@ -629,6 +629,7 @@
     var qaGo = document.getElementById('qaGo');
     var qaAnswer = document.getElementById('qaAnswer');
     var qaRefs = document.getElementById('qaRefs');
+    var qaProgress = null; /* 当前采集进度轮询句柄（v0.17） */
 
     document.getElementById('btnAsk').addEventListener('click', function () { qaOverlay.classList.add('active'); });
     document.getElementById('qaClose').addEventListener('click', function () { qaOverlay.classList.remove('active'); });
@@ -645,14 +646,38 @@
           return;
         }
         qaAnswer.textContent = res.data.answer || '没答上来，换个问法试试';
-        /* 缺数据路线自动衔接生成环节：展示登记/采集状态（Phase 3×QA 两步流） */
+        /* 缺数据路线自动衔接生成环节：实时进度条 + 完成弹窗（v0.17 两步流升级） */
         var fu = res.data.followUp;
         var fuLine = document.getElementById('qaFollowUp');
+        if (qaProgress) { qaProgress.stop(); qaProgress = null; }
         if (fu && fu.wishRegistered) {
-          fuLine.textContent = fu.collecting
-            ? '✦ 已自动登记 ' + fu.from + ' → ' + fu.to + ' 离线探索，AI 正在联网采集（约 1–2 分钟），完成后「我的」页可见'
-            : '✦ 已自动登记 ' + fu.from + ' → ' + fu.to + ' 离线探索' + (fu.note ? '（' + fu.note + '）' : '') + '，可在「我的」页跟踪';
           fuLine.style.display = 'block';
+          if (fu.collecting) {
+            fuLine.innerHTML = '<div>✦ 已自动登记 ' + MT.esc(fu.from) + ' → ' + MT.esc(fu.to) + '，AI 正在联网采集真实班次与票价</div>' +
+              '<div data-fu-mount style="margin-top:8px;"></div>';
+            qaProgress = MT.wishProgress({
+              from: fu.from, to: fu.to, mount: fuLine.querySelector('[data-fu-mount]'),
+              onDone: function () {
+                fuLine.innerHTML = '<div>✦ ' + MT.esc(fu.from) + ' → ' + MT.esc(fu.to) + ' 方案已生成</div>';
+                MT.modal({
+                  title: '省钱方案已生成 ✦',
+                  body: fu.from + ' → ' + fu.to + ' 的联网探索完成，方案已按总花费排好序',
+                  actions: [
+                    { label: '查看方案', primary: true, onClick: function () { MT.go('loading.html', { from: fu.from, to: fu.to }); } },
+                    { label: '留在本页' }
+                  ]
+                });
+              },
+              onFail: function (info) {
+                fuLine.innerHTML = '<div>✦ ' + MT.esc(fu.from) + ' → ' + MT.esc(fu.to) + '：' +
+                  (info && info.reason === 'timeout'
+                    ? '采集时间较长，已转入探索队列，完成后「我的」页可见'
+                    : '这一轮没能生成出比直飞更省的组合，已如实记录，稍后自动重试') + '</div>';
+              }
+            });
+          } else {
+            fuLine.textContent = '✦ 已自动登记 ' + fu.from + ' → ' + fu.to + ' 离线探索' + (fu.note ? '（' + fu.note + '）' : '') + '，可在「我的」页跟踪';
+          }
         } else {
           fuLine.style.display = 'none';
         }
