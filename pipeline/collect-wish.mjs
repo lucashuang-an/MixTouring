@@ -11,8 +11,8 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { getWishlist, saveWishlist } from './wishlist-store.mjs';
 import { mergeGenerated } from './lib/merge-generated.mjs';
-import { geoPromptBlock, loadGeo, haversineKm } from './lib/geo-skill.mjs';
-import { callJson, llmConfigured } from '../server/lib/llm.mjs';
+import { geoPromptBlock, loadGeo, haversineKm, candidatesBetween } from './lib/geo-skill.mjs';
+import { callJson, llmConfigured, searchWeb } from '../server/lib/llm.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const dataPath = join(root, 'pipeline/data/plans.json');
@@ -24,23 +24,38 @@ const dry = args.includes('--dry');
 const limitIdx = args.indexOf('--limit');
 const limit = limitIdx > -1 ? Math.max(1, Number(args[limitIdx + 1]) || 1) : Infinity;
 
-/* ---------- 构建采样 prompt ---------- */
+/* ---------- 两阶段采集 ----------
+ * 实测教训：①模型自触发搜索不可靠（复杂 prompt 下常自报「无法联网检索」）；②时刻算术必错。
+ * 改为：阶段①用专用 web_search API 按确定性查询词直接拿公开搜索摘要（不等模型自觉）；
+ *       阶段②无检索，把搜索摘要组装成存储层结构（只准用摘要里的事实，算术由 normalizeGen 代码推导）。 */
 
-function buildSamplingPrompt(w) {
+const SEARCH_QUERIES = (w, candNames) => ([
+  `${w.from} 到 ${w.to} 直飞航班 机票价格`,
+  `${w.from} 到 ${w.to} 高铁 时长 票价`,
+  ...candNames.slice(0, 2).flatMap((c) => [`${w.from} 到 ${c} 高铁 票价 时长`, `${c} 到 ${w.to} 航班 机票价格`])
+]);
+
+async function collectFacts(w, candNames) {
+  const queries = SEARCH_QUERIES(w, candNames);
+  const factParts = [];
+  for (const qy of queries) {
+    const results = await searchWeb(qy, { limit: 4 });
+    if (results && results.length) factParts.push({ query: qy, results });
+  }
+  return factParts;
+}
+
+function buildStructurePrompt(w, factsJson) {
   return [
-    `你是 MixTouring 的数据采集 agent。任务：为「${w.from} → ${w.to}」路线联网检索真实交通数据，输出结构化 JSON。`,
+    `你是 MixTouring 的路线组装员。把下列「联网搜索摘要」组装成出行方案结构，输出一个 JSON 对象。`,
     geoPromptBlock(w.from, w.to),
-    '',
-    '输出 JSON 结构：',
-    '{"route_pair":{"route_id":"' + w.from + '-' + w.to + '","from":"' + w.from + '","to":"' + w.to + '","direct":{"price":整数,"duration_min":整数,"sampled_at":"ISO 时刻","source":"平台+日期"}},"plans":[方案数组]}',
-    '方案（存储层 Plan）字段：id("' + w.from.slice(0, 1).toLowerCase() + w.to.slice(0, 1).toLowerCase() + '-<编号>")、type:"plan"、route_id、from、to、stops([{city,kind:"origin",depart,day_offset}|{city,kind:"transfer",wait_min}|{city,kind:"dest",arrive,day_offset}])、segs([{mode:"plane"|"train",flight_no/train_no,from_station,to_station,dep,dep_day,arr,arr_day,duration_min,fixed_price:null,price_band:{min,max,sample_count,sampled_at},source}])、risks(四因子 connection/baggage/refund/transfer，各含 raw 与 narrative)、play({city,lines})、ai({summary,fit,notice,play_intro})。',
-    '',
-    '铁律：',
-    '1. 所有价格/班次/时刻必须来自本次联网检索的真实结果；每段 source 写明「平台 + 检索日期」。检索不到真实班次的方案直接省略，绝不编造。',
-    '2. direct 为起终点直达基准；确无直达时取平台最低中转组合价并在 source 注明「无直飞，取中转组合价」。',
-    '3. plans 给 1–2 个方案；中转城市必须取自地理候选；时刻字段 dep/arr/depart/arrive 一律用 24 小时制「HH:MM」（如 06:40），禁止包含日期；跨天用 dep_day/arr_day 表达（如夕发朝至 arr_day:1）。',
-    '4. 不要输出 ai 字段——AI 文案由独立环节生成（数字纪律另控），本任务只采集结构化事实。',
-    '5. 输出只含一个 JSON 对象，无解释文字。'
+    '方案结构：{"route_pair":{"route_id":"' + w.from + '-' + w.to + '","from":"' + w.from + '","to":"' + w.to + '","direct":{...}},"plans":[方案数组]}',
+    'direct：{price:整数单程价, duration_min:整数分钟, source:"摘要中的平台/媒体名"}；摘要无可靠直飞价格则据实说明。',
+    '方案字段：id、type:"plan"、route_id、from、to、stops、segs、risks（connection/baggage/refund/transfer 四因子）、play。',
+    '规则：',
+    '1. 一切价格/车次/航班号/时刻必须逐字来自搜索摘要的 title/content；摘要没给的时段就省略该方案，绝不推测。',
+    '2. 中转城市必须取自地理候选；混搭优先；跨天则 arr_day 设 1。',
+    '3. 不要输出 ai 字段；输出只含一个 JSON 对象。'
   ].join('\n');
 }
 
@@ -218,16 +233,24 @@ async function collectOne(wish, store) {
     return { outcome: 'failed', note: 'LLM_API_KEY 未配置，无法联网采样' };
   }
 
-  console.log(`· 采集 ${wish.from} → ${wish.to}（联网检索，最长 120s）…`);
+  console.log(`· 采集 ${wish.from} → ${wish.to}（web_search API 确定性检索 + ${process.env.LLM_MODEL_COLLECT || '默认'} 组装）…`);
+  const collectModel = process.env.LLM_MODEL_COLLECT;
+  /* 阶段①：确定性联网检索（专用 web_search API，不依赖模型触发） */
+  const candNames = candidatesBetween(wish.from, wish.to).slice(0, 2).map((c) => c.name);
+  const factParts = await collectFacts(wish, candNames);
+  if (!factParts.length) {
+    return { outcome: 'failed', note: '阶段①联网检索（web_search API）无结果或不可用' };
+  }
+  /* 阶段②：无检索，搜索摘要 → 存储层结构（算术字段由 normalizeGen 代码推导） */
   const raw = await callJson({
-    schema_prompt: buildSamplingPrompt(wish),
-    user: `请采集 ${wish.from} → ${wish.to}（${wish.date || '近期'}）的真实出行数据并按结构输出。`,
+    schema_prompt: buildStructurePrompt(wish, JSON.stringify(factParts)),
+    user: '联网搜索摘要 JSON：' + JSON.stringify(factParts),
     kind: 'collect',
-    webSearch: true,
+    model: collectModel,
     timeoutMs: 120000
   });
   if (!raw || !raw.route_pair || !Array.isArray(raw.plans) || !raw.plans.length) {
-    return { outcome: 'failed', note: 'LLM 未返回有效结构（检索不可用或输出不合法）' };
+    return { outcome: 'failed', note: '摘要不足以组装出含时刻的合格方案（LLM 未返回有效结构或如实放弃）' };
   }
   let gen;
   try {
@@ -256,7 +279,11 @@ async function collectOne(wish, store) {
 /* ---------- 主流程 ---------- */
 
 const wl = getWishlist();
-const pending = wl.items.filter((w) => w.status === 'pending' && (w.attempts || 0) < MAX_ATTEMPTS);
+/* pending 可处理；processing 超 10 分钟视为上次执行中断，重新纳入（自愈） */
+const STALE_MS = 10 * 60 * 1000;
+const pending = wl.items.filter((w) =>
+  (w.status === 'pending' || (w.status === 'processing' && Date.now() - new Date(w.processingAt || 0).getTime() > STALE_MS)) &&
+  (w.attempts || 0) < MAX_ATTEMPTS);
 const targets = wishIdIdx > -1
   ? pending.filter((w) => w.id === args[wishIdIdx + 1])
   : pending.slice(0, limit === Infinity ? undefined : limit);
@@ -271,7 +298,17 @@ if (!targets.length) {
 console.log(`▶ 采集执行器启动：${targets.length} 个心愿${dry ? '（dry 模式，不写盘）' : ''}`);
 let ok = 0;
 for (const w of targets) {
-  const { outcome, note } = await collectOne(w, JSON.parse(readFileSync(dataPath, 'utf8')));
+  /* 处理中状态先行落盘：前端「我的」页实时显示「生成中」（而非一直探索中） */
+  const marking = getWishlist().items;
+  const mk = marking.find((x) => x.id === w.id);
+  if (mk && mk.status === 'pending') { mk.status = 'processing'; mk.processingAt = new Date().toISOString(); saveWishlist(marking); }
+  let outcome, note;
+  try {
+    ({ outcome, note } = await collectOne(w, JSON.parse(readFileSync(dataPath, 'utf8'))));
+  } catch (err) {
+    outcome = 'failed';
+    note = '执行器异常：' + err.message;
+  }
   /* 重新读队列（collectOne 写盘后 build-mock 不动 wishlist，但保持一致性） */
   const items = getWishlist().items;
   const cur = items.find((x) => x.id === w.id);
@@ -283,6 +320,7 @@ for (const w of targets) {
       delete cur.lastError;
       ok++;
     } else {
+      cur.status = 'pending'; /* 失败退回 pending，等待下次重试 */
       cur.attempts = (cur.attempts || 0) + 1;
       cur.lastError = note;
       cur.lastAttemptAt = new Date().toISOString();

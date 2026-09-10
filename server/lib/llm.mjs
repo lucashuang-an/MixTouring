@@ -29,13 +29,13 @@ export function llmModel() {
 }
 
 /* 逐任务用量落盘（JSONL，一行一次调用）；写失败只打日志，不影响主流程 */
-function logUsage(kind, usage) {
+function logUsage(kind, usage, model) {
   try {
     mkdirSync(dirname(LOG_PATH), { recursive: true });
     appendFileSync(LOG_PATH, JSON.stringify({
       ts: new Date().toISOString(),
       kind: kind || 'unspecified',
-      model: MODEL,
+      model: model || MODEL,
       prompt_tokens: usage?.prompt_tokens ?? null,
       completion_tokens: usage?.completion_tokens ?? null,
       total_tokens: usage?.total_tokens ?? null
@@ -45,11 +45,42 @@ function logUsage(kind, usage) {
   }
 }
 
+/* ---------- 专用联网搜索（智谱 web_search API，独立于 chat） ----------
+ * 采集执行器的可靠检索通道：不等模型「自觉触发」工具，按查询词直接拿公开搜索结果。
+ * @returns {Promise<Array|null>} [{ title, link, content, media, date }]；失败 null */
+export async function searchWeb(query, { limit = 5, timeoutMs = 30000 } = {}) {
+  if (!llmConfigured()) return null;
+  try {
+    const res = await fetch(`${BASE}/web_search`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${KEY}` },
+      body: JSON.stringify({
+        search_engine: process.env.LLM_SEARCH_ENGINE || 'search_std',
+        search_query: String(query).slice(0, 100)
+      }),
+      signal: AbortSignal.timeout(timeoutMs)
+    });
+    if (!res.ok) throw new Error('search HTTP ' + res.status);
+    const body = await res.json();
+    return (body.search_result || []).slice(0, limit).map((r) => ({
+      title: r.title || '',
+      link: r.link || '',
+      content: (r.content || '').slice(0, 300),
+      media: r.media || null,
+      date: r.publish_date || null
+    }));
+  } catch (err) {
+    console.error('✗ 联网检索失败（' + query + '）：' + err.message);
+    return null;
+  }
+}
+
 /**
  * 让 LLM 返回一个 JSON 对象（OpenAI 兼容 /chat/completions）。
  * 未配置 key 时 resolve(null)，调用方应回退到规则/词典实现（保持闭环可离线运行）。
- * @param {object} opts { schema_prompt, user, kind, webSearch, timeoutMs }
+ * @param {object} opts { schema_prompt, user, kind, webSearch, timeoutMs, model }
  *   kind 为任务标识（parse/ask/copy/collect），用于用量归因；
+ *   model 覆盖默认模型（如采集任务用 LLM_MODEL_COLLECT 指定更强的 glm-5.3-flash）；
  *   webSearch=true 开启智谱内置联网检索（采集执行器采样用）；开检索时放弃 json_object 严格模式（二者不兼容），靠正则提取 JSON。
  * @returns {Promise<object|null>}
  */
@@ -57,7 +88,7 @@ export async function callJson(opts) {
   if (!llmConfigured()) return null;
   try {
     const body = {
-      model: MODEL,
+      model: opts.model || MODEL,
       temperature: opts.webSearch ? 0.3 : 0.2,
       messages: [
         { role: 'system', content: opts.schema_prompt || '只输出 JSON 对象。' },
@@ -65,7 +96,7 @@ export async function callJson(opts) {
       ]
     };
     if (opts.webSearch) {
-      body.tools = [{ type: 'web_search', web_search: { enable: true, search_count: 8 } }];
+      body.tools = [{ type: 'web_search', web_search: { enable: true, search_count: 5 } }];
     } else {
       body.response_format = { type: 'json_object' };
     }
@@ -80,7 +111,7 @@ export async function callJson(opts) {
     });
     if (!res.ok) throw new Error('LLM HTTP ' + res.status);
     const resBody = await res.json();
-    logUsage(opts.kind, resBody.usage);
+    logUsage(opts.kind, resBody.usage, body.model);
     const raw = resBody.choices?.[0]?.message?.content;
     if (!raw) return null;
     // 兼容模型可能在代码块里包 JSON

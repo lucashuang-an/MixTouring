@@ -123,13 +123,21 @@ async function main() {
     failed++;
     console.error('✗ /api/ask 库外问题应无 refs：' + JSON.stringify(askNone).slice(0, 200));
   }
-  /* 词典外目的地必须声明无数据（回归：北京去西双版纳曾答非所问） */
+  /* 词典外目的地：已入库路线正常应答（回归：北京-西双版纳已生成） */
   const askXSB = await getJSON('/api/ask?q=' + encodeURIComponent('北京去西双版纳有什么方案'));
-  if (typeof askXSB.answer === 'string' && askXSB.answer.includes('西双版纳') && /暂无|没有|无数据/.test(askXSB.answer)) {
-    console.log('✓ /api/ask 词典外目的地声明无数据（西双版纳，engine=' + askXSB.engine + '）');
+  if (typeof askXSB.answer === 'string' && Array.isArray(askXSB.refs) && askXSB.refs.every((id) => id.startsWith('p-bjxbn-'))) {
+    console.log('✓ /api/ask 词典外已入库路线正常应答（refs 锚定 p-bjxbn-*）');
   } else {
     failed++;
-    console.error('✗ /api/ask 词典外目的地未声明：' + JSON.stringify(askXSB).slice(0, 200));
+    console.error('✗ /api/ask 西双版纳应答异常：' + JSON.stringify(askXSB).slice(0, 200));
+  }
+  /* 词典外且未入库的目的地必须声明无数据（回归：北京去西双版纳曾答非所问；现用大理看守） */
+  const askDali = await getJSON('/api/ask?q=' + encodeURIComponent('北京去大理有什么方案'));
+  if (typeof askDali.answer === 'string' && askDali.answer.includes('大理') && /暂无|没有|无数据/.test(askDali.answer)) {
+    console.log('✓ /api/ask 词典外目的地声明无数据（大理，engine=' + askDali.engine + '）');
+  } else {
+    failed++;
+    console.error('✗ /api/ask 词典外目的地未声明：' + JSON.stringify(askDali).slice(0, 200));
   }
 
   /* ---------- Phase 3 心愿队列：登记（幂等去重）→ 查询 → 清理（测试数据不入库） ---------- */

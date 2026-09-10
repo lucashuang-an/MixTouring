@@ -7,9 +7,9 @@
       "date": "2026/10/01",
       "status": "pending",
       "ts": 1772985600000,
-      "attempts": 2,
-      "lastError": "守门未过：输入须含 route_pair 与非空 plans[]",
-      "lastAttemptAt": "2026-09-09T18:15:55.232Z"
+      "attempts": 0,
+      "lastAttemptAt": "2026-09-10T15:45:22.375Z",
+      "processingAt": "2026-09-10T15:44:45.816Z"
     },
     {
       "id": "wish-nj-ks-1788874268300",
@@ -35,18 +35,23 @@
       "to": "厦门",
       "date": "2026/09/27",
       "status": "pending",
-      "ts": 1789052347024
+      "ts": 1789052347024,
+      "attempts": 1,
+      "lastAttemptAt": "2026-09-10T16:00:45.082Z",
+      "processingAt": "2026-09-10T15:59:24.235Z",
+      "lastError": "人工评估 2026-09-10：直飞促销常态化（¥380–481），混搭组合 ¥700–1,100 且 14h+，无省钱空间；待直飞涨价窗口再采集"
     },
     {
       "id": "wish-1789053342291-666",
       "from": "北京",
       "to": "西双版纳",
       "date": "",
-      "status": "pending",
+      "status": "generated",
       "ts": 1789053342291,
-      "attempts": 1,
-      "lastError": "守门未过：输入须含 route_pair 与非空 plans[]",
-      "lastAttemptAt": "2026-09-10T15:17:02.171Z"
+      "attempts": 0,
+      "lastAttemptAt": "2026-09-10T15:40:22.494Z",
+      "processingAt": "2026-09-10T15:39:23.299Z",
+      "generatedAt": "2026-09-10T16:04:13.412Z"
     }
   ]
 }
