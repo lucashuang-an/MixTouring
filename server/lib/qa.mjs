@@ -4,6 +4,7 @@
  * 绝不编造路线/价格/车次；LLM 输出过不了数字锚定校验就落回规则版，未锚定内容不上页。 */
 
 import { callJson } from './llm.mjs';
+import { loadGeo } from '../../pipeline/lib/geo-skill.mjs';
 
 /* ---------- 检索：问题涉及哪些路线对 ---------- */
 
@@ -11,8 +12,27 @@ function mentionedCities(q, cities) {
   return cities.filter((c) => q.includes(c));
 }
 
+/* 未收录目的地/出发地探测：词典（方案库城市）外的城市名——
+ * 取「去/到/飞 + 短语」「从/自/由 + 短语」，短语含地理库城市（179 城）但不被选中路线覆盖
+ * → 视为无数据城市（如「北京去西双版纳」的西双版纳），答案必须显式声明 */
+function unmatchedGeoCities(q, routes) {
+  const covered = new Set(routes.flatMap(({ routeId }) => routeId.split('-')));
+  const names = [...loadGeo().byName.keys()].sort((a, b) => b.length - a.length); /* 长名优先，防子串误配 */
+  const missed = [];
+  const push = (phrase) => {
+    const hit = names.find((n) => phrase.includes(n));
+    if (hit && !covered.has(hit) && !missed.includes(hit)) missed.push(hit);
+  };
+  const toRe = /(?:去|到|飞往|飞|前往)\s*([^，。？?！\s]{2,10})/g;
+  const fromRe = /(?:从|自|由)\s*([^，。？?！\s去到飞]{2,10})/g;
+  let m;
+  while ((m = toRe.exec(q)) !== null) push(m[1]);
+  while ((m = fromRe.exec(q)) !== null) push(m[1]);
+  return missed;
+}
+
 /* 两端都提到的路线对优先；只提到一端则给涉及该城市的路线。最多 2 条，控 context 体积。
- * 同时返回 missed：问题中提到、但选中路线没有覆盖到的城市（答案必须显式声明这些城市无数据） */
+ * 同时返回 missed：问题中提到（含词典外地理城市）、但选中路线没有覆盖到的城市（答案必须显式声明无数据） */
 export function pickRoutes(q, db) {
   const hits = mentionedCities(q, db.cities);
   const both = [];
@@ -113,7 +133,9 @@ function numbersGrounded(answer, ctxJson) {
 export async function answerAsk(q, db) {
   const query = String(q || '').trim();
   if (!query) return { answer: '想问什么？比如「北京去喀什哪个方案最省」。', refs: [], engine: 'none' };
-  const { picked: routes, missed } = pickRoutes(query, db);
+  const { picked: routes, missed: dictMissed } = pickRoutes(query, db);
+  /* 词典 missed（已知城市未被覆盖）+ 地理库探测（词典外城市，如 西双版纳/绵阳/大理） */
+  const missed = [...new Set([...dictMissed, ...unmatchedGeoCities(query, routes)])];
   const ctxJson = JSON.stringify(buildContext(routes));
   const missedNote = missed.length
     ? '用户问题提到的「' + missed.join('、') + '」在方案库中暂无任何数据，context 中的路线只是涉及其他城市的参考。'
@@ -124,7 +146,7 @@ export async function answerAsk(q, db) {
     const answer = llmOut.answer.trim();
     const refs = Array.isArray(llmOut.refs) ? llmOut.refs.filter((id) => ctxJson.includes('"' + id + '"')) : [];
     /* grounding 校验：context 外数字、不存在引用、以及「该声明无数据却没声明」都整条丢弃落回规则版 */
-    const missedDeclared = !missed.length || missed.every((c) => answer.includes(c));
+    const missedDeclared = !missed.length || (missed.every((c) => answer.includes(c)) && /暂无|没有|无数据/.test(answer));
     if (numbersGrounded(answer, ctxJson) && (refs.length > 0 || routes.length === 0) && missedDeclared) {
       return { answer, refs, engine: 'llm' };
     }

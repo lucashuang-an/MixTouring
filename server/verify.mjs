@@ -123,6 +123,14 @@ async function main() {
     failed++;
     console.error('✗ /api/ask 库外问题应无 refs：' + JSON.stringify(askNone).slice(0, 200));
   }
+  /* 词典外目的地必须声明无数据（回归：北京去西双版纳曾答非所问） */
+  const askXSB = await getJSON('/api/ask?q=' + encodeURIComponent('北京去西双版纳有什么方案'));
+  if (typeof askXSB.answer === 'string' && askXSB.answer.includes('西双版纳') && /暂无|没有|无数据/.test(askXSB.answer)) {
+    console.log('✓ /api/ask 词典外目的地声明无数据（西双版纳，engine=' + askXSB.engine + '）');
+  } else {
+    failed++;
+    console.error('✗ /api/ask 词典外目的地未声明：' + JSON.stringify(askXSB).slice(0, 200));
+  }
 
   /* ---------- Phase 3 心愿队列：登记（幂等去重）→ 查询 → 清理（测试数据不入库） ---------- */
   const TEST_WISH = { from: '测甲城', to: '测乙城', date: '2026/10/01' };
