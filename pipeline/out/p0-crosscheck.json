@@ -1,0 +1,330 @@
+[
+ {
+  "od": "_meta",
+  "verdict": "数据弃用"
+ },
+ {
+  "od": "北京-喀什",
+  "tx_best_rt": 2036,
+  "tx_1w_est": 1018,
+  "web_off": 890,
+  "tx_10m_rt": 2786,
+  "tx_10m_1w": 1393,
+  "web_peak": 1506,
+  "verdict": "✓一致",
+  "direct_n": 3
+ },
+ {
+  "od": "北京-乌鲁木齐",
+  "tx_best_rt": 1408,
+  "tx_1w_est": 704,
+  "web_off": 620,
+  "tx_10m_rt": 1408,
+  "tx_10m_1w": 704,
+  "web_peak": 1630,
+  "verdict": "✓一致",
+  "direct_n": 5
+ },
+ {
+  "od": "上海-昆明",
+  "tx_best_rt": 976,
+  "tx_1w_est": 488,
+  "web_off": 300,
+  "tx_10m_rt": 1003,
+  "tx_10m_1w": 502,
+  "web_peak": 976,
+  "verdict": "△同量级",
+  "direct_n": 6
+ },
+ {
+  "od": "成都-乌鲁木齐",
+  "tx_best_rt": 1181,
+  "tx_1w_est": 591,
+  "web_off": 450,
+  "tx_10m_rt": 1239,
+  "tx_10m_1w": 620,
+  "web_peak": 1241,
+  "verdict": "✓一致",
+  "direct_n": 5
+ },
+ {
+  "od": "南京-喀什",
+  "tx_best_rt": 2308,
+  "tx_1w_est": 1154,
+  "web_off": 1082,
+  "tx_10m_rt": 2668,
+  "tx_10m_1w": 1334,
+  "web_peak": null,
+  "verdict": "✓一致",
+  "direct_n": 3
+ },
+ {
+  "od": "杭州-喀什",
+  "verdict": "数据弃用",
+  "note": "suspected_crosscontamination：两次抓取均返回与北京-喀什相同数字，弃用；以 WebSearch 春秋直飞¥699 为准"
+ },
+ {
+  "od": "成都-三亚",
+  "tx_best_rt": 919,
+  "tx_1w_est": 460,
+  "web_off": 419,
+  "tx_10m_rt": 919,
+  "tx_10m_1w": 460,
+  "web_peak": 1100,
+  "verdict": "✓一致",
+  "direct_n": 5
+ },
+ {
+  "od": "北京-西双版纳",
+  "tx_best_rt": 1598,
+  "tx_1w_est": 799,
+  "web_off": 550,
+  "tx_10m_rt": 1930,
+  "tx_10m_1w": 965,
+  "web_peak": 1850,
+  "verdict": "✓一致",
+  "direct_n": 4
+ },
+ {
+  "od": "广州-拉萨",
+  "tx_best_rt": 3206,
+  "tx_1w_est": 1603,
+  "web_off": 680,
+  "tx_10m_rt": 4693,
+  "tx_10m_1w": 2347,
+  "web_peak": 2500,
+  "verdict": "❌直飞存疑",
+  "direct_n": 0
+ },
+ {
+  "od": "重庆-厦门",
+  "tx_best_rt": 828,
+  "tx_1w_est": 414,
+  "web_off": 481,
+  "tx_10m_rt": 959,
+  "tx_10m_1w": 480,
+  "web_peak": null,
+  "verdict": "✓一致",
+  "direct_n": 8
+ },
+ {
+  "od": "西安-丽江",
+  "tx_best_rt": 1048,
+  "tx_1w_est": 524,
+  "web_off": 420,
+  "tx_10m_rt": 1048,
+  "tx_10m_1w": 524,
+  "web_peak": null,
+  "verdict": "✓一致",
+  "direct_n": 6
+ },
+ {
+  "od": "杭州-西双版纳",
+  "tx_best_rt": 1090,
+  "tx_1w_est": 545,
+  "web_off": 520,
+  "tx_10m_rt": 1330,
+  "tx_10m_1w": 665,
+  "web_peak": 1200,
+  "verdict": "✓一致",
+  "direct_n": 8
+ },
+ {
+  "od": "北京-拉萨",
+  "tx_best_rt": 3195,
+  "tx_1w_est": 1598,
+  "web_off": 800,
+  "tx_10m_rt": 3657,
+  "tx_10m_1w": 1829,
+  "web_peak": 3151,
+  "verdict": "△同量级",
+  "direct_n": 3
+ },
+ {
+  "od": "上海-拉萨",
+  "tx_best_rt": 3046,
+  "tx_1w_est": 1523,
+  "web_off": 790,
+  "tx_10m_rt": 4256,
+  "tx_10m_1w": 2128,
+  "web_peak": 3354,
+  "verdict": "❌直飞存疑",
+  "direct_n": 0
+ },
+ {
+  "od": "广州-喀什",
+  "tx_best_rt": 2328,
+  "tx_1w_est": 1164,
+  "web_off": 961,
+  "tx_10m_rt": 2595,
+  "tx_10m_1w": 1298,
+  "web_peak": 2350,
+  "verdict": "✓一致",
+  "direct_n": 3
+ },
+ {
+  "od": "深圳-乌鲁木齐",
+  "tx_best_rt": 2008,
+  "tx_1w_est": 1004,
+  "web_off": 910,
+  "tx_10m_rt": 2008,
+  "tx_10m_1w": 1004,
+  "web_peak": null,
+  "verdict": "✓一致",
+  "direct_n": 6
+ },
+ {
+  "od": "北京-丽江",
+  "tx_best_rt": 1369,
+  "tx_1w_est": 685,
+  "web_off": 480,
+  "tx_10m_rt": 1458,
+  "tx_10m_1w": 729,
+  "web_peak": 1369,
+  "verdict": "✓一致",
+  "direct_n": 6
+ },
+ {
+  "od": "上海-西双版纳",
+  "tx_best_rt": 896,
+  "tx_1w_est": 448,
+  "web_off": 400,
+  "tx_10m_rt": 916,
+  "tx_10m_1w": 458,
+  "web_peak": null,
+  "verdict": "✓一致",
+  "direct_n": 8
+ },
+ {
+  "od": "成都-哈尔滨",
+  "tx_best_rt": 1569,
+  "tx_1w_est": 785,
+  "web_off": 780,
+  "tx_10m_rt": 1570,
+  "tx_10m_1w": 785,
+  "web_peak": null,
+  "verdict": "✓一致",
+  "direct_n": 3
+ },
+ {
+  "od": "杭州-乌鲁木齐",
+  "tx_best_rt": 1674,
+  "tx_1w_est": 837,
+  "web_off": 480,
+  "tx_10m_rt": 1735,
+  "tx_10m_1w": 868,
+  "web_peak": null,
+  "verdict": "△同量级",
+  "direct_n": 6
+ },
+ {
+  "od": "北京-三亚",
+  "tx_best_rt": 1418,
+  "tx_1w_est": 709,
+  "web_off": 550,
+  "tx_10m_rt": 1428,
+  "tx_10m_1w": 714,
+  "web_peak": 2000,
+  "verdict": "✓一致",
+  "direct_n": 8
+ },
+ {
+  "od": "上海-哈尔滨",
+  "tx_best_rt": 749,
+  "tx_1w_est": 375,
+  "web_off": 370,
+  "tx_10m_rt": 796,
+  "tx_10m_1w": 398,
+  "web_peak": 1143,
+  "verdict": "✓一致",
+  "direct_n": 8
+ },
+ {
+  "od": "广州-西双版纳",
+  "tx_best_rt": 1067,
+  "tx_1w_est": 534,
+  "web_off": 500,
+  "tx_10m_rt": 1317,
+  "tx_10m_1w": 659,
+  "web_peak": null,
+  "verdict": "✓一致",
+  "direct_n": 2
+ },
+ {
+  "od": "北京-大理",
+  "tx_best_rt": 1485,
+  "tx_1w_est": 743,
+  "web_off": 590,
+  "tx_10m_rt": 1518,
+  "tx_10m_1w": 759,
+  "web_peak": 1440,
+  "verdict": "✓一致",
+  "direct_n": 7
+ },
+ {
+  "od": "上海-喀什",
+  "tx_best_rt": 2157,
+  "tx_1w_est": 1079,
+  "web_off": 840,
+  "tx_10m_rt": 2157,
+  "tx_10m_1w": 1079,
+  "web_peak": 2602,
+  "verdict": "✓一致",
+  "direct_n": 3
+ },
+ {
+  "od": "西安-喀什",
+  "tx_best_rt": 1461,
+  "tx_1w_est": 731,
+  "web_off": 661,
+  "tx_10m_rt": 1737,
+  "tx_10m_1w": 869,
+  "web_peak": null,
+  "verdict": "✓一致",
+  "direct_n": 8
+ },
+ {
+  "od": "重庆-拉萨",
+  "tx_best_rt": 2662,
+  "tx_1w_est": 1331,
+  "web_off": 520,
+  "tx_10m_rt": 3978,
+  "tx_10m_1w": 1989,
+  "web_peak": 1991,
+  "verdict": "△同量级",
+  "direct_n": 8
+ },
+ {
+  "od": "广州-乌鲁木齐",
+  "tx_best_rt": 1725,
+  "tx_1w_est": 863,
+  "web_off": 837,
+  "tx_10m_rt": 1725,
+  "tx_10m_1w": 863,
+  "web_peak": null,
+  "verdict": "✓一致",
+  "direct_n": 8
+ },
+ {
+  "od": "深圳-丽江",
+  "tx_best_rt": 1307,
+  "tx_1w_est": 654,
+  "web_off": 400,
+  "tx_10m_rt": 1307,
+  "tx_10m_1w": 654,
+  "web_peak": null,
+  "verdict": "△同量级",
+  "direct_n": 9
+ },
+ {
+  "od": "广州-哈尔滨",
+  "tx_best_rt": 1296,
+  "tx_1w_est": 648,
+  "web_off": 650,
+  "tx_10m_rt": 1296,
+  "tx_10m_1w": 648,
+  "web_peak": 1298,
+  "verdict": "✓一致",
+  "direct_n": 7
+ }
+]
