@@ -29,3 +29,6 @@ travel-booking-app/
 
 # LLM 用量日志
 server/logs/
+
+# P0 研究缓存（可再生中间产物，不入库；正式产出 p0-*.csv/json 入库）
+pipeline/out/p0-cache.json

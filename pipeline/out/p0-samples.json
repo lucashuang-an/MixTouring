@@ -1,0 +1,1412 @@
+[
+ {
+  "od": "北京-喀什",
+  "queries": [
+   {
+    "tag": "direct_off",
+    "query": "北京 到 喀什 机票 最低价 单程",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_peak",
+    "query": "北京 到 喀什 国庆 机票价格",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_fb",
+    "query": "北京 飞往 喀什 直飞机票 多少钱",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_大同",
+    "query": "北京 到 大同 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_大同",
+    "query": "大同 到 喀什 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_呼和浩特",
+    "query": "北京 到 呼和浩特 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_呼和浩特",
+    "query": "呼和浩特 到 喀什 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   }
+  ]
+ },
+ {
+  "od": "北京-乌鲁木齐",
+  "queries": [
+   {
+    "tag": "direct_off",
+    "query": "北京 到 乌鲁木齐 机票 最低价 单程",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_peak",
+    "query": "北京 到 乌鲁木齐 国庆 机票价格",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_fb",
+    "query": "北京 飞往 乌鲁木齐 直飞机票 多少钱",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_大同",
+    "query": "北京 到 大同 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_大同",
+    "query": "大同 到 乌鲁木齐 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_呼和浩特",
+    "query": "北京 到 呼和浩特 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_呼和浩特",
+    "query": "呼和浩特 到 乌鲁木齐 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   }
+  ]
+ },
+ {
+  "od": "上海-昆明",
+  "queries": [
+   {
+    "tag": "direct_off",
+    "query": "上海 到 昆明 机票 最低价 单程",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_peak",
+    "query": "上海 到 昆明 国庆 机票价格",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_fb",
+    "query": "上海 飞往 昆明 直飞机票 多少钱",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_长沙",
+    "query": "上海 到 长沙 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_长沙",
+    "query": "长沙 到 昆明 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_贵阳",
+    "query": "上海 到 贵阳 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_贵阳",
+    "query": "贵阳 到 昆明 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   }
+  ]
+ },
+ {
+  "od": "成都-乌鲁木齐",
+  "queries": [
+   {
+    "tag": "direct_off",
+    "query": "成都 到 乌鲁木齐 机票 最低价 单程",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_peak",
+    "query": "成都 到 乌鲁木齐 国庆 机票价格",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_fb",
+    "query": "成都 飞往 乌鲁木齐 直飞机票 多少钱",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_德令哈",
+    "query": "成都 到 德令哈 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_德令哈",
+    "query": "德令哈 到 乌鲁木齐 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_敦煌",
+    "query": "成都 到 敦煌 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_敦煌",
+    "query": "敦煌 到 乌鲁木齐 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   }
+  ]
+ },
+ {
+  "od": "南京-喀什",
+  "queries": [
+   {
+    "tag": "direct_off",
+    "query": "南京 到 喀什 机票 最低价 单程",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_peak",
+    "query": "南京 到 喀什 国庆 机票价格",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_fb",
+    "query": "南京 飞往 喀什 直飞机票 多少钱",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_西安",
+    "query": "南京 到 西安 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_西安",
+    "query": "西安 到 喀什 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_兰州",
+    "query": "南京 到 兰州 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_兰州",
+    "query": "兰州 到 喀什 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   }
+  ]
+ },
+ {
+  "od": "杭州-喀什",
+  "queries": [
+   {
+    "tag": "direct_off",
+    "query": "杭州 到 喀什 机票 最低价 单程",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_peak",
+    "query": "杭州 到 喀什 国庆 机票价格",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_fb",
+    "query": "杭州 飞往 喀什 直飞机票 多少钱",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_西安",
+    "query": "杭州 到 西安 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_西安",
+    "query": "西安 到 喀什 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_兰州",
+    "query": "杭州 到 兰州 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_兰州",
+    "query": "兰州 到 喀什 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   }
+  ]
+ },
+ {
+  "od": "成都-三亚",
+  "queries": [
+   {
+    "tag": "direct_off",
+    "query": "成都 到 三亚 机票 最低价 单程",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_peak",
+    "query": "成都 到 三亚 国庆 机票价格",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_fb",
+    "query": "成都 飞往 三亚 直飞机票 多少钱",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_贵阳",
+    "query": "成都 到 贵阳 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_贵阳",
+    "query": "贵阳 到 三亚 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_南宁",
+    "query": "成都 到 南宁 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_南宁",
+    "query": "南宁 到 三亚 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   }
+  ]
+ },
+ {
+  "od": "北京-西双版纳",
+  "queries": [
+   {
+    "tag": "direct_off",
+    "query": "北京 到 西双版纳 机票 最低价 单程",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_peak",
+    "query": "北京 到 西双版纳 国庆 机票价格",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_fb",
+    "query": "北京 飞往 西双版纳 直飞机票 多少钱",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_重庆",
+    "query": "北京 到 重庆 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_重庆",
+    "query": "重庆 到 西双版纳 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_昆明",
+    "query": "北京 到 昆明 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_昆明",
+    "query": "昆明 到 西双版纳 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   }
+  ]
+ },
+ {
+  "od": "广州-拉萨",
+  "queries": [
+   {
+    "tag": "direct_off",
+    "query": "广州 到 拉萨 机票 最低价 单程",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_peak",
+    "query": "广州 到 拉萨 国庆 机票价格",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_fb",
+    "query": "广州 飞往 拉萨 直飞机票 多少钱",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_柳州",
+    "query": "广州 到 柳州 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_柳州",
+    "query": "柳州 到 拉萨 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_梧州",
+    "query": "广州 到 梧州 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_梧州",
+    "query": "梧州 到 拉萨 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   }
+  ]
+ },
+ {
+  "od": "重庆-厦门",
+  "queries": [
+   {
+    "tag": "direct_off",
+    "query": "重庆 到 厦门 机票 最低价 单程",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_peak",
+    "query": "重庆 到 厦门 国庆 机票价格",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_fb",
+    "query": "重庆 飞往 厦门 直飞机票 多少钱",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_赣州",
+    "query": "重庆 到 赣州 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_赣州",
+    "query": "赣州 到 厦门 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_井冈山",
+    "query": "重庆 到 井冈山 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_井冈山",
+    "query": "井冈山 到 厦门 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   }
+  ]
+ },
+ {
+  "od": "西安-丽江",
+  "queries": [
+   {
+    "tag": "direct_off",
+    "query": "西安 到 丽江 机票 最低价 单程",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_peak",
+    "query": "西安 到 丽江 国庆 机票价格",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_fb",
+    "query": "西安 飞往 丽江 直飞机票 多少钱",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_成都",
+    "query": "西安 到 成都 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_成都",
+    "query": "成都 到 丽江 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_绵阳",
+    "query": "西安 到 绵阳 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_绵阳",
+    "query": "绵阳 到 丽江 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   }
+  ]
+ },
+ {
+  "od": "杭州-西双版纳",
+  "queries": [
+   {
+    "tag": "direct_off",
+    "query": "杭州 到 西双版纳 机票 最低价 单程",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_peak",
+    "query": "杭州 到 西双版纳 国庆 机票价格",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_fb",
+    "query": "杭州 飞往 西双版纳 直飞机票 多少钱",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_长沙",
+    "query": "杭州 到 长沙 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_长沙",
+    "query": "长沙 到 西双版纳 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_黄山",
+    "query": "杭州 到 黄山 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_黄山",
+    "query": "黄山 到 西双版纳 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   }
+  ]
+ },
+ {
+  "od": "北京-拉萨",
+  "queries": [
+   {
+    "tag": "direct_off",
+    "query": "北京 到 拉萨 机票 最低价 单程",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_peak",
+    "query": "北京 到 拉萨 国庆 机票价格",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_fb",
+    "query": "北京 飞往 拉萨 直飞机票 多少钱",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_兰州",
+    "query": "北京 到 兰州 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_兰州",
+    "query": "兰州 到 拉萨 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_榆林",
+    "query": "北京 到 榆林 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_榆林",
+    "query": "榆林 到 拉萨 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   }
+  ]
+ },
+ {
+  "od": "上海-拉萨",
+  "queries": [
+   {
+    "tag": "direct_off",
+    "query": "上海 到 拉萨 机票 最低价 单程",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_peak",
+    "query": "上海 到 拉萨 国庆 机票价格",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_fb",
+    "query": "上海 飞往 拉萨 直飞机票 多少钱",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_成都",
+    "query": "上海 到 成都 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_成都",
+    "query": "成都 到 拉萨 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_武汉",
+    "query": "上海 到 武汉 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_武汉",
+    "query": "武汉 到 拉萨 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   }
+  ]
+ },
+ {
+  "od": "广州-喀什",
+  "queries": [
+   {
+    "tag": "direct_off",
+    "query": "广州 到 喀什 机票 最低价 单程",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_peak",
+    "query": "广州 到 喀什 国庆 机票价格",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_fb",
+    "query": "广州 飞往 喀什 直飞机票 多少钱",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_成都",
+    "query": "广州 到 成都 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_成都",
+    "query": "成都 到 喀什 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_贵阳",
+    "query": "广州 到 贵阳 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_贵阳",
+    "query": "贵阳 到 喀什 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   }
+  ]
+ },
+ {
+  "od": "深圳-乌鲁木齐",
+  "queries": [
+   {
+    "tag": "direct_off",
+    "query": "深圳 到 乌鲁木齐 机票 最低价 单程",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_peak",
+    "query": "深圳 到 乌鲁木齐 国庆 机票价格",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_fb",
+    "query": "深圳 飞往 乌鲁木齐 直飞机票 多少钱",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_广州",
+    "query": "深圳 到 广州 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_广州",
+    "query": "广州 到 乌鲁木齐 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_成都",
+    "query": "深圳 到 成都 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_成都",
+    "query": "成都 到 乌鲁木齐 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   }
+  ]
+ },
+ {
+  "od": "北京-丽江",
+  "queries": [
+   {
+    "tag": "direct_off",
+    "query": "北京 到 丽江 机票 最低价 单程",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_peak",
+    "query": "北京 到 丽江 国庆 机票价格",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_fb",
+    "query": "北京 飞往 丽江 直飞机票 多少钱",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_成都",
+    "query": "北京 到 成都 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_成都",
+    "query": "成都 到 丽江 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_西安",
+    "query": "北京 到 西安 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_西安",
+    "query": "西安 到 丽江 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   }
+  ]
+ },
+ {
+  "od": "上海-西双版纳",
+  "queries": [
+   {
+    "tag": "direct_off",
+    "query": "上海 到 西双版纳 机票 最低价 单程",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_peak",
+    "query": "上海 到 西双版纳 国庆 机票价格",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_fb",
+    "query": "上海 飞往 西双版纳 直飞机票 多少钱",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_杭州",
+    "query": "上海 到 杭州 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_杭州",
+    "query": "杭州 到 西双版纳 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_长沙",
+    "query": "上海 到 长沙 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_长沙",
+    "query": "长沙 到 西双版纳 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   }
+  ]
+ },
+ {
+  "od": "成都-哈尔滨",
+  "queries": [
+   {
+    "tag": "direct_off",
+    "query": "成都 到 哈尔滨 机票 最低价 单程",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_peak",
+    "query": "成都 到 哈尔滨 国庆 机票价格",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_fb",
+    "query": "成都 飞往 哈尔滨 直飞机票 多少钱",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_北京",
+    "query": "成都 到 北京 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_北京",
+    "query": "北京 到 哈尔滨 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_西安",
+    "query": "成都 到 西安 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_西安",
+    "query": "西安 到 哈尔滨 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   }
+  ]
+ },
+ {
+  "od": "杭州-乌鲁木齐",
+  "queries": [
+   {
+    "tag": "direct_off",
+    "query": "杭州 到 乌鲁木齐 机票 最低价 单程",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_peak",
+    "query": "杭州 到 乌鲁木齐 国庆 机票价格",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_fb",
+    "query": "杭州 飞往 乌鲁木齐 直飞机票 多少钱",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_南京",
+    "query": "杭州 到 南京 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_南京",
+    "query": "南京 到 乌鲁木齐 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_银川",
+    "query": "杭州 到 银川 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_银川",
+    "query": "银川 到 乌鲁木齐 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   }
+  ]
+ },
+ {
+  "od": "北京-三亚",
+  "queries": [
+   {
+    "tag": "direct_off",
+    "query": "北京 到 三亚 机票 最低价 单程",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_peak",
+    "query": "北京 到 三亚 国庆 机票价格",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_fb",
+    "query": "北京 飞往 三亚 直飞机票 多少钱",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_武汉",
+    "query": "北京 到 武汉 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_武汉",
+    "query": "武汉 到 三亚 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_长沙",
+    "query": "北京 到 长沙 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_长沙",
+    "query": "长沙 到 三亚 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   }
+  ]
+ },
+ {
+  "od": "上海-哈尔滨",
+  "queries": [
+   {
+    "tag": "direct_off",
+    "query": "上海 到 哈尔滨 机票 最低价 单程",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_peak",
+    "query": "上海 到 哈尔滨 国庆 机票价格",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_fb",
+    "query": "上海 飞往 哈尔滨 直飞机票 多少钱",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_丹东",
+    "query": "上海 到 丹东 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_丹东",
+    "query": "丹东 到 哈尔滨 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_长春",
+    "query": "上海 到 长春 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_长春",
+    "query": "长春 到 哈尔滨 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   }
+  ]
+ },
+ {
+  "od": "广州-西双版纳",
+  "queries": [
+   {
+    "tag": "direct_off",
+    "query": "广州 到 西双版纳 机票 最低价 单程",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_peak",
+    "query": "广州 到 西双版纳 国庆 机票价格",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_fb",
+    "query": "广州 飞往 西双版纳 直飞机票 多少钱",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_南宁",
+    "query": "广州 到 南宁 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_南宁",
+    "query": "南宁 到 西双版纳 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_玉林",
+    "query": "广州 到 玉林 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_玉林",
+    "query": "玉林 到 西双版纳 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   }
+  ]
+ },
+ {
+  "od": "北京-大理",
+  "queries": [
+   {
+    "tag": "direct_off",
+    "query": "北京 到 大理 机票 最低价 单程",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_peak",
+    "query": "北京 到 大理 国庆 机票价格",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_fb",
+    "query": "北京 飞往 大理 直飞机票 多少钱",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_成都",
+    "query": "北京 到 成都 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_成都",
+    "query": "成都 到 大理 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_西安",
+    "query": "北京 到 西安 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_西安",
+    "query": "西安 到 大理 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   }
+  ]
+ },
+ {
+  "od": "上海-喀什",
+  "queries": [
+   {
+    "tag": "direct_off",
+    "query": "上海 到 喀什 机票 最低价 单程",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_peak",
+    "query": "上海 到 喀什 国庆 机票价格",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_fb",
+    "query": "上海 飞往 喀什 直飞机票 多少钱",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_西安",
+    "query": "上海 到 西安 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_西安",
+    "query": "西安 到 喀什 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_南京",
+    "query": "上海 到 南京 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_南京",
+    "query": "南京 到 喀什 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   }
+  ]
+ },
+ {
+  "od": "西安-喀什",
+  "queries": [
+   {
+    "tag": "direct_off",
+    "query": "西安 到 喀什 机票 最低价 单程",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_peak",
+    "query": "西安 到 喀什 国庆 机票价格",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_fb",
+    "query": "西安 飞往 喀什 直飞机票 多少钱",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_兰州",
+    "query": "西安 到 兰州 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_兰州",
+    "query": "兰州 到 喀什 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_西宁",
+    "query": "西安 到 西宁 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_西宁",
+    "query": "西宁 到 喀什 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   }
+  ]
+ },
+ {
+  "od": "重庆-拉萨",
+  "queries": [
+   {
+    "tag": "direct_off",
+    "query": "重庆 到 拉萨 机票 最低价 单程",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_peak",
+    "query": "重庆 到 拉萨 国庆 机票价格",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_fb",
+    "query": "重庆 飞往 拉萨 直飞机票 多少钱",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_康定",
+    "query": "重庆 到 康定 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_康定",
+    "query": "康定 到 拉萨 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_林芝",
+    "query": "重庆 到 林芝 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_林芝",
+    "query": "林芝 到 拉萨 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   }
+  ]
+ },
+ {
+  "od": "广州-乌鲁木齐",
+  "queries": [
+   {
+    "tag": "direct_off",
+    "query": "广州 到 乌鲁木齐 机票 最低价 单程",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_peak",
+    "query": "广州 到 乌鲁木齐 国庆 机票价格",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_fb",
+    "query": "广州 飞往 乌鲁木齐 直飞机票 多少钱",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_成都",
+    "query": "广州 到 成都 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_成都",
+    "query": "成都 到 乌鲁木齐 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_重庆",
+    "query": "广州 到 重庆 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_重庆",
+    "query": "重庆 到 乌鲁木齐 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   }
+  ]
+ },
+ {
+  "od": "深圳-丽江",
+  "queries": [
+   {
+    "tag": "direct_off",
+    "query": "深圳 到 丽江 机票 最低价 单程",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_peak",
+    "query": "深圳 到 丽江 国庆 机票价格",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_fb",
+    "query": "深圳 飞往 丽江 直飞机票 多少钱",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_广州",
+    "query": "深圳 到 广州 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_广州",
+    "query": "广州 到 丽江 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_佛山",
+    "query": "深圳 到 佛山 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_佛山",
+    "query": "佛山 到 丽江 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   }
+  ]
+ },
+ {
+  "od": "广州-哈尔滨",
+  "queries": [
+   {
+    "tag": "direct_off",
+    "query": "广州 到 哈尔滨 机票 最低价 单程",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_peak",
+    "query": "广州 到 哈尔滨 国庆 机票价格",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "direct_fb",
+    "query": "广州 飞往 哈尔滨 直飞机票 多少钱",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_南京",
+    "query": "广州 到 南京 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_南京",
+    "query": "南京 到 哈尔滨 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "rail_沈阳",
+    "query": "广州 到 沈阳 火车票 硬卧 二等座 票价",
+    "results": [],
+    "skipped": "offline"
+   },
+   {
+    "tag": "plane_沈阳",
+    "query": "沈阳 到 哈尔滨 机票 最低价",
+    "results": [],
+    "skipped": "offline"
+   }
+  ]
+ }
+]
