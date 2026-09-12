@@ -7,7 +7,7 @@ import Koa from 'koa';
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, normalize, sep } from 'node:path';
-import { buildServiceDB } from '../pipeline/lib/derive.mjs';
+import { buildServiceDB, reverseRoute } from '../pipeline/lib/derive.mjs';
 import { enrichWithGeo } from '../pipeline/lib/geo-skill.mjs';
 import { validateStore } from '../pipeline/lib/validate-ai-copy.mjs';
 import { validateStorePlans } from '../pipeline/lib/validate-plan.mjs';
@@ -226,10 +226,15 @@ app.use(async (ctx, next) => {
     return;
   }
 
-  /* GET /api/plans?from&to&date → { direct, plans[] }（date 参数预留询价，Phase 1 未启用） */
+  /* GET /api/plans?from&to&date → { direct, plans[] }（date 参数预留询价，Phase 1 未启用）
+   * P1.7（v0.19.0）：A-B 无数据时回落 B-A 并反转展示（喀什→北京不再返回空） */
   if (path === '/api/plans') {
-    const route = db.routes[q.from + '-' + q.to] || { direct: null, plans: [] };
-    ctx.body = { code: 0, data: route };
+    let route = db.routes[q.from + '-' + q.to];
+    if (!route && q.from && q.to) {
+      const rev = db.routes[q.to + '-' + q.from];
+      if (rev) route = reverseRoute(rev, q.from, q.to);
+    }
+    ctx.body = { code: 0, data: route || { direct: null, plans: [] } };
     return;
   }
 

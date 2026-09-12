@@ -76,6 +76,18 @@
       "attempts": 2,
       "lastError": "摘要不足以组装出含时刻的合格方案（LLM 未返回有效结构或如实放弃）",
       "lastAttemptAt": "2026-09-10T17:06:45.724Z"
+    },
+    {
+      "id": "wish-1789147792601-483",
+      "from": "上海",
+      "to": "拉萨",
+      "date": "",
+      "status": "pending",
+      "ts": 1789147792601,
+      "processingAt": "2026-09-11T17:29:52.668Z",
+      "attempts": 1,
+      "lastError": "阶段①联网检索（web_search API）无结果或不可用",
+      "lastAttemptAt": "2026-09-11T17:29:52.845Z"
     }
   ]
 }

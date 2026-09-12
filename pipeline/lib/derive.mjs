@@ -17,8 +17,9 @@ function gradeConnection(raw) {
   const effText = eff >= 105 ? '2 小时' : eff >= 75 ? '1.5 小时' : eff >= 45 ? '1 小时' : '不足 1 小时';
   let ruleLine;
   if (raw.same_station) ruleLine = level === '低' ? '同站换乘，余量充足' : '同站转场，余量一般';
-  else ruleLine = level === '高' ? '跨站接驳后余量不足 1 小时' : `扣除接驳与缓冲后余量约 ${effText}`;
-  return { level, title: `衔接时间余量 · ${raw.city} ${hm(raw.wait_min)}`, ruleLine };
+  else ruleLine = `原始间隔 ${hm(raw.wait_min)} − 接驳 ${raw.transfer_min}min − 缓冲 ${CROSS_BUFFER_MIN}min${eff < 60 ? '，有效不足 1 小时' : '，有效约 ' + effText}`;
+  /* P1.5（v0.19.0）：标题显示有效余量而非原始间隔——原三处数字互相矛盾（评估 P0-5） */
+  return { level, title: `衔接余量 · ${raw.city} 有效 ${hm(eff)}`, ruleLine };
 }
 
 function gradeBaggage(raw) {
@@ -100,12 +101,25 @@ function fmtSeg(seg) {
 
 /* ---------- AI 文案插值（占位符白名单） ---------- */
 
+/* P1.1（v0.19.0）省额下线：{saved} 从「¥X」改为区间关系叙述（产品定义 §4.2 铁律：
+ * 禁精确省额——基准虚高 1.5–3 倍已由 P0 证实，方向都可能是反的）。
+ * 关系等级按方案中值 vs 直飞参考：低三成以上 / 略低 / 相当 / 不优。 */
+export function savedRelation(price, direct) {
+  const d = direct ? direct.price : null;
+  if (!d || d <= 0) return '暂无直飞参考';
+  const ratio = price.mid / d;
+  if (ratio <= 0.7) return '比直飞参考低约三成以上';
+  if (ratio <= 0.9) return '比直飞参考略低';
+  if (ratio <= 1.1) return '与直飞参考相当';
+  return '暂不优于直飞参考';
+}
+
 export function aiValues(plan, derived) {
   const transfers = plan.stops.filter((s) => s.kind === 'transfer');
   const conn = plan.risks.find((r) => r.factor === 'connection');
   const trf = plan.risks.find((r) => r.factor === 'transfer');
   const v = {
-    saved: yuan(derived.price.saved),
+    saved: savedRelation(derived.price, derived.direct),
     price_min: yuan(derived.price.min),
     price_max: yuan(derived.price.max),
     price_mid: yuan(derived.price.mid),
@@ -149,7 +163,7 @@ export function derivePlan(plan, direct, isTpl) {
     totalTime: '总 ' + hm(times.total_min),
     price: price.min === price.max ? yuan(price.min) : band(price.min, price.max),
     priceMid: price.mid,
-    saved: '省 ' + yuan(price.saved),
+    saved: savedRelation(price, direct),
     modes: [...new Set(plan.segs.map((s) => s.mode))],
     stops: plan.stops.map(fmtStop),
     segs: plan.segs.map(fmtSeg),
@@ -205,4 +219,38 @@ export function buildServiceDB(store) {
   });
 
   return { cities: store.cities, routes, templates };
+}
+
+/* ---------- P1.7（v0.19.0）双向路由：A-B 查询回落 B-A 并反转展示 ----------
+ * 反转规则：stops/segs 序列倒序 + 起终互换 + 站点互换 + day_offset 语义保持
+ * （原到达日变出发日，恒非负）；wait_min/risks/价格不变。直飞基准如实标注「反向基准」。 */
+export function reverseRoute(route, from, to) {
+  const reversePlan = (p) => {
+    const stops = p.stops.slice().reverse();
+    const rekind = { origin: 'dest', dest: 'origin', transfer: 'transfer' };
+    const newStops = stops.map((s) => ({ ...s, kind: rekind[s.kind] || s.kind }));
+    const newSegs = p.segs.slice().reverse().map((s) => ({
+      ...s,
+      from_station: s.to_station,
+      to_station: s.from_station,
+      dep: s.arr,
+      dep_day: s.arr_day,
+      arr: s.dep,
+      arr_day: s.dep_day
+    }));
+    return {
+      ...p,
+      from: from, to: to,
+      stops: newStops,
+      segs: newSegs,
+      risks: p.risks
+    };
+  };
+  return {
+    direct: route.direct
+      ? { ...route.direct, note: (route.direct.note || '') + '（反向查询 · 以对向直飞基准为参考）' }
+      : null,
+    plans: route.plans.map(reversePlan),
+    reversed: true
+  };
 }
