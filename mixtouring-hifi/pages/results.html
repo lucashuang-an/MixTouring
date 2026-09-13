@@ -586,6 +586,22 @@
     }
     API.planSearch({ from: from, to: to, date: date }).then(function (res) {
       routeData = res.data;
+      /* 时令透明（v0.20.0 用户裁决）：淡季如实告知直飞/直达更优，旺季提示混搭优势。
+       * 文案来自服务端（seasonality.json 派生），前端不做数字判断 */
+      if (window.__seasonBar) { window.__seasonBar.remove(); window.__seasonBar = null; }
+      var season = routeData.season;
+      if (season && season.advice) {
+        var off = season.verdict === 'off';
+        var bar = document.createElement('div');
+        bar.id = 'seasonBar';
+        bar.className = 'detail-card';
+        bar.style.cssText = 'display:flex;align-items:flex-start;gap:8px;margin:12px 16px 0;padding:10px 14px;border-radius:12px;' +
+          (off ? 'background:rgba(251,191,36,0.12);' : 'background:rgba(52,199,89,0.08);');
+        bar.innerHTML = '<svg style="width:15px;height:15px;margin-top:1px;flex-shrink:0;color:' + (off ? '#FBBF24' : '#34c759') + ';"><use href="#hero-' + (off ? 'exclamation-triangle' : 'sparkles') + '"></use></svg>' +
+          '<span style="font-size:12.5px;line-height:1.6;color:' + (off ? '#A16207' : '#1E7F45') + ';">' + MT.esc(season.advice) + '</span>';
+        document.getElementById('content').insertBefore(bar, document.getElementById('content').firstChild);
+        window.__seasonBar = bar;
+      }
       if (!routeData.plans.length) { renderEmpty(); return; }
       document.getElementById('skeleton').style.display = 'none';
       document.getElementById('content').style.display = 'block';

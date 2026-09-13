@@ -56,6 +56,29 @@ function maybeReload() {
 const planCount = Object.values(db.routes).reduce((n, r) => n + r.plans.length, 0);
 console.log(`✓ 方案库已装载：${db.cities.length} 城市 · ${Object.keys(db.routes).length} 路线对 · ${planCount} 方案 · ${db.templates.length} 模板`);
 
+/* 时令窗口（v0.20.0 用户裁决：搜索落淡季 → 如实告知直飞/直达列车更优）。
+ * 数据由天巡月度日历派生（pipeline/data/seasonality.json），随边库扩展而扩展 */
+const SEASONALITY = JSON.parse(readFileSync(join(root, 'pipeline/data/seasonality.json'), 'utf8')).routes;
+
+function seasonAdvice(routeId, month) {
+  const s = SEASONALITY[routeId] || SEASONALITY[routeId.split('-').reverse().join('-')];
+  if (!s) return null;
+  if (s.cheap_months.includes(month)) {
+    /* 不引用库内直飞基准数字（v0.18.5 已证虚高 1.5–3 倍），只做关系性表述 */
+    return {
+      verdict: 'off', month,
+      advice: `${month} 月处于这条线的低价窗口：直飞或直达列车通常更划算，混搭组合未必省钱，出行前请按分段信息自行比价`
+    };
+  }
+  if (s.peak_months.includes(month)) {
+    return {
+      verdict: 'peak', month,
+      advice: `${month} 月为这条线旺季（直飞价格通常走高），混搭组合此时更有优势，建议尽早比价锁定`
+    };
+  }
+  return { verdict: 'shoulder', month, advice: '' };
+}
+
 function findItem(id) {
   for (const key in db.routes) {
     const hit = db.routes[key].plans.find((p) => p.id === id);
@@ -226,15 +249,22 @@ app.use(async (ctx, next) => {
     return;
   }
 
-  /* GET /api/plans?from&to&date → { direct, plans[] }（date 参数预留询价，Phase 1 未启用）
-   * P1.7（v0.19.0）：A-B 无数据时回落 B-A 并反转展示（喀什→北京不再返回空） */
+  /* GET /api/plans?from&to&date → { direct, plans[], season? }（date 参数 v0.20.0 起消费于时令判定）
+   * P1.7：A-B 无数据时回落 B-A 并反转展示；season 仅在带合法 date 且落在淡/旺季时附加（verify 契约不变） */
   if (path === '/api/plans') {
     let route = db.routes[q.from + '-' + q.to];
     if (!route && q.from && q.to) {
       const rev = db.routes[q.to + '-' + q.from];
       if (rev) route = reverseRoute(rev, q.from, q.to);
     }
-    ctx.body = { code: 0, data: route || { direct: null, plans: [] } };
+    /* 浅拷贝再附加 season——db.routes 是进程级缓存对象，直接挂字段会污染后续所有响应（含 /api/bootstrap） */
+    const data = route ? { ...route } : { direct: null, plans: [] };
+    const dm = /^(\d{4})\/(\d{2})/.exec(q.date || '');
+    if (dm && route) {
+      const season = seasonAdvice(q.from + '-' + q.to, Number(dm[2]));
+      if (season && season.advice) data.season = season;
+    }
+    ctx.body = { code: 0, data };
     return;
   }
 

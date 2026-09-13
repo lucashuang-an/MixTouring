@@ -3,7 +3,7 @@
   'use strict';
 
   /* 产品版本号（与 工作记录.md 最新版本同步；me.html「关于」动态读取，勿在页面写死） */
-  var VERSION = 'v0.19.0';
+  var VERSION = 'v0.20.0';
 
   var FAV_KEY = 'mt:favs';
   var FB_KEY = 'mt:feedback';
