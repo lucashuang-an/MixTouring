@@ -1,0 +1,46 @@
+{
+  "_meta": {
+    "说明": "G0 样本矩阵：北京⇄阿拉木图 2026 国庆窗口（基线见 g0-almaty-input.json）。采样日 2026-09-16。每条证据带来源/口径；冲突与缺口如实标注。状态按 产品方案v1.2 §4.2。",
+    "采样渠道": "WebSearch（搜索引擎聚合 + 来源页摘要）；未直接登录 OTA 查询指定日期实时价——价格均为公开页参考口径",
+    "g0_decision_draft": "dated_partial（仅部分核验）：直飞去返均有真实承运与班期多源证据；缺国庆核心窗价格样本、北京端机场/时刻多源冲突待官网终核；转机/铁路候选有服务证据但衔接与出入境段待核"
+  },
+  "direct": {
+    "outbound": [
+      { "service_no": "CA799", "airline": "国航", "from": "北京首都 PEK", "to": "阿拉木图 ALA", "frequency": "每周一/三/五/日", "aircraft": "B737", "since": "2025-07-30 首航", "time_note": "时刻多源冲突：Trip.com 某实飞 17:45→20:11（时区口径可疑）；携程静态页另有 06:05→08:30 / 20:40 版本——PEK-ALA 实际飞行约 5h+（时差 -3h），需官网终核", "sources": ["http://www.news.cn/world/20250731/533ade33ff5a45b8bfd33f76dc5c0fed/c.html", "https://flights.ctrip.com/international/schedule/bjs-ala.html"], "status": "dated_partial" },
+      { "service_no": "KC268", "airline": "阿斯塔纳航空", "from": "北京", "to": "阿拉木图", "frequency": "官网标注每日（民航网 2025-03 称每周5班——口径冲突，以官网当前页为准）", "note": "北京端机场多源不一（首都 T2 / 大兴 KC1097 均有出现），需官网终核", "sources": ["https://airastana.com/chn-zh/booking-form/flights-from-beijing-to-kazakhstan", "http://www.caacnews.com.cn/1/88/202503/t20250331_1386271.html"], "status": "dated_partial" }
+    ],
+    "inbound": [
+      { "service_no": "CA800", "airline": "国航", "from": "阿拉木图 ALA", "to": "北京首都 PEK", "frequency": "每周一/三/五/日（与 CA799 配对）", "sources": ["http://www.news.cn/world/20250731/533ade33ff5a45b8bfd33f76dc5c0fed/c.html"], "status": "dated_partial" },
+      { "service_no": "KC267", "airline": "阿斯塔纳航空", "from": "阿拉木图 T2", "to": "北京首都 T2", "frequency": "每日（官网）", "time": "21:20 → 次日 04:55（当地时间）", "aircraft": "A321", "sources": ["https://airastana.com/chn-zh/booking-form/flights-from-beijing-to-kazakhstan", "https://aviability.com/zh-hans/flight/kc267-air-astana"], "status": "dated_partial" }
+    ],
+    "price_samples": [
+      { "route": "北京→阿拉木图", "observed": "9/25 ¥1,444（去哪儿单程）；10 月淡季单程 ¥1,324（天巡，含中转）；10 月直飞往返 ¥2,801–2,820（天巡）", "gap": "假期核心窗（9/30 去程）具体价未采到——国庆高峰价缺失", "sources": ["https://www.tianxun.com/routes/bjsa/ala/beijing-to-almaty.html"], "status": "historical" },
+      { "route": "阿拉木图→北京", "observed": "单程约 ¥1,999 起（Booking 未来 60 天预测价）；10 月中旬 ¥3,001/人（天巡 10/13 口径）", "gap": "返程窗口（10/5–11）具体日期价未采到", "sources": ["https://www.tianxun.com/routes/ala/bjsa/almaty-to-beijing.html", "https://www.booking.com/flights/route/city-to-city/kz-almaty-to-cn-beijing.zh-cn.html"], "status": "historical" }
+    ]
+  },
+  "transfer_via_urumqi": {
+    "leg1_beijing_urumqi": { "note": "国内高频航线（多航司每日多班）+ 铁路 D69（10:18 发、次日到，原 Z69 升级，2026-06 起）——供给充分，段证据可后续按需采样", "sources": ["https://zh.wikipedia.org/zh-cn/D69/70%E6%AC%A1%E5%88%97%E8%BD%A6"], "status": "historical" },
+    "leg2_urumqi_almaty": [
+      { "service_no": "CZ6075/6076", "airline": "南航", "note": "每日对飞；ALA→URC 09:35→14:15（CZ6076 官网口径）", "sources": ["https://www.csair.com/newh5/cn/service_notice/1gbkei8it8tbc.shtml"], "status": "dated_partial" },
+      { "service_no": "KC687 / KC1016", "airline": "阿斯塔纳航空", "note": "ALA 06:40/09:35 → URC 11:25/14:15（携程时刻）", "status": "dated_partial" }
+    ],
+    "risks_pending": "乌鲁木齐国际转机：是否需入境提取行李再托运、最短连接时间、联程票 vs 分开购票——均未核验（T08 验收点）"
+  },
+  "rail_hybrid": {
+    "leg_beijing_urumqi": { "service_no": "D69", "note": "北京西 10:18 → 乌鲁木齐 次日（约30h；Z69 2026-06 升级 D69，二等座 ¥412/二等卧 ~¥575）", "sources": ["https://zh.wikipedia.org/zh-cn/D69/70%E6%AC%A1%E5%88%97%E8%BD%A6"], "status": "dated_partial" },
+    "leg_urumqi_almaty": { "service_no": "K9795", "note": "乌鲁木齐周六 23:33 → 阿拉木图 周日 22:59（每周仅一班！1048km，约25h，经霍尔果斯/阿腾科里口岸）；返程 K9796 阿拉木图周一 00:01/08:59 → 乌鲁木齐周二 08:48", "sources": ["https://zh.wikipedia.org/wiki/K9795/9796%E6%AC%A1%E5%88%97%E8%BD%A6", "https://www.xinjiang.gov.cn/xinjiang/tzgg/201710/2aa9123f83844f5aa045afea649a1861.shtml"], "status": "dated_partial" },
+    "window_feasibility_draft": "去程：D69 需周五 9/25 发（窗口前一日）→ 周六 9/26 到乌市 → 当晚 K9795 → 周日 9/27 22:59 抵 ALA（贴窗口下沿，零冗余，D69/K9795 任一延误即断链）。返程：K9796 周一 10/5 08:59 → 周二 10/6 08:48 抵乌市 → 当日航班回京。结论草案：铁路混搭在测试窗口【结构可行但班期极脆】，且国际联运票务渠道（12306 是否售国际段）未核验"
+  },
+  "context_verified": {
+    "tz": "哈萨克斯坦 2024-03 起全国 UTC+5（gov.kz 官方链接，已录入基线）",
+    "holiday": "2026 中秋 9/25–27、国庆 10/1–7、9/20 与 10/10 调休上班（北京市政府转载国务院通知）",
+    "visa": "按旅客实际国籍查官方规则（gov.kz 签证表链接在基线）；【产品不得推断国籍】。补充事实（待官方终核）：中哈互免签证自 2023-11 生效（30 天/次）——仅提示线索，不作为产品断言"
+  },
+  "gaps_to_close": [
+    "国庆核心窗（9/30 去 / 10/7 返）直飞具体日期价格（OTA 登录查询或人工截图）",
+    "CA799/KC268 北京端机场与当季时刻终核（国航/阿斯塔纳官网）",
+    "乌鲁木齐国际转机最短连接与行李/出入境流程",
+    "国际列车购票渠道（12306 国际联运/代理）与票价",
+    "返程 KC267/CA800 在 10/5–11 各日期的余票口径"
+  ]
+}

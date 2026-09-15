@@ -1,0 +1,29 @@
+{
+  "_meta": {
+    "说明": "G0 测试输入基线（开发流程_SoloTrip_v1.2 §G0.1）。可回放：所有采样记录必须引用本文件的窗口与口径。样本矩阵在 g0-almaty-samples.json。",
+    "建立日": "2026-09-16",
+    "origin": "北京",
+    "destination": "阿拉木图",
+    "destination_country": "哈萨克斯坦",
+    "destination_tz": "Asia/Almaty (UTC+5)",
+    "origin_tz": "Asia/Shanghai (UTC+8)",
+    "traveler_count": 1,
+    "trip_type": "round_trip",
+    "windows": {
+      "outbound": "2026-09-27 ~ 2026-10-03",
+      "return": "2026-10-05 ~ 2026-10-11"
+    },
+    "date_combos": [
+      { "id": "peak", "note": "假期核心：去 9/30，返 10/7", "outbound": "2026-09-30", "return": "2026-10-07" },
+      { "id": "early", "note": "错峰提前：去 9/27，返 10/5", "outbound": "2026-09-27", "return": "2026-10-05" },
+      { "id": "constrained", "note": "受 10/10 调休上班影响：去 10/2，返 10/9（返程次日上班）", "outbound": "2026-10-02", "return": "2026-10-09" }
+    ],
+    "baggage": "经济舱默认行李口径（每段记录退改与行李条款，未知项保留）",
+    "currency": "CNY（原币种照录）",
+    "official_context": {
+      "假期安排": "2026 中秋 9/25–27、国庆 10/1–7；9/20 与 10/10 调休上班（国务院通知，北京市政府转载 https://www.beijing.gov.cn/cs/gncs/zcwj/202603/t20260327_4568275.html）",
+      "哈萨克时区": "2024-03 起全国统一 UTC+5（https://www.gov.kz/memleket/entities/mfa-jakarta/press/news/details/715495?lang=en）",
+      "签证": "按用户实际国籍查官方规则，不因从北京出发推断中国护照（哈外交部签证表 https://www.gov.kz/memleket/entities/mfa/activities/34747?lang=en）"
+    }
+  }
+}
