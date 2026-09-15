@@ -261,7 +261,10 @@ app.use(async (ctx, next) => {
     const data = route ? { ...route } : { direct: null, plans: [] };
     const dm = /^(\d{4})\/(\d{2})/.exec(q.date || '');
     if (dm && route) {
-      const season = seasonAdvice(q.from + '-' + q.to, Number(dm[2]));
+      /* 节假日出行（v0.22.0）：显式高峰标记，直接按旺季口径给建议 */
+      const season = q.holiday === '1'
+        ? { verdict: 'peak', month: Number(dm[2]), advice: '节假日为出行高峰（直飞价格通常显著走高），混搭组合更有优势，票源也更为紧张，建议尽早比价锁定' }
+        : seasonAdvice(q.from + '-' + q.to, Number(dm[2]));
       if (season && season.advice) data.season = season;
     }
     ctx.body = { code: 0, data };

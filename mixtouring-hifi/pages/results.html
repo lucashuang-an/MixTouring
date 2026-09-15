@@ -292,13 +292,17 @@
   (function () {
     var from = MT.qs('from') || '北京';
     var to = MT.qs('to') || '喀什';
-    var date = MT.qs('date') || '2026/10/01';
+    var date = MT.qs('date') || ''; /* v0.22.0：YYYY/MM 月份（兼容旧 YYYY/MM/DD） */
+    var holiday = MT.qs('holiday') === '1';
     var sortMode = 'budget';
     var routeData = null;
 
     document.getElementById('navTitle').textContent = from + ' → ' + to;
-    var dm = date.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
-    var dateLabel = dm ? (parseInt(dm[2], 10) + '月' + parseInt(dm[3], 10) + '日') : date;
+    var dmD = date.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+    var dmM = date.match(/^(\d{4})\/(\d{1,2})$/);
+    var dateLabel = dmD ? (parseInt(dmD[2], 10) + '月' + parseInt(dmD[3], 10) + '日')
+      : dmM ? (parseInt(dmM[2], 10) + '月' + (holiday ? '·节假日' : ''))
+      : (holiday ? '节假日' : '近期');
 
     document.getElementById('btnBack').addEventListener('click', function () {
       MT.goBack('search.html');
@@ -584,7 +588,7 @@
       document.getElementById('freshLine').textContent =
         '估算价格样本' + (rel ? '更新于 ' + rel : '来自近期采样') + ' · 请按分段信息自行购票';
     }
-    API.planSearch({ from: from, to: to, date: date }).then(function (res) {
+    API.planSearch({ from: from, to: to, date: date, holiday: holiday }).then(function (res) {
       routeData = res.data;
       /* 时令透明（v0.20.0 用户裁决）：淡季如实告知直飞/直达更优，旺季提示混搭优势。
        * 文案来自服务端（seasonality.json 派生），前端不做数字判断 */

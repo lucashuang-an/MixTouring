@@ -71,13 +71,14 @@
     });
   }
 
-  /* GET /api/plans?from&to&date → { code, data: { direct, plans[] } } */
+  /* GET /api/plans?from&to&date&holiday → { code, data: { direct, plans[], season? } } */
   function planSearch(params) {
     return probe().then(function (ok) {
       if (!ok) return localPlanSearch(params);
       var q = 'from=' + encodeURIComponent(params.from) +
         '&to=' + encodeURIComponent(params.to) +
         '&date=' + encodeURIComponent(params.date || '');
+      if (params.holiday) q += '&holiday=1';
       return getEnvelope('/api/plans?' + q).catch(function () { return localPlanSearch(params); });
     });
   }

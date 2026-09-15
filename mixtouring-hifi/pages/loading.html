@@ -247,10 +247,13 @@
   (function () {
     var from = MT.qs('from') || '北京';
     var to = MT.qs('to') || '喀什';
-    var date = MT.qs('date') || '2026/10/01';
+    var date = MT.qs('date') || ''; /* v0.22.0：YYYY/MM 月份（兼容旧 YYYY/MM/DD） */
 
-    var dm = date.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
-    var dateLabel = dm ? (parseInt(dm[2], 10) + '月' + parseInt(dm[3], 10) + '日') : date;
+    var dmD = date.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+    var dmM = date.match(/^(\d{4})\/(\d{1,2})$/);
+    var dateLabel = dmD ? (parseInt(dmD[2], 10) + '月' + parseInt(dmD[3], 10) + '日')
+      : dmM ? (parseInt(dmM[2], 10) + '月')
+      : (date || '近期');
     document.getElementById('routeLabel').textContent = from + ' → ' + to + ' · ' + dateLabel;
 
     document.getElementById('btnCancel').addEventListener('click', function () {
@@ -333,6 +336,7 @@
 
     setTimeout(function () {
       var q = new URLSearchParams({ from: from, to: to, date: date });
+      if (MT.qs('holiday') === '1') q.set('holiday', '1');
       location.replace('results.html?' + q.toString());
     }, holdMs);
 

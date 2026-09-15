@@ -453,11 +453,11 @@
         </button>
         <input class="search-input" id="toInput" value="喀什" readonly aria-label="目的地" />
       </div>
-      <!-- Date field -->
+      <!-- Month field（v0.22.0 P1.4：月份+节假日，不留看似能比价的日历） -->
       <div class="mt-4">
-        <div class="text-center text-[13px] mb-1.5" style="color: var(--mixtouring-muted-foreground, #7C8089);">出发日期</div>
+        <div class="text-center text-[13px] mb-1.5" style="color: var(--mixtouring-muted-foreground, #7C8089);">出行月份</div>
         <div class="relative">
-          <div class="date-display" role="button" tabindex="0" aria-label="出发日期">2026/10/01</div>
+          <div class="date-display" role="button" tabindex="0" aria-label="出行月份">2026/10</div>
           <svg class="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style="color: var(--mixtouring-muted-foreground, #7C8089);"><use href="#hero-calendar"></use></svg>
         </div>
       </div>
@@ -511,24 +511,24 @@
     </div>
   </nav>
 
-  <!-- Custom Calendar Popup -->
+  <!-- Month Picker Sheet（v0.22.0 P1.4：出行月份+节假日——不留「看似能比价实不比价」的日历，日期到平台查） -->
   <div class="cal-overlay" id="calOverlay">
     <div class="cal-panel">
       <div class="cal-handle"></div>
       <div class="cal-header">
-        <div class="cal-title" id="calMonthLabel">2026年 <span>10月</span></div>
+        <div class="cal-title" id="calMonthLabel">出行<span>月份</span></div>
         <div class="cal-nav">
-          <button class="cal-nav-btn" id="calPrev" aria-label="上个月"><svg class="w-4 h-4" style="color: var(--mixtouring-foreground, #1E2022);"><use href="#hero-chevron-left"></use></svg></button>
-          <button class="cal-nav-btn" id="calNext" aria-label="下个月"><svg class="w-4 h-4" style="color: var(--mixtouring-foreground, #1E2022);"><use href="#hero-chevron-right"></use></svg></button>
+          <button class="cal-nav-btn" id="calPrev" aria-label="上一年"><svg class="w-4 h-4" style="color: var(--mixtouring-foreground, #1E2022);"><use href="#hero-chevron-left"></use></svg></button>
+          <button class="cal-nav-btn" id="calNext" aria-label="下一年"><svg class="w-4 h-4" style="color: var(--mixtouring-foreground, #1E2022);"><use href="#hero-chevron-right"></use></svg></button>
         </div>
       </div>
-      <div class="cal-weekdays">
-        <div class="cal-weekday">一</div><div class="cal-weekday">二</div><div class="cal-weekday">三</div><div class="cal-weekday">四</div><div class="cal-weekday">五</div><div class="cal-weekday">六</div><div class="cal-weekday">日</div>
+      <div class="cal-grid" id="calGrid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:4px 0 8px;"></div>
+      <div class="flex items-center justify-between" style="padding:10px 4px 2px;">
+        <span style="font-size:13px;color:var(--mixtouring-foreground,#1E2022);">节假日出行（国庆 / 春节等高峰）</span>
+        <button id="holidayToggle" aria-label="切换节假日出行" style="width:44px;height:26px;border-radius:9999px;border:none;background:var(--mixtouring-border,#E8E9EB);position:relative;cursor:pointer;transition:background .2s;flex-shrink:0;"><span id="holidayKnob" style="position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:9999px;background:#FFFFFF;box-shadow:0 1px 3px rgba(0,0,0,0.2);transition:left .2s;"></span></button>
       </div>
-      <div class="cal-grid" id="calGrid"></div>
       <div class="cal-actions">
-        <button class="cal-action-btn cal-clear" id="calClear">清除</button>
-        <button class="cal-action-btn cal-today" id="calToday">今天</button>
+        <button class="cal-action-btn cal-today" id="calToday">本月</button>
       </div>
     </div>
   </div>
@@ -592,11 +592,13 @@
     document.getElementById('btnGo').addEventListener('click', function () {
       var from = fromInput.value.trim();
       var to = toInput.value.trim();
-      var date = dateDisplay.textContent.trim();
+      var month = dateDisplay.textContent.trim();
       if (!from || !to) { MT.toast('先选好出发地和目的地'); return; }
       if (from === to) { MT.toast('出发地和目的地不能相同'); return; }
-      if (!/^\d{4}\/\d{2}\/\d{2}$/.test(date)) { MT.toast('先选一个出发日期'); return; }
-      var q = new URLSearchParams({ from: from, to: to, date: date });
+      if (!/^\d{4}\/\d{2}$/.test(month)) { MT.toast('先选一个出行月份'); return; }
+      var holiday = document.getElementById('holidayToggle');
+      var q = new URLSearchParams({ from: from, to: to, date: month });
+      if (holiday && holiday.dataset.on === '1') q.set('holiday', '1');
       location.href = 'loading.html?' + q.toString();
     });
 
@@ -613,7 +615,7 @@
         var fields = 0;
         if (d.from) { fromInput.value = d.from; fields++; }
         if (d.to) { toInput.value = d.to; fields++; }
-        if (d.date) { dateDisplay.textContent = d.date; fields++; }
+        if (d.date) { dateDisplay.textContent = d.date.slice(0, 7); fields++; } /* 解析到具体日期 → 取月份（产品按月服务） */
         if (d.note) MT.toast(d.note);
         else MT.toast('已回填，核对无误可点出发');
         if (fields === 0) MT.toast('没识别到城市/日期，请手动选择');
@@ -778,58 +780,39 @@
 
   <script>
   (function() {
+    /* v0.22.0 P1.4：月份选择器 + 节假日开关（产品定义 §6.2：月份/节假日真正影响我们能答的
+     * 「淡旺季叙述与班期」，具体日期只在平台查询页用——不留看似能比价的日历） */
     var overlay = document.getElementById('calOverlay');
     var dateDisplay = document.querySelector('.date-display');
     var grid = document.getElementById('calGrid');
-    var label = document.getElementById('calMonthLabel');
     var btnPrev = document.getElementById('calPrev');
     var btnNext = document.getElementById('calNext');
-    var btnClear = document.getElementById('calClear');
     var btnToday = document.getElementById('calToday');
+    var holidayToggle = document.getElementById('holidayToggle');
+    var holidayKnob = document.getElementById('holidayKnob');
 
-    var viewYear = 2026;
-    var viewMonth = 9;
-    var selectedDate = new Date(2026, 9, 1);
     var today = new Date();
-
-    var monthNames = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+    var viewYear = today.getFullYear();
+    var selected = { y: viewYear, m: today.getMonth() + 1 }; /* 默认本月 */
+    var holiday = false;
 
     function pad(n) { return n < 10 ? '0' + n : '' + n; }
-    function fmtDate(d) { return d.getFullYear() + '/' + pad(d.getMonth()+1) + '/' + pad(d.getDate()); }
-    function isSameDay(a, b) { return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate(); }
+    function fmtSel() { return selected.y + '/' + pad(selected.m); }
 
     function render() {
-      label.innerHTML = viewYear + '年 <span>' + monthNames[viewMonth] + '</span>';
-      var first = new Date(viewYear, viewMonth, 1);
-      var last = new Date(viewYear, viewMonth + 1, 0);
-      var startOffset = (first.getDay() + 6) % 7;
-      var totalDays = last.getDate();
-      var prevLast = new Date(viewYear, viewMonth, 0).getDate();
-      var cells = [];
-
-      for (var i = startOffset - 1; i >= 0; i--) {
-        cells.push({ day: prevLast - i, outMonth: true, date: new Date(viewYear, viewMonth - 1, prevLast - i) });
-      }
-      for (var d = 1; d <= totalDays; d++) {
-        cells.push({ day: d, outMonth: false, date: new Date(viewYear, viewMonth, d) });
-      }
-      var nextStart = 1;
-      while (cells.length < 42) {
-        cells.push({ day: nextStart, outMonth: true, date: new Date(viewYear, viewMonth + 1, nextStart) });
-        nextStart++;
-      }
-
+      var months = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
       grid.innerHTML = '';
-      cells.forEach(function(c) {
+      months.forEach(function(name, i) {
+        var m = i + 1;
         var btn = document.createElement('button');
         btn.className = 'cal-cell';
-        if (c.outMonth) btn.classList.add('out-month');
-        if (isSameDay(c.date, today)) btn.classList.add('today');
-        if (selectedDate && isSameDay(c.date, selectedDate)) btn.classList.add('selected');
-        btn.textContent = c.day;
+        btn.textContent = name;
+        btn.style.cssText = 'border-radius:12px;';
+        if (viewYear === today.getFullYear() && m === today.getMonth() + 1) btn.classList.add('today');
+        if (viewYear === selected.y && m === selected.m) btn.classList.add('selected');
         btn.addEventListener('click', function() {
-          selectedDate = c.date;
-          dateDisplay.textContent = fmtDate(c.date);
+          selected = { y: viewYear, m: m };
+          dateDisplay.textContent = fmtSel();
           overlay.classList.remove('active');
           render();
         });
@@ -837,16 +820,22 @@
       });
     }
 
-    function open() { overlay.classList.add('active'); render(); }
+    function renderHoliday() {
+      holidayToggle.style.background = holiday ? 'var(--mixtouring-ring,#C86A4B)' : 'var(--mixtouring-border,#E8E9EB)';
+      holidayKnob.style.left = holiday ? '21px' : '3px';
+      holidayToggle.dataset.on = holiday ? '1' : '0'; /* 供 CTA（另一 IIFE）读取 */
+    }
+
+    function open() { overlay.classList.add('active'); render(); renderHoliday(); }
     function close() { overlay.classList.remove('active'); }
 
     dateDisplay.addEventListener('click', open);
     dateDisplay.addEventListener('keydown', function(e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
     overlay.addEventListener('click', function(e) { if (e.target === overlay) close(); });
-    btnPrev.addEventListener('click', function() { viewMonth--; if (viewMonth < 0) { viewMonth = 11; viewYear--; } render(); });
-    btnNext.addEventListener('click', function() { viewMonth++; if (viewMonth > 11) { viewMonth = 0; viewYear++; } render(); });
-    btnClear.addEventListener('click', function() { selectedDate = null; dateDisplay.textContent = '选择日期'; close(); });
-    btnToday.addEventListener('click', function() { selectedDate = new Date(); viewYear = today.getFullYear(); viewMonth = today.getMonth(); dateDisplay.textContent = fmtDate(today); render(); });
+    btnPrev.addEventListener('click', function() { viewYear--; render(); });
+    btnNext.addEventListener('click', function() { viewYear++; render(); });
+    holidayToggle.addEventListener('click', function() { holiday = !holiday; renderHoliday(); });
+    btnToday.addEventListener('click', function() { viewYear = today.getFullYear(); selected = { y: viewYear, m: today.getMonth() + 1 }; dateDisplay.textContent = fmtSel(); render(); });
 
     render();
   })();
