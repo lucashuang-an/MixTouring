@@ -164,67 +164,83 @@
         {
           "city": "北京",
           "kind": "origin",
-          "depart": "21:30",
+          "depart": "19:55",
           "day_offset": 0
         },
         {
           "city": "银川",
           "kind": "transfer",
-          "wait_min": 113
+          "wait_min": 855
         },
         {
           "city": "阿克苏",
           "kind": "transfer",
-          "wait_min": 100
+          "wait_min": 430
         },
         {
           "city": "喀什",
           "kind": "dest",
-          "arrive": "20:47",
-          "day_offset": 1
+          "arrive": "14:49",
+          "day_offset": 2
         }
       ],
       "segs": [
         {
           "mode": "train",
+          "train_no": "D267",
           "from_station": "北京西",
           "to_station": "银川",
-          "dep": "21:30",
+          "dep": "19:55",
           "dep_day": 0,
-          "arr": "08:12",
+          "arr": "07:00",
           "arr_day": 1,
-          "duration_min": 642,
-          "fixed_price": 263,
-          "price_band": null
+          "duration_min": 665,
+          "fixed_price": null,
+          "price_band": {
+            "min": 312,
+            "max": 363,
+            "sample_count": 1,
+            "sampled_at": "2026-09-13T00:00:00+08:00"
+          },
+          "source": "D267 动卧·高铁网/12306 2026-09-13 核实"
         },
         {
           "mode": "plane",
+          "flight_no": "GJ8559",
           "from_station": "银川河东",
           "to_station": "阿克苏",
-          "dep": "10:05",
+          "dep": "21:15",
           "dep_day": 1,
-          "arr": "13:40",
-          "arr_day": 1,
-          "duration_min": 215,
+          "arr": "01:10",
+          "arr_day": 2,
+          "duration_min": 235,
           "fixed_price": null,
           "price_band": {
-            "min": 780,
-            "max": 920,
-            "sample_count": 6,
-            "sampled_at": "2026-09-05T22:00:00+08:00"
-          }
+            "min": 1100,
+            "max": 1400,
+            "sample_count": 1,
+            "sampled_at": "2026-09-13T00:00:00+08:00"
+          },
+          "source": "长龙航空每日班·携程时刻 2026-09-13"
         },
         {
           "mode": "train",
+          "train_no": "T269",
           "from_station": "阿克苏",
           "to_station": "喀什",
-          "dep": "15:20",
-          "dep_day": 1,
-          "arr": "20:47",
-          "arr_day": 1,
-          "duration_min": 327,
-          "fixed_price": 72,
-          "price_band": null
+          "dep": "08:20",
+          "dep_day": 2,
+          "arr": "14:49",
+          "arr_day": 2,
+          "duration_min": 389,
+          "fixed_price": null,
+          "price_band": {
+            "min": 69,
+            "max": 90,
+            "sample_count": 1,
+            "sampled_at": "2026-09-13T00:00:00+08:00"
+          },
+          "source": "携程/高铁网 2026-09-13（硬座）"
         }
       ],
       "risks": [
@@ -232,13 +248,11 @@
           "factor": "connection",
           "raw": {
             "city": "银川",
-            "wait_min": 113,
+            "wait_min": 855,
             "same_station": false,
             "transfer_min": 40
           },
-          "narrative": [
-            "误机将错过每日 2 班的航班"
-          ]
+          "narrative": []
         },
         {
           "factor": "baggage",
@@ -265,7 +279,7 @@
         {
           "factor": "transfer",
           "raw": {
-            "label": "银川站 → 河东机场",
+            "label": "银川站 → 河东机场 40 分钟",
             "km": 18,
             "min": 40,
             "same_station": false,
@@ -305,45 +319,59 @@
         {
           "city": "北京",
           "kind": "origin",
-          "depart": "18:00",
+          "depart": "14:52",
           "day_offset": 0
         },
         {
           "city": "兰州",
           "kind": "transfer",
-          "wait_min": 200
+          "wait_min": 1340
         },
         {
           "city": "喀什",
           "kind": "dest",
-          "arrive": "15:45",
-          "day_offset": 2
+          "arrive": "13:18",
+          "day_offset": 3
         }
       ],
       "segs": [
         {
           "mode": "train",
+          "train_no": "Z55",
           "from_station": "北京西",
           "to_station": "兰州",
-          "dep": "18:00",
+          "dep": "14:52",
           "dep_day": 0,
-          "arr": "10:55",
+          "arr": "07:43",
           "arr_day": 1,
-          "duration_min": 1015,
-          "fixed_price": 343,
-          "price_band": null
+          "duration_min": 1011,
+          "fixed_price": null,
+          "price_band": {
+            "min": 343,
+            "max": 360,
+            "sample_count": 1,
+            "sampled_at": "2026-09-13T00:00:00+08:00"
+          },
+          "source": "Z55·维基/12306 2026-09-13（硬卧）"
         },
         {
           "mode": "train",
+          "train_no": "T269",
           "from_station": "兰州",
           "to_station": "喀什",
-          "dep": "14:15",
-          "dep_day": 1,
-          "arr": "15:45",
-          "arr_day": 2,
-          "duration_min": 1530,
-          "fixed_price": 384,
-          "price_band": null
+          "dep": "06:03",
+          "dep_day": 2,
+          "arr": "13:18",
+          "arr_day": 3,
+          "duration_min": 1875,
+          "fixed_price": null,
+          "price_band": {
+            "min": 380,
+            "max": 560,
+            "sample_count": 1,
+            "sampled_at": "2026-09-13T00:00:00+08:00"
+          },
+          "source": "T269 兰州始发段·高铁网 2026-09-13（硬卧带）"
         }
       ],
       "risks": [
@@ -351,7 +379,7 @@
           "factor": "connection",
           "raw": {
             "city": "兰州",
-            "wait_min": 200,
+            "wait_min": 1340,
             "same_station": true,
             "transfer_min": 0
           },
@@ -381,8 +409,8 @@
         {
           "factor": "transfer",
           "raw": {
-            "label": "兰州站同站换乘",
-            "km": 0,
+            "label": "兰州站站内等待",
+            "km": 20,
             "min": 0,
             "same_station": true,
             "rail_direct": false
@@ -426,44 +454,53 @@
         {
           "city": "西安",
           "kind": "transfer",
-          "wait_min": 69
+          "wait_min": 150
         },
         {
           "city": "喀什",
           "kind": "dest",
-          "arrive": "17:20",
+          "arrive": "18:25",
           "day_offset": 0
         }
       ],
       "segs": [
         {
           "mode": "train",
+          "train_no": "G321",
           "from_station": "北京西",
           "to_station": "西安北",
           "dep": "07:00",
           "dep_day": 0,
-          "arr": "11:31",
+          "arr": "11:20",
           "arr_day": 0,
-          "duration_min": 271,
-          "fixed_price": 515,
-          "price_band": null
+          "duration_min": 260,
+          "fixed_price": null,
+          "price_band": {
+            "min": 515,
+            "max": 548,
+            "sample_count": 1,
+            "sampled_at": "2026-09-13T00:00:00+08:00"
+          },
+          "source": "G321·12306/携程 2026-09-13（二等座）"
         },
         {
           "mode": "plane",
+          "flight_no": "9C6381",
           "from_station": "西安咸阳",
           "to_station": "喀什",
-          "dep": "12:40",
+          "dep": "13:50",
           "dep_day": 0,
-          "arr": "17:20",
+          "arr": "18:25",
           "arr_day": 0,
-          "duration_min": 280,
+          "duration_min": 275,
           "fixed_price": null,
           "price_band": {
-            "min": 980,
-            "max": 1150,
-            "sample_count": 6,
-            "sampled_at": "2026-09-05T22:00:00+08:00"
-          }
+            "min": 661,
+            "max": 1200,
+            "sample_count": 1,
+            "sampled_at": "2026-09-13T00:00:00+08:00"
+          },
+          "source": "春秋直飞·春秋官网/天巡 2026-09-13"
         }
       ],
       "risks": [
@@ -471,9 +508,9 @@
           "factor": "connection",
           "raw": {
             "city": "西安",
-            "wait_min": 69,
+            "wait_min": 150,
             "same_station": false,
-            "transfer_min": 33
+            "transfer_min": 60
           },
           "narrative": [
             "高铁到后需跨站赶往机场，下车即走"
@@ -504,9 +541,9 @@
         {
           "factor": "transfer",
           "raw": {
-            "label": "西安北站 → 咸阳机场",
+            "label": "西安北站 → 咸阳机场 60 分钟",
             "km": 33,
-            "min": 33,
+            "min": 60,
             "same_station": false,
             "rail_direct": true
           },
@@ -545,45 +582,59 @@
         {
           "city": "北京",
           "kind": "origin",
-          "depart": "17:56",
+          "depart": "13:05",
           "day_offset": 0
         },
         {
           "city": "兰州",
           "kind": "transfer",
-          "wait_min": 135
+          "wait_min": 257
         },
         {
           "city": "乌鲁木齐",
           "kind": "dest",
-          "arrive": "01:05",
-          "day_offset": 2
+          "arrive": "22:47",
+          "day_offset": 1
         }
       ],
       "segs": [
         {
           "mode": "train",
+          "train_no": "T175",
           "from_station": "北京西",
           "to_station": "兰州",
-          "dep": "17:56",
+          "dep": "13:05",
           "dep_day": 0,
-          "arr": "11:01",
+          "arr": "07:29",
           "arr_day": 1,
-          "duration_min": 1025,
-          "fixed_price": 363,
-          "price_band": null
+          "duration_min": 1104,
+          "fixed_price": null,
+          "price_band": {
+            "min": 353,
+            "max": 370,
+            "sample_count": 1,
+            "sampled_at": "2026-09-13T00:00:00+08:00"
+          },
+          "source": "T175·维基时刻 2026-09-13（硬卧）"
         },
         {
           "mode": "train",
+          "train_no": "D2717",
           "from_station": "兰州西",
           "to_station": "乌鲁木齐",
-          "dep": "13:16",
+          "dep": "11:46",
           "dep_day": 1,
-          "arr": "01:05",
-          "arr_day": 2,
-          "duration_min": 709,
-          "fixed_price": 527,
-          "price_band": null
+          "arr": "22:47",
+          "arr_day": 1,
+          "duration_min": 661,
+          "fixed_price": null,
+          "price_band": {
+            "min": 551,
+            "max": 551,
+            "sample_count": 1,
+            "sampled_at": "2026-09-13T00:00:00+08:00"
+          },
+          "source": "D2717·携程/新华字典列车表 2026-09-13（二等座）"
         }
       ],
       "risks": [
@@ -591,9 +642,9 @@
           "factor": "connection",
           "raw": {
             "city": "兰州",
-            "wait_min": 135,
+            "wait_min": 257,
             "same_station": false,
-            "transfer_min": 25
+            "transfer_min": 30
           },
           "narrative": [
             "到达兰州站、出发兰州西站，需跨站"
@@ -621,9 +672,9 @@
         {
           "factor": "transfer",
           "raw": {
-            "label": "兰州站 → 兰州西站",
+            "label": "兰州站 → 兰州西站 30 分钟",
             "km": 10,
-            "min": 25,
+            "min": 30,
             "same_station": false,
             "rail_direct": true
           },
@@ -661,50 +712,59 @@
         {
           "city": "北京",
           "kind": "origin",
-          "depart": "21:30",
+          "depart": "19:55",
           "day_offset": 0
         },
         {
           "city": "银川",
           "kind": "transfer",
-          "wait_min": 160
+          "wait_min": 220
         },
         {
           "city": "乌鲁木齐",
           "kind": "dest",
-          "arrive": "14:12",
+          "arrive": "14:05",
           "day_offset": 1
         }
       ],
       "segs": [
         {
           "mode": "train",
+          "train_no": "D267",
           "from_station": "北京西",
           "to_station": "银川",
-          "dep": "21:30",
+          "dep": "19:55",
           "dep_day": 0,
-          "arr": "08:12",
+          "arr": "07:00",
           "arr_day": 1,
-          "duration_min": 642,
-          "fixed_price": 263,
-          "price_band": null
+          "duration_min": 665,
+          "fixed_price": null,
+          "price_band": {
+            "min": 312,
+            "max": 363,
+            "sample_count": 1,
+            "sampled_at": "2026-09-13T00:00:00+08:00"
+          },
+          "source": "D267 动卧·高铁网/12306 2026-09-13 核实"
         },
         {
           "mode": "plane",
+          "flight_no": "GJ8667",
           "from_station": "银川河东",
           "to_station": "乌鲁木齐地窝堡",
-          "dep": "10:52",
+          "dep": "10:40",
           "dep_day": 1,
-          "arr": "14:12",
+          "arr": "14:05",
           "arr_day": 1,
-          "duration_min": 200,
+          "duration_min": 205,
           "fixed_price": null,
           "price_band": {
-            "min": 620,
-            "max": 760,
-            "sample_count": 6,
-            "sampled_at": "2026-09-05T22:00:00+08:00"
-          }
+            "min": 450,
+            "max": 660,
+            "sample_count": 1,
+            "sampled_at": "2026-09-13T00:00:00+08:00"
+          },
+          "source": "长龙每日班·飞常准 2026-09-13"
         }
       ],
       "risks": [
@@ -712,7 +772,7 @@
           "factor": "connection",
           "raw": {
             "city": "银川",
-            "wait_min": 160,
+            "wait_min": 220,
             "same_station": false,
             "transfer_min": 40
           },
@@ -745,7 +805,7 @@
         {
           "factor": "transfer",
           "raw": {
-            "label": "银川站 → 河东机场",
+            "label": "银川站 → 河东机场 40 分钟",
             "km": 18,
             "min": 40,
             "same_station": false,

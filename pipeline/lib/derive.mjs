@@ -92,6 +92,7 @@ function fmtSeg(seg) {
   const price = seg.fixed_price != null ? yuan(seg.fixed_price) : `${yuan(seg.price_band.min)}–${yuan(seg.price_band.max)}`;
   return {
     mode: seg.mode, dur: hm(seg.duration_min),
+    no: seg.flight_no || seg.train_no || '',
     fromStation: seg.from_station, toStation: seg.to_station,
     dep: seg.dep, arr: seg.arr,
     arrNote: seg.arr_day > seg.dep_day ? '次日' : undefined,

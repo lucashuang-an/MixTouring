@@ -375,10 +375,20 @@
       return html + '</div>';
     }
 
-    /* 分段明细（时间线样式） */
+    /* 分段明细（时间线样式）：车次/航班号 + 当日价自查跳转（P1.3/P1.6，价格权威在平台不在我们） */
+    var AIR_CODE = { '银川河东': 'INC', '阿克苏': 'AKU', '西安咸阳': 'XIY', '喀什': 'KHG', '乌鲁木齐地窝堡': 'URC', '杭州萧山': 'HGH', '昆明长水': 'KMG', '北京首都': 'PEK', '北京大兴': 'PKX', '上海虹桥': 'SHA', '上海浦东': 'PVG', '广州': 'CAN', '深圳': 'SZX', '成都天府': 'TFU', '成都双流': 'CTU', '三亚凤凰': 'SYX', '西双版纳嘎洒': 'JHG', '拉萨贡嘎': 'LXA' };
+    function segCheckLink(seg) {
+      if (!seg.no) return '';
+      if (seg.mode === 'train') return 'https://www.12306.cn/index/';
+      var a = AIR_CODE[seg.fromStation], b = AIR_CODE[seg.toStation];
+      return a && b ? 'https://flights.ctrip.com/booking/' + a + '-' + b + '-day-1.html' : '';
+    }
     function segDetailHtml(seg, isLast) {
       var modeLabel = seg.mode === 'plane' ? '飞机' : '火车';
       var arrNote = seg.arrNote ? ' <span style="font-size:11px;color:var(--mixtouring-muted-foreground,#7C8089);">' + MT.esc(seg.arrNote) + '</span>' : '';
+      var noChip = seg.no ? '<span style="color:var(--mixtouring-ring,#C86A4B);">' + MT.esc(seg.no) + '</span>' : '';
+      var link = segCheckLink(seg);
+      var checkChip = link ? ' <a href="' + link + '" target="_blank" rel="noopener" style="font-size:11.5px;color:#1E7F45;text-decoration:none;white-space:nowrap;">查当日价 ›</a>' : '';
       return '<div class="flex" style="gap:12px;">' +
         '<div class="flex flex-col items-center" style="min-width:56px;flex-shrink:0;">' +
           '<div class="w-full text-center px-2 py-0.5" style="border-radius:8px;background:var(--mixtouring-muted,#F4F5F7);font-size:11px;color:var(--mixtouring-foreground,#1E2022);white-space:nowrap;">' + MT.esc(seg.fromStation) + '</div>' +
@@ -393,7 +403,7 @@
             '<div style="font-size:15px;color:var(--mixtouring-foreground,#1E2022);">' + MT.esc(seg.dep) + ' 出发</div>' +
             '<div style="font-size:12px;padding:3px 10px;border-radius:9999px;background:var(--mixtouring-muted,#F4F5F7);color:var(--mixtouring-ring,#C86A4B);flex-shrink:0;">' + MT.esc(seg.price) + '</div>' +
           '</div>' +
-          '<div style="font-size:12px;color:var(--mixtouring-muted-foreground,#7C8089);">' + modeLabel + ' ' + MT.esc(seg.dur) + '</div>' +
+          '<div style="font-size:12px;color:var(--mixtouring-muted-foreground,#7C8089);">' + modeLabel + (noChip ? ' ' + noChip : '') + ' · ' + MT.esc(seg.dur) + checkChip + '</div>' +
           '<div style="font-size:15px;color:var(--mixtouring-foreground,#1E2022);">' + MT.esc(seg.arr) + ' 到达' + arrNote + '</div>' +
         '</div>' +
       '</div>' + (isLast ? '' : '<div class="hairline-b" style="margin:14px 0;"></div>');
