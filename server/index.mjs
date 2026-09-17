@@ -15,6 +15,7 @@ import { parseTrip } from './lib/parse.mjs';
 import { answerAsk, suggestWish } from './lib/qa.mjs';
 import { addWish, listWishes, removeWish } from './lib/wishlist.mjs';
 import { llmConfigured, llmModel } from './lib/llm.mjs';
+import { parseTripIntent, searchTripStrategies, buildVerificationChecklist } from './lib/trip-service.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT) || 3000;
@@ -246,6 +247,38 @@ app.use(async (ctx, next) => {
       console.error('✗ /api/ask：' + err.message);
       ctx.body = { code: 0, data: { answer: '问答服务出了点问题，请稍后再试。', refs: [], engine: 'rule', model: 'rule' } };
     }
+    return;
+  }
+
+  /* ---------- Solo Trip v1.2 行程级契约（G1 收尾：探索与核验助手范围，旧七页接口不动） ---------- */
+
+  /* POST /api/trip/parse {text} → 一句话行程意图（OD/往返/人数；缺字段进 needs_confirmation，不猜） */
+  if (path === '/api/trip/parse' && ctx.method === 'POST') {
+    const body = await readBody(ctx);
+    if (!body.text || !String(body.text).trim()) { ctx.body = { code: 1, msg: '缺少 text' }; return; }
+    const out = await parseTripIntent(String(body.text), db.cities);
+    ctx.body = { code: 0, data: out };
+    return;
+  }
+
+  /* POST /api/trip/search → 行程查询（探索与核验助手：返回证据状态 + 下一步，不承诺指定日比较） */
+  if (path === '/api/trip/search' && ctx.method === 'POST') {
+    const body = await readBody(ctx);
+    ctx.body = { code: 0, data: searchTripStrategies({
+      origin: body.origin, destination: body.destination,
+      trip_type: body.trip_type || 'pending',
+      outbound_window: body.outbound_window || null,
+      return_window: body.return_window || null,
+      traveler_count: body.traveler_count ?? 1,
+      currency: body.currency || 'CNY'
+    }) };
+    return;
+  }
+
+  /* POST /api/trip/checklist {strategy} → 逐段核验清单（每段查询入口 + 待核项） */
+  if (path === '/api/trip/checklist' && ctx.method === 'POST') {
+    const body = await readBody(ctx);
+    ctx.body = { code: 0, data: buildVerificationChecklist(body.strategy || {}) };
     return;
   }
 

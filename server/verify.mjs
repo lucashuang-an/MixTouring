@@ -176,6 +176,27 @@ async function main() {
     console.log('✓ /api/wishlist/process 探测模式（accepted:false，pending ' + procRes.data.pending + '）');
   } else { failed++; console.error('✗ /api/wishlist/process 探测异常：' + JSON.stringify(procRes).slice(0, 200)); }
 
+  /* ---------- Solo Trip 行程契约冒烟（v0.26.0；LLM 路径仅在 parse 走，CI 无 key 自动规则版） ---------- */
+  const tripSearch = await (await fetch(BASE + '/api/trip/search', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ origin: '北京', destination: '阿拉木图', trip_type: 'round_trip', outbound_window: '2026-09-27 ~ 2026-10-03', return_window: '2026-10-05 ~ 2026-10-11', traveler_count: 1, currency: 'CNY' }) })).json();
+  if (tripSearch.code === 0 && tripSearch.data.strategies.length === 1 && ['dated_partial', 'historical', 'stale'].includes(tripSearch.data.evidence_state)) {
+    console.log('✓ /api/trip/search 北京⇄阿拉木图（证据状态 ' + tripSearch.data.evidence_state + '）');
+  } else { failed++; console.error('✗ /api/trip/search 异常：' + JSON.stringify(tripSearch).slice(0, 200)); }
+
+  const tripReverse = await (await fetch(BASE + '/api/trip/search', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ origin: '阿拉木图', destination: '北京', trip_type: 'round_trip', outbound_window: '2026-09-27 ~ 2026-10-03', return_window: '2026-10-05 ~ 2026-10-11', traveler_count: 1, currency: 'CNY' }) })).json();
+  if (tripReverse.code === 0 && tripReverse.data.strategies.length === 0 && tripReverse.data.evidence_state === 'explore') {
+    console.log('✓ /api/trip/search 反向查询 → 探索态（不由 B–A 反转构造）');
+  } else { failed++; console.error('✗ /api/trip/search 反向未返回探索态：' + JSON.stringify(tripReverse).slice(0, 200)); }
+
+  const tripParse = await (await fetch(BASE + '/api/trip/parse', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: '国庆附近一个人从北京去阿拉木图，玩几天后回来' }) })).json();
+  if (tripParse.code === 0 && tripParse.data.query && tripParse.data.query.trip_type === 'round_trip' && tripParse.data.query.traveler_count === 1) {
+    console.log('✓ /api/trip/parse 往返 + 一人意图（engine ' + tripParse.data.parse_engine + '）');
+  } else { failed++; console.error('✗ /api/trip/parse 意图异常：' + JSON.stringify(tripParse).slice(0, 200)); }
+
+  const tripCl = await (await fetch(BASE + '/api/trip/checklist', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ strategy: { outbound: [{ direction: 'outbound', mode: 'plane', service_no: null, origin_terminal: 'PKX', destination_terminal: 'ALA', depart_date: '2026-09-30', depart_local: '18:30', depart_time_zone: 'Asia/Shanghai', arrive_date: '2026-09-30', arrive_local: '21:10', arrive_time_zone: 'Asia/Almaty' }], inbound: [] } }) })).json();
+  if (tripCl.code === 0 && tripCl.data.checklist.length === 1 && tripCl.data.checklist[0].missing.includes('班次/航班号未核验')) {
+    console.log('✓ /api/trip/checklist 逐段待核项（缺班次号如实列出）');
+  } else { failed++; console.error('✗ /api/trip/checklist 异常：' + JSON.stringify(tripCl).slice(0, 200)); }
+
   console.log(failed ? `\n✗ ${failed} 项不一致` : '\n✓ 全部接口与 mock.js 派生结果一致');
   process.exit(failed ? 1 : 0);
 }

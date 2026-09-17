@@ -3,6 +3,9 @@
  *  - T07 改走 decorateLeg 真实组装路径（不再绕过入口单独调用 zonedToUtc）；
  *  - 回放固定时钟 now=2026-09-17（样本过期不再随运行日期漂移）；
  *  - 八项复审反例逐条入回归（R1–R8）。
+ * v0.26.0 增补服务动作测试：extractIntentFields（T01/T02 规则部分）+ searchTripStrategies（fixture 驱动，
+ * 含「反向查询不反转、返回探索态」断言——T06 的服务层回归）。LLM 路径（parseTripIntent 全量）由
+ * verify.mjs 在有 key 环境冒烟，此处不测不确定性。
  * 运行：node server/check-trip.mjs */
 
 import { readFileSync } from 'node:fs';
@@ -14,6 +17,7 @@ import {
   detectReversal, buildCostBreakdown, canClaimCheaper,
   evidenceState, legFreshness, nextVersion
 } from './lib/trip.mjs';
+import { extractIntentFields, searchTripStrategies, buildVerificationChecklist } from './lib/trip-service.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 let fail = 0;
@@ -205,6 +209,45 @@ const [F_OUT, F_IN] = FIXTURE.dated_legs.map((l) => ({ ...l, baggage_terms: { ca
 /* ---------- R8 复审⑧：fixture 星期残留清理 ---------- */
 {
   ok(!JSON.stringify(FIXTURE).includes('周二'), 'R8 fixture 无「周二」残留（CA799 note 已更正为周三）');
+}
+
+/* ---------- v0.26.0 服务动作：意图提取（T01/T02 规则部分，确定性） ---------- */
+{
+  const i1 = extractIntentFields('国庆附近一个人从北京去阿拉木图，玩几天后回来');
+  ok(i1.trip_type === 'round_trip' && i1.traveler_count === 1, 'T02 意图：往返 + 一人（solo）识别');
+  const i2 = extractIntentFields('北京到乌鲁木齐 单程');
+  ok(i2.trip_type === 'one_way', '意图：单程关键词');
+  const i3 = extractIntentFields('北京到喀什');
+  ok(i3.trip_type === undefined, '无往返/单程线索 → 不猜 trip_type（交给 parseTrip 默认）');
+}
+
+/* ---------- v0.26.0 服务动作：策略检索（fixture 驱动 + 反向不反转） ---------- */
+{
+  const hit = searchTripStrategies({ origin: '北京', destination: '阿拉木图', trip_type: 'round_trip', outbound_window: '2026-09-27 ~ 2026-10-03', return_window: '2026-10-05 ~ 2026-10-11', traveler_count: 1, currency: 'CNY' }, NOW);
+  ok(hit.strategies.length === 1 && hit.evidence_state === 'dated_partial', `检索命中 G0 样本 → dated_partial（实际 ${hit.evidence_state}）`);
+  const st = hit.strategies[0];
+  ok(st.structure.length === 2 && st.structure.every((s) => s.source_url), '策略卡结构：双向段齐 + 每段带来源');
+  ok(st.price_samples.every((p) => /非当日可购/.test(p.note)), '价格样本标注「非当日可购」（探索与核验助手边界）');
+  ok(st.cost_breakdown.unknown_costs.length > 0, '成本未知项如实列出（往返口径不可拆分/行李未核）');
+  ok(hit.next_steps.length > 0, '给出真实下一步');
+
+  /* T06 服务层回归：反向查询不做反转，返回探索态 + 心愿引导 */
+  const rev = searchTripStrategies({ origin: '阿拉木图', destination: '北京', trip_type: 'round_trip', outbound_window: '2026-09-27 ~ 2026-10-03', return_window: '2026-10-05 ~ 2026-10-11', traveler_count: 1, currency: 'CNY' }, NOW);
+  ok(rev.evidence_state === 'explore' && rev.strategies.length === 0, '反向查询（阿拉木图→北京）→ 探索态，不由 B–A 反转构造');
+  ok(rev.next_steps.some((s) => s.includes('登记')), '反向查询给登记心愿引导');
+
+  const unknown = searchTripStrategies({ origin: '北京', destination: '亚的斯亚贝巴', trip_type: 'pending', traveler_count: 1, currency: 'CNY' }, NOW);
+  ok(unknown.evidence_state === 'explore', '未覆盖 OD → explore');
+}
+
+/* ---------- v0.26.0 服务动作：核验清单 ---------- */
+{
+  const legs = FIXTURE.dated_legs.map(decorateLeg);
+  const cl = buildVerificationChecklist({ outbound: [legs[0]], inbound: [legs[1]] });
+  ok(cl.checklist.length === 2, '核验清单：双向逐段');
+  ok(cl.checklist.every((r) => r.query_entry && r.local_times && Array.isArray(r.missing)), '每段含查询入口/当地时刻/待核项');
+  ok(cl.checklist.some((r) => r.missing.includes('班次/航班号未核验')), 'G0 去程 price-only（无航班号）如实列为待核项');
+  ok(!cl.note.includes('余票掌握'), '清单声明不掌握余票（交易边界）');
 }
 
 console.log(fail ? `\n✗ ${fail} 项未通过` : '\n✓ 行程契约确定性测试全部通过');
