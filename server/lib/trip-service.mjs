@@ -1,6 +1,6 @@
 /* trip-service.mjs · Solo Trip v1.2 行程级服务动作（G1 收尾 / 开发流程 §G1-G3 步骤 3）
  * 三个动作（产品方案 §5 建议的服务契约）：
- *   parseTripIntent        两字段/一句话 → 行程意图（OD、往返、窗口、人数）；规则版确定性，LLM 解析由 /api/parse 独立承担
+ *   parseTripIntent        两字段/一句话 → 行程意图（OD、往返、窗口、人数）；OD/日期复用 parseTrip 的 LLM/规则降级
  *   searchTripStrategies   行程查询 → 候选策略 + 证据状态 + 下一步（探索与核验助手范围，G0 裁定；
  *                          价格只作「样本口径」展示并带状态，绝不断言当日可购/省钱）
  *   buildVerificationChecklist → 逐段核验清单（每段场站/班次/当地时刻/来源 + 待核项）
@@ -41,18 +41,20 @@ export async function parseTripIntent(text, cities) {
   const base = await parseTrip(text, cities);
   const intent = extractIntentFields(text);
   const needs = [];
-  const trip_type = intent.trip_type || (base.date ? 'one_way' : 'pending');
+  const trip_type = intent.trip_type || 'pending';
+  const outboundDate = /^\d{4}\/\d{2}\/\d{2}$/.test(base.date || '') ? base.date.replaceAll('/', '-') : null;
   if (!base.from) needs.push('出发地未识别，请补全');
   if (!base.to) needs.push('目的地未识别，请补全');
-  if (trip_type === 'round_trip' && !base.date) needs.push('往返行程请补出行的日期或大致窗口');
+  if (trip_type === 'round_trip' && !outboundDate) needs.push('往返行程请补去程日期或大致窗口');
+  if (trip_type === 'round_trip') needs.push('往返行程请补返程日期或窗口');
   if (trip_type === 'pending') needs.push('没听出单程还是往返，请补充（不影响先看路线方向）');
   return {
     query: {
       origin: base.from || null,
       destination: base.to || null,
       trip_type,
-      outbound_window: base.date ? `${base.date} ~ ${base.date}` : null,
-      return_window: null, /* 规则版不猜返程日——返程窗进 needs_confirmation 由用户给 */
+      outbound_window: outboundDate ? `${outboundDate} ~ ${outboundDate}` : null,
+      return_window: null, /* 单日期解析无法证明返程日——返程窗进 needs_confirmation 由用户给 */
       traveler_count: intent.traveler_count ?? 1,
       currency: 'CNY'
     },
@@ -73,28 +75,45 @@ function loadTripFixture(origin, destination) {
   }
 }
 
+/** 只把可公开的原始字段交给页面和核验清单，不返回装饰时产生的内部 UTC Date。 */
+function publicLeg(leg) {
+  return {
+    direction: leg.direction, mode: leg.mode, service_no: leg.service_no || null,
+    origin_terminal: leg.origin_terminal, destination_terminal: leg.destination_terminal,
+    depart_date: leg.depart_date, depart_local: leg.depart_local,
+    depart_time_zone: leg.depart_time_zone || leg.time_zone,
+    arrive_date: leg.arrive_date || leg.depart_date, arrive_local: leg.arrive_local,
+    arrive_time_zone: leg.arrive_time_zone || leg.time_zone || leg.depart_time_zone,
+    source_url: leg.source_url || null, sampled_at: leg.sampled_at || null,
+    valid_for_date: leg.valid_for_date || null,
+    price_sample: leg.price_sample || null, baggage_terms: leg.baggage_terms || null,
+    unknown_costs: leg.unknown_costs || []
+  };
+}
+
 /** 把 fixture dated_legs 组装成探索态策略卡（含证据状态与未知项，不出可执行卡） */
 function strategyFromFixture(fx, query, nowMs) {
   const out = (fx.dated_legs || []).filter((l) => l.direction === 'outbound').map(decorateLeg);
-  const inc = (fx.dated_legs || []).filter((l) => l.direction === 'inbound').map(decorateLeg);
-  const strategy = { kind: 'direct', trip_type: 'round_trip', outbound: out, inbound: inc };
+  const inc = query.trip_type === 'round_trip'
+    ? (fx.dated_legs || []).filter((l) => l.direction === 'inbound').map(decorateLeg)
+    : [];
+  const strategy = { kind: 'direct', trip_type: query.trip_type, outbound: out, inbound: inc };
   const state = evidenceState(strategy, query, nowMs);
   const cost = buildCostBreakdown([...out, ...inc]);
   const conn = { out: checkConnections(out), in: inc.length ? checkConnections(inc) : { feasible: true } };
+  const publicOut = out.map(publicLeg), publicInc = inc.map(publicLeg);
   return {
-    id: 'strategy-' + (fx.query.origin + '-' + fx.query.destination).replace(/\s/g, '') + '-g0',
+    id: 'strategy-' + (fx.query.origin + '-' + fx.query.destination).replace(/\s/g, '') + '-g0-' + query.trip_type,
     kind: 'direct',
-    structure: [...out, ...inc].map((l) => ({
-      direction: l.direction, mode: l.mode, service_no: l.service_no,
-      origin_terminal: l.origin_terminal, destination_terminal: l.destination_terminal,
-      depart_local: `${l.depart_date} ${l.depart_local} (${l.depart_time_zone})`,
-      arrive_local: `${(l.arrive_date || l.depart_date)} ${l.arrive_local} (${l.arrive_time_zone})`,
-      source_url: l.source_url
-    })),
+    trip_type: query.trip_type,
+    outbound: publicOut, inbound: publicInc,
+    structure: [...publicOut, ...publicInc],
     evidence_state: state,
     price_samples: [...out, ...inc].filter((l) => l.price_sample).map((l) => ({
+      direction: l.direction, service_no: l.service_no || null,
       scope: l.price_sample.scope, amount: l.price_sample.amount, currency: l.price_sample.currency,
-      valid_for_date: l.valid_for_date, note: '价格样本口径，非当日可购报价'
+      valid_for_date: l.valid_for_date, sampled_at: l.sampled_at, source_url: l.source_url,
+      note: '价格样本口径，非当日可购报价'
     })),
     cost_breakdown: { known_total: cost.known_total, currency: cost.currency, unknown_costs: cost.unknown_costs },
     warnings: [
@@ -110,6 +129,7 @@ function nextSteps(state, hasFixture) {
   if (!hasFixture) return ['这条路线暂无已取证样本：可登记心愿进入核验队列', '可先自行分段查询直达/直飞班期，把结果带回来共建证据'];
   if (state === 'dated_partial') return ['补齐同日期窗/同人数/同行李口径的双向报价后可升级为可比较', '按分段核验清单逐段到原平台查当日余票与退改'];
   if (state === 'historical') return ['当前仅有历史参考：指定出行日期后重新核验'];
+  if (state === 'stale') return ['样本已过期：请到原平台重新查询去返班期与价格'];
   return ['补充出行日期以进入核验'];
 }
 
@@ -120,6 +140,10 @@ function nextSteps(state, hasFixture) {
 export function searchTripStrategies(query, nowMs = Date.now()) {
   const errors = validateTripQuery(query);
   if (errors.length) return { query, strategies: [], evidence_state: 'unsupported', next_steps: errors, error: '查询不合法' };
+  if (query.trip_type === 'open_jaw') return {
+    query, strategies: [], evidence_state: 'explore',
+    next_steps: ['多目的地行程尚无独立证据，请先补全各段目的地与日期']
+  };
   const fx = loadTripFixture(query.origin, query.destination);
   if (!fx) {
     return {
@@ -141,20 +165,25 @@ export function searchTripStrategies(query, nowMs = Date.now()) {
 /** 逐段核验清单（产品方案 P0「分段核验与私人保存」）：每段给查询入口与待核项，不宣称掌握余票 */
 export function buildVerificationChecklist(strategy) {
   const rows = [];
-  for (const leg of [...(strategy.outbound || []), ...(strategy.inbound || [])]) {
+  const legs = [...(strategy.outbound || []), ...(strategy.inbound || [])];
+  for (const leg of legs) {
     const missing = [];
     if (!leg.service_no) missing.push('班次/航班号未核验');
     if (!leg.price_sample) missing.push('价格未采样');
     if (!leg.baggage_terms) missing.push('行李口径未核验');
+    if (!leg.source_url) missing.push('来源链接未核验');
+    if (!leg.sampled_at) missing.push('来源取样时间未核验');
     rows.push({
       direction: leg.direction,
       service_no: leg.service_no || null,
       segment: `${leg.origin_terminal} → ${leg.destination_terminal}`,
-      local_times: `${leg.depart_date} ${leg.depart_local} → ${leg.arrive_date || leg.depart_date} ${leg.arrive_local} (${leg.time_zone || leg.depart_time_zone})`,
+      local_times: `${leg.depart_date} ${leg.depart_local} (${leg.depart_time_zone || leg.time_zone}) → ${leg.arrive_date || leg.depart_date} ${leg.arrive_local} (${leg.arrive_time_zone || leg.time_zone || leg.depart_time_zone})`,
       query_entry: leg.mode === 'plane'
         ? '航司官网/携程查询当日航班'
         : '12306 查询当日车次',
       source_url: leg.source_url || null,
+      sampled_at: leg.sampled_at || null,
+      valid_for_date: leg.valid_for_date || null,
       missing
     });
   }

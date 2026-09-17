@@ -275,10 +275,13 @@ app.use(async (ctx, next) => {
     return;
   }
 
-  /* POST /api/trip/checklist {strategy} → 逐段核验清单（每段查询入口 + 待核项） */
+  /* POST /api/trip/checklist {query, strategy_id} → 从服务端样本策略生成逐段核验清单 */
   if (path === '/api/trip/checklist' && ctx.method === 'POST') {
-    const body = await readBody(ctx);
-    ctx.body = { code: 0, data: buildVerificationChecklist(body.strategy || {}) };
+    const body = await readBody(ctx) || {};
+    const result = searchTripStrategies(body.query);
+    const strategy = result.strategies.find((item) => item.id === body.strategy_id);
+    if (!strategy) { ctx.body = { code: 1, msg: '策略不存在或已失效，请重新检索' }; return; }
+    ctx.body = { code: 0, data: buildVerificationChecklist(strategy) };
     return;
   }
 

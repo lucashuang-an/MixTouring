@@ -192,10 +192,24 @@ async function main() {
     console.log('✓ /api/trip/parse 往返 + 一人意图（engine ' + tripParse.data.parse_engine + '）');
   } else { failed++; console.error('✗ /api/trip/parse 意图异常：' + JSON.stringify(tripParse).slice(0, 200)); }
 
-  const tripCl = await (await fetch(BASE + '/api/trip/checklist', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ strategy: { outbound: [{ direction: 'outbound', mode: 'plane', service_no: null, origin_terminal: 'PKX', destination_terminal: 'ALA', depart_date: '2026-09-30', depart_local: '18:30', depart_time_zone: 'Asia/Shanghai', arrive_date: '2026-09-30', arrive_local: '21:10', arrive_time_zone: 'Asia/Almaty' }], inbound: [] } }) })).json();
-  if (tripCl.code === 0 && tripCl.data.checklist.length === 1 && tripCl.data.checklist[0].missing.includes('班次/航班号未核验')) {
-    console.log('✓ /api/trip/checklist 逐段待核项（缺班次号如实列出）');
+  if (tripParse.data?.query?.return_window === null && tripParse.data.needs_confirmation?.some((s) => s.includes('返程'))) {
+    console.log('✓ /api/trip/parse 缺返程窗要求用户补全');
+  } else { failed++; console.error('✗ /api/trip/parse 缺返程窗未提示补全'); }
+
+  const tripOneWay = await (await fetch(BASE + '/api/trip/search', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...tripSearch.data.query, trip_type: 'one_way', return_window: null }) })).json();
+  if (tripOneWay.code === 0 && tripOneWay.data.strategies.length === 1 && tripOneWay.data.strategies[0].inbound.length === 0 && tripOneWay.data.strategies[0].structure.length === 1) {
+    console.log('✓ /api/trip/search 单程不混入返程');
+  } else { failed++; console.error('✗ /api/trip/search 单程混入返程：' + JSON.stringify(tripOneWay).slice(0, 200)); }
+
+  const tripCl = await (await fetch(BASE + '/api/trip/checklist', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query: tripSearch.data.query, strategy_id: tripSearch.data.strategies[0].id }) })).json();
+  if (tripCl.code === 0 && tripCl.data.checklist.length === 2 && tripCl.data.checklist[0].missing.includes('班次/航班号未核验') && tripCl.data.checklist[0].sampled_at && tripCl.data.checklist[0].local_times.includes('Asia/Almaty')) {
+    console.log('✓ /api/trip/checklist 从检索策略生成双向清单，保留取样时间与起落时区');
   } else { failed++; console.error('✗ /api/trip/checklist 异常：' + JSON.stringify(tripCl).slice(0, 200)); }
+
+  const forgedCl = await (await fetch(BASE + '/api/trip/checklist', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ strategy: { outbound: [{ service_no: '伪造班次' }] } }) })).json();
+  if (forgedCl.code === 1) {
+    console.log('✓ /api/trip/checklist 不接受客户端伪造策略');
+  } else { failed++; console.error('✗ /api/trip/checklist 接受了伪造策略：' + JSON.stringify(forgedCl).slice(0, 200)); }
 
   console.log(failed ? `\n✗ ${failed} 项不一致` : '\n✓ 全部接口与 mock.js 派生结果一致');
   process.exit(failed ? 1 : 0);

@@ -17,7 +17,7 @@ import {
   detectReversal, buildCostBreakdown, canClaimCheaper,
   evidenceState, legFreshness, nextVersion
 } from './lib/trip.mjs';
-import { extractIntentFields, searchTripStrategies, buildVerificationChecklist } from './lib/trip-service.mjs';
+import { extractIntentFields, parseTripIntent, searchTripStrategies, buildVerificationChecklist } from './lib/trip-service.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 let fail = 0;
@@ -248,6 +248,29 @@ const [F_OUT, F_IN] = FIXTURE.dated_legs.map((l) => ({ ...l, baggage_terms: { ca
   ok(cl.checklist.every((r) => r.query_entry && r.local_times && Array.isArray(r.missing)), '每段含查询入口/当地时刻/待核项');
   ok(cl.checklist.some((r) => r.missing.includes('班次/航班号未核验')), 'G0 去程 price-only（无航班号）如实列为待核项');
   ok(!cl.note.includes('余票掌握'), '清单声明不掌握余票（交易边界）');
+}
+
+/* ---------- v0.26.1 四项接口契约回归：解析 → 检索 → 清单 ---------- */
+{
+  const parsed = await parseTripIntent('9月30日从北京去阿拉木图往返', ['北京', '阿拉木图']);
+  ok(parsed.query.trip_type === 'round_trip' && /^\d{4}-09-30 ~ \d{4}-09-30$/.test(parsed.query.outbound_window || ''), '往返意图日期统一为查询契约 YYYY-MM-DD');
+  ok(parsed.needs_confirmation.some((s) => s.includes('返程')), '已识别去程日期但缺返程窗时要求补全');
+  const ambiguous = await parseTripIntent('国庆从北京去阿拉木图', ['北京', '阿拉木图']);
+  ok(ambiguous.query.trip_type === 'pending' && ambiguous.needs_confirmation.some((s) => s.includes('单程还是往返')), '未明说单/往返时不根据日期猜单程');
+
+  const parsedSearch = searchTripStrategies({ ...parsed.query, outbound_window: '2026-09-30 ~ 2026-09-30' }, NOW);
+  ok(parsedSearch.evidence_state === 'dated_partial', '解析的行程意图配合固定日期回放可命中指定日部分证据');
+  const card = parsedSearch.strategies[0];
+  const cardChecklist = buildVerificationChecklist(card);
+  ok(cardChecklist.checklist.length === card.structure.length && cardChecklist.checklist.length === 2, '检索卡直接生成双向逐段清单');
+  ok(card.outbound[0].sampled_at && card.inbound[0].sampled_at && card.structure.every((l) => l.sampled_at && l.valid_for_date), '检索响应逐段保留来源取样时间与有效日期');
+  ok(cardChecklist.checklist[0].sampled_at && cardChecklist.checklist[0].local_times.includes('Asia/Shanghai') && cardChecklist.checklist[0].local_times.includes('Asia/Almaty'), '清单保留取样时间与起落各自时区');
+
+  const oneWay = searchTripStrategies({ ...Q, trip_type: 'one_way', return_window: null }, NOW);
+  ok(oneWay.strategies.length === 1 && oneWay.strategies[0].outbound.length === 1 && oneWay.strategies[0].inbound.length === 0 && oneWay.strategies[0].structure.every((l) => l.direction === 'outbound'), '单程查询只返回去程，不混入返程成本与班次');
+  ok(oneWay.strategies[0].cost_breakdown.known_total === null, '单程不能把往返口径样本价计为已知票价');
+  const pending = searchTripStrategies({ ...Q, trip_type: 'pending', outbound_window: null, return_window: null }, NOW);
+  ok(pending.strategies[0].inbound.length === 0 && pending.evidence_state === 'historical', '待确认行程只展示起终点方向历史参考');
 }
 
 console.log(fail ? `\n✗ ${fail} 项未通过` : '\n✓ 行程契约确定性测试全部通过');
