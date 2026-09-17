@@ -1,0 +1,63 @@
+{
+  "_meta": {
+    "说明": "G0 dated 样本 → Trip/Leg/Evidence 契约首批 fixture（开发流程 §G1：写确定性样例测试再接真实样本）。来源 = g0-almaty-samples.json dated_samples + direct 班期（v0.24.1 审查版）。",
+    "采样日": "2026-09-16",
+    "g0_decision": "发布范围=探索与核验助手（同窗双向基准未对齐）",
+    "caveats": [
+      "去程价格样本为 9/30 去 + 10/9 回的往返口径，未绑定具体航班号（CZ786/CZ5097 执飞哪班未核）——price-only evidence",
+      "返程 KC267 价格为阿斯塔纳官网原币种 KZT，税费明细待核",
+      "行李口径两段均未注明——unknown_costs 必须体现",
+      "10/7 为周二：CA799/800 班期当日无直飞（班期×日期约束实证）"
+    ]
+  },
+  "query": {
+    "origin": "北京",
+    "destination": "阿拉木图",
+    "trip_type": "round_trip",
+    "outbound_window": "2026-09-27 ~ 2026-10-03",
+    "return_window": "2026-10-05 ~ 2026-10-11",
+    "traveler_count": 1,
+    "currency": "CNY"
+  },
+  "dated_legs": [
+    {
+      "direction": "outbound",
+      "mode": "plane",
+      "service_no": null,
+      "carrier_note": "南航直飞（CZ786 首都早班 / CZ5097 大兴晚班，执飞班次未核）",
+      "origin_terminal": "北京大兴 PKX",
+      "destination_terminal": "阿拉木图 ALA",
+      "depart_date": "2026-09-30",
+      "depart_local": "18:30",
+      "arrive_date": "2026-09-30",
+      "arrive_local": "21:10",
+      "time_zone": "Asia/Shanghai",
+      "price_sample": { "amount": 3992, "currency": "CNY", "scope": "round_trip 9/30+10/9 含税——注意该价格口径跨及返程腿，拆账时不得全额计入单段" },
+      "valid_for_date": "2026-09-30",
+      "source_url": "https://www.tianxun.com/routes/pkx/ala/beijing-daxing-to-almaty.html",
+      "sampled_at": "2026-09-16T00:00:00+08:00",
+      "baggage_terms": null
+    },
+    {
+      "direction": "inbound",
+      "mode": "plane",
+      "service_no": "KC267",
+      "origin_terminal": "阿拉木图 T2",
+      "destination_terminal": "北京首都 T2",
+      "depart_date": "2026-10-07",
+      "depart_local": "21:20",
+      "arrive_date": "2026-10-08",
+      "arrive_local": "04:55",
+      "time_zone": "Asia/Almaty",
+      "price_sample": { "amount": 152788, "currency": "KZT", "scope": "官网单程起价，税费明细待核" },
+      "valid_for_date": "2026-10-07",
+      "source_url": "https://airastana.com/chn-zh/booking-form/flights-from-beijing-to-kazakhstan",
+      "sampled_at": "2026-09-16T00:00:00+08:00",
+      "baggage_terms": null
+    }
+  ],
+  "historical_legs": [
+    { "direction": "outbound", "mode": "plane", "service_no": "CA799", "note": "周一/三/五/日；10/7 周二无此班（班期×日期约束实证）", "source_url": "http://www.news.cn/world/20250731/533ade33ff5a45b8bfd33f76dc5c0fed/c.html", "sampled_at": "2026-09-16T00:00:00+08:00" },
+    { "direction": "outbound", "mode": "train", "service_no": "K9795", "note": "乌鲁木齐每周六 23:33 → 阿拉木图 周日 22:59（每周仅一班）", "source_url": "https://zh.wikipedia.org/wiki/K9795/9796%E6%AC%A1%E5%88%97%E8%BD%A6", "sampled_at": "2026-09-16T00:00:00+08:00" }
+  ]
+}
