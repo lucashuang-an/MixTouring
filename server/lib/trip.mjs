@@ -123,12 +123,12 @@ export function validateLeg(leg) {
   if (badTz(depTz)) errors.push('depart_time_zone（IANA）必填');
   if (badTz(arrTz)) errors.push('arrive_time_zone（IANA）必填');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(leg.depart_date || '')) errors.push('depart_date（YYYY-MM-DD，当地日期）必填');
-  if (!leg.source_url) errors.push('source_url 必填（无来源不入库）');
+  if (typeof leg.source_url !== 'string' || !/^https?:\/\/\S+$/i.test(leg.source_url)) errors.push('source_url 须为 HTTP(S) 来源链接');
   if (!leg.sampled_at) errors.push('sampled_at 必填');
   else if (Number.isNaN(new Date(leg.sampled_at).getTime())) errors.push('sampled_at 无法解析为有效时间：' + leg.sampled_at);
   if (leg.price_sample != null) {
     const ps = leg.price_sample;
-    if (typeof ps.amount !== 'number' || ps.amount <= 0) errors.push('price_sample.amount 非法');
+    if (!Number.isFinite(ps.amount) || ps.amount <= 0) errors.push('price_sample.amount 须为有限正数');
     if (!ps.currency || !/^[A-Z]{3}$/.test(ps.currency)) errors.push('price_sample.currency 必填');
     if (ps.scope != null && !PRICE_SCOPES.includes(ps.scope)) errors.push('price_sample.scope 非法：' + ps.scope);
   }
@@ -151,20 +151,26 @@ export function validateStrategy(s) {
   if (!s) return ['Strategy 缺失'];
   if (!s.kind) errors.push('kind 必填（direct/transfer/rail_hybrid/…）');
   const out = s.outbound || [], inc = s.inbound || [];
+  if (!Array.isArray(out) || !Array.isArray(inc)) return ['outbound/inbound 须为数组'];
+  if (s.extras != null && !Array.isArray(s.extras)) errors.push('extras 须为数组');
+  if (Array.isArray(s.extras) && s.extras.some((e) => !e || typeof e !== 'object')) errors.push('extras 每项须为费用对象');
+  if (s.unknown_costs != null && !Array.isArray(s.unknown_costs)) errors.push('unknown_costs 须为数组');
+  if (s.cost_breakdown?.unknown_costs != null && !Array.isArray(s.cost_breakdown.unknown_costs)) errors.push('cost_breakdown.unknown_costs 须为数组');
   for (const leg of out) {
-    if (leg.direction !== 'outbound') errors.push('outbound 数组混入 direction=' + leg.direction);
+    if (leg?.direction !== 'outbound') errors.push('outbound 数组混入 direction=' + leg?.direction);
     errors.push(...validateLeg(leg));
   }
   for (const leg of inc) {
-    if (leg.direction !== 'inbound') errors.push('inbound 数组混入 direction=' + leg.direction);
+    if (leg?.direction !== 'inbound') errors.push('inbound 数组混入 direction=' + leg?.direction);
     errors.push(...validateLeg(leg));
   }
-  if (detectReversal(s)) errors.push('inbound 与 outbound 逐段镜像（同班次+场站对调）——禁止由去程反转充当返程（T06）');
+  if (out.every(Boolean) && inc.every(Boolean) && detectReversal(s)) errors.push('inbound 与 outbound 逐段镜像（同班次+场站对调）——禁止由去程反转充当返程（T06）');
   if (s.trip_type === 'round_trip' && s.complete === true) {
     if (!out.length) errors.push('round_trip complete=true 但 outbound 为空');
     if (!inc.length) errors.push('round_trip complete=true 但 inbound 为空（去返须独立取证，禁止反转充当返程）');
   }
-  if (s.complete === true && (!s.cost_breakdown || s.cost_breakdown.known_total == null) && !(s.unknown_costs || []).length) {
+  const derivedCost = buildCostBreakdown([...out.filter(Boolean), ...inc.filter(Boolean)], Array.isArray(s.extras) ? s.extras.filter((e) => e && typeof e === 'object') : []);
+  if (s.complete === true && !derivedCost.items.length && !derivedCost.unknown_costs.length && !(s.unknown_costs || []).length) {
     errors.push('complete=true 时成本拆账与未知项至少要有其一（未知项不得静默为 0）');
   }
   return errors;
@@ -207,8 +213,8 @@ export function buildCostBreakdown(legs, extras = []) {
   let currency = null;
   let currency_mixed = false;
   const accept = (item, amount, cur) => {
-    if (amount == null || !cur) {
-      unknown_costs.push({ item, reason: cur ? '无金额证据' : '无币种证据' });
+    if (amount == null || !cur || !Number.isFinite(amount) || amount < 0 || !/^[A-Z]{3}$/.test(cur)) {
+      unknown_costs.push({ item, reason: amount == null ? '无金额证据' : !Number.isFinite(amount) || amount < 0 ? '金额无效' : '无有效币种证据' });
       return;
     }
     if (currency == null) currency = cur;
@@ -295,10 +301,17 @@ function parseWindow(w) {
  * - dated_verified = 双向齐 + 全段绑定一致命中 + 无过期 + 时序成立 + 衔接可行 + 非反转 + 重算成本完整。
  */
 export function evidenceState(strategy, query, nowMs = Date.now()) {
+  if (!strategy || validateStrategy(strategy).length) return 'historical';
   const rawOut = strategy.outbound || [], rawInc = strategy.inbound || [];
   const rawLegs = [...rawOut, ...rawInc];
   if (!rawLegs.length) return 'explore';
-  const out = rawOut.map(decorateLeg), inc = rawInc.map(decorateLeg);
+  let out, inc;
+  try {
+    out = rawOut.map(decorateLeg);
+    inc = rawInc.map(decorateLeg);
+  } catch {
+    return 'historical'; /* 非法时区等无法换算的输入不得升级证据态 */
+  }
   const legs = [...out, ...inc];
 
   /* 逐段钟面自洽：跨日漏标导致的倒挂立刻暴露 */
@@ -327,12 +340,18 @@ export function evidenceState(strategy, query, nowMs = Date.now()) {
   }
 
   /* 成本从当前分段重算——外部 cost_breakdown 不作为状态判定依据（旧总价不得掩盖缺失票价） */
-  const cost = buildCostBreakdown(legs);
-  const costComplete = cost.known_total != null && !cost.currency_mixed && cost.unknown_costs.length === 0;
+  const cost = buildCostBreakdown(legs, strategy.extras || []);
+  const remainingUnknown = [
+    ...cost.unknown_costs,
+    ...(strategy.unknown_costs || []),
+    ...(strategy.cost_breakdown?.unknown_costs || [])
+  ];
+  const costComplete = Number.isFinite(cost.known_total) && !cost.currency_mixed && remainingUnknown.length === 0;
+  const servicesKnown = legs.every((leg) => leg.mode === 'transfer' || (typeof leg.service_no === 'string' && leg.service_no.trim()));
 
   const hasBoth = out.length > 0 && inc.length > 0;
   const connOk = checkConnections(out).feasible && (inc.length ? checkConnections(inc).feasible : true);
-  if (!anyStale && allDated && hasBoth && orderOk && costComplete && connOk && !detectReversal(strategy)) return 'dated_verified';
+  if (!anyStale && allDated && hasBoth && orderOk && costComplete && servicesKnown && connOk && !detectReversal(strategy)) return 'dated_verified';
   if (datedCount > 0 && !anyStale) return 'dated_partial';
   return 'historical';
 }

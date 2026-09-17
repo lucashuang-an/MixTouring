@@ -156,13 +156,28 @@ const [F_OUT, F_IN] = FIXTURE.dated_legs.map((l) => ({ ...l, baggage_terms: { ca
 }
 {
   /* 正例（门禁可达性）：同窗+同具体日期+双向齐+one_way 成本完整+时序正常 → dated_verified */
-  const okLeg = (dir, dd, dep, arrD, arr, tzD, tzA, from, to, no, amount) => decorateLeg({ direction: dir, mode: 'plane', service_no: no, origin_terminal: from, destination_terminal: to, depart_date: dd, depart_local: dep, depart_time_zone: tzD, arrive_date: arrD, arrive_local: arr, arrive_time_zone: tzA, source_url: 'x', sampled_at: '2026-09-16T00:00:00+08:00', price_sample: { amount, currency: 'CNY', scope: 'one_way' }, baggage_terms: { cabin: 1 }, valid_for_date: dd });
+  const okLeg = (dir, dd, dep, arrD, arr, tzD, tzA, from, to, no, amount) => decorateLeg({ direction: dir, mode: 'plane', service_no: no, origin_terminal: from, destination_terminal: to, depart_date: dd, depart_local: dep, depart_time_zone: tzD, arrive_date: arrD, arrive_local: arr, arrive_time_zone: tzA, source_url: 'https://example.com/fixture', sampled_at: '2026-09-16T00:00:00+08:00', price_sample: { amount, currency: 'CNY', scope: 'one_way' }, baggage_terms: { cabin: 1 }, valid_for_date: dd });
   const good = {
     kind: 'direct', trip_type: 'round_trip', complete: true,
     outbound: [okLeg('outbound', '2026-09-30', '18:30', '2026-09-30', '21:10', 'Asia/Shanghai', 'Asia/Almaty', '北京大兴 PKX', '阿拉木图 ALA', 'CZ', 1990)],
     inbound: [okLeg('inbound', '2026-10-07', '21:20', '2026-10-08', '04:55', 'Asia/Almaty', 'Asia/Shanghai', '阿拉木图 T2', '北京首都 T2', 'KC267', 2300)]
   };
   ok(evidenceState(good, Q, NOW) === 'dated_verified', '门禁可达性：绑定一致+同窗+时序正常+重算成本完整 → dated_verified');
+  const missingSource = { ...good, outbound: [{ ...good.outbound[0], source_url: undefined }] };
+  ok(validateStrategy(missingSource).some((e) => e.includes('source_url')) && evidenceState(missingSource, Q, NOW) !== 'dated_verified', 'R14 缺段来源：结构校验与状态判定同时拒绝');
+  ok(evidenceState({ ...good, outbound: [null] }, Q, NOW) !== 'dated_verified', 'R14 非法分段按不可信降级，不抛异常');
+  const missingService = { ...good, outbound: [{ ...good.outbound[0], service_no: null }] };
+  ok(evidenceState(missingService, Q, NOW) !== 'dated_verified', 'R14 无航班号不得出可核验卡');
+  const unknownStay = { ...good, unknown_costs: [{ item: '独住住宿', reason: '未采到报价' }] };
+  ok(validateStrategy(unknownStay).length === 0 && evidenceState(unknownStay, Q, NOW) !== 'dated_verified', 'R15 行程级独住费用未知阻止可核验');
+  const unknownTransfer = { ...good, extras: [{ item: '机场接驳', reason: '未采到报价' }] };
+  ok(evidenceState(unknownTransfer, Q, NOW) !== 'dated_verified', 'R15 附加接驳费用未知阻止可核验');
+  const oldUnknown = { ...good, cost_breakdown: { known_total: 4300, unknown_costs: [{ item: '机场接驳', reason: '待核' }] } };
+  ok(evidenceState(oldUnknown, Q, NOW) !== 'dated_verified', 'R15 既有拆账中的未知项不得被重算遗漏');
+  const infinityPrice = { ...good, outbound: [{ ...good.outbound[0], price_sample: { amount: Infinity, currency: 'CNY', scope: 'one_way' } }] };
+  ok(validateStrategy(infinityPrice).some((e) => e.includes('有限正数')) && evidenceState(infinityPrice, Q, NOW) !== 'dated_verified', 'R16 非有限票价在验证与状态门禁均拒绝');
+  const negativeExtra = buildCostBreakdown([...good.outbound, ...good.inbound], [{ item: '住宿', amount: -3000, currency: 'CNY' }]);
+  ok(negativeExtra.unknown_costs.some((u) => u.reason === '金额无效'), 'R16 负附加费用不得降低完整总成本');
   ok(evidenceState({ ...good, outbound: [] }, Q, NOW) !== 'dated_verified', 'T03 缺返程方向 → 不得 verified');
   ok(evidenceState({ ...good, outbound: [{ ...good.outbound[0], valid_for_date: '2026-09-29' }] }, Q, NOW) !== 'dated_verified', 'R9 对偶：正例中篡改证据日期即掉出门禁');
 
