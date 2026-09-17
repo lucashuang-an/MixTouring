@@ -125,6 +125,7 @@ export function validateLeg(leg) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(leg.depart_date || '')) errors.push('depart_date（YYYY-MM-DD，当地日期）必填');
   if (!leg.source_url) errors.push('source_url 必填（无来源不入库）');
   if (!leg.sampled_at) errors.push('sampled_at 必填');
+  else if (Number.isNaN(new Date(leg.sampled_at).getTime())) errors.push('sampled_at 无法解析为有效时间：' + leg.sampled_at);
   if (leg.price_sample != null) {
     const ps = leg.price_sample;
     if (typeof ps.amount !== 'number' || ps.amount <= 0) errors.push('price_sample.amount 非法');
@@ -241,11 +242,12 @@ export function buildCostBreakdown(legs, extras = []) {
 }
 
 /**
- * 同口径省钱判定（复审⑤）：先要求口径字段【存在】——缺失/空 ≠ 一致；再比较相等性。
+ * 同口径省钱判定（复审⑤+第二轮④）：口径字段必须【存在】且【相等】——缺失 ≠ 一致；
+ * 日期除宽泛窗外还须绑定【具体出行日】（同窗不同日不得比较，如 9/30 去 10/7 返 vs 10/3 去 10/5 返）。
  * 策略或基准存在未知费用、混合币种、跨币种、成本不完整 → 一律不得宣称更省。
  */
 export function canClaimCheaper(strategyCost, baselineCost, strategyCtx, baselineCtx) {
-  const ctxKeys = ['outbound_window', 'return_window', 'traveler_count', 'currency', 'baggage'];
+  const ctxKeys = ['outbound_window', 'return_window', 'outbound_date', 'return_date', 'traveler_count', 'currency', 'baggage'];
   for (const k of ctxKeys) {
     const a = strategyCtx?.[k], b = baselineCtx?.[k];
     if (a == null || a === '' || b == null || b === '') return { comparable: false, reason: '比较口径不完整：' + k };
@@ -266,10 +268,12 @@ function staleDaysFor(leg) {
   return STALE_AFTER_DAYS[kind] ?? 30;
 }
 
-/** 逐段新鲜度：sampled_at 超过该类型阈值 → stale（T11） */
+/** 逐段新鲜度：sampled_at 超过该类型阈值 → stale（T11）；无效取样时间按不可信处理（复审：not-a-date 曾不触发过期） */
 export function legFreshness(leg, nowMs = Date.now()) {
   const days = staleDaysFor(leg);
-  const age = (nowMs - new Date(leg.sampled_at).getTime()) / 86400000;
+  const sampled = new Date(leg.sampled_at).getTime();
+  if (!Number.isFinite(sampled)) return { stale: true, ageDays: null, thresholdDays: days, invalid_sampled_at: true };
+  const age = (nowMs - sampled) / 86400000;
   return { stale: age > days, ageDays: Math.round(age * 10) / 10, thresholdDays: days };
 }
 
@@ -280,30 +284,55 @@ function parseWindow(w) {
 }
 
 /**
- * 行程证据状态（复审②收紧）：
- * - 指定日绑定只认 valid_for_date（无 depart_date 回退），且按方向绑定各自窗口
- *   （outbound 段须命中 outbound_window，inbound 段须命中 return_window）；
- * - 任一段 stale → 不得 dated_verified（全部 stale → stale）；
- * - dated_verified = 统一门禁：去返双向齐 + 全段绑定命中 + 无过期 + 衔接可行（各方向内）+ 非反转 + 成本完整。
+ * 行程证据状态（v0.25.3 二轮复审收紧）：
+ * - 指定日绑定只认 valid_for_date，且必须与该段实际出发日一致（证据日期 ≠ 出发日 → 视为未绑定），
+ *   并按方向命中各自窗口（outbound→outbound_window、inbound→return_window）；
+ * - 任一段过期 → 不得 dated_verified（全部过期 → stale）；无效 sampled_at 视为过期；
+ * - 行程时序：双向齐时，去程全部抵达必须早于返程最早出发（返程不得早于/交织于去程）；
+ *   任一段钟面倒挂（跨日漏标）→ 不得 verified；
+ * - 成本一律从【当前分段】重算（buildCostBreakdown），不信外部传入的 cost_breakdown——
+ *   旧总价不得掩盖缺失票价；无价段/往返口径段/行李未核验自然构成未知项；
+ * - dated_verified = 双向齐 + 全段绑定一致命中 + 无过期 + 时序成立 + 衔接可行 + 非反转 + 重算成本完整。
  */
 export function evidenceState(strategy, query, nowMs = Date.now()) {
-  const out = strategy.outbound || [], inc = strategy.inbound || [];
+  const rawOut = strategy.outbound || [], rawInc = strategy.inbound || [];
+  const rawLegs = [...rawOut, ...rawInc];
+  if (!rawLegs.length) return 'explore';
+  const out = rawOut.map(decorateLeg), inc = rawInc.map(decorateLeg);
   const legs = [...out, ...inc];
-  if (!legs.length) return 'explore';
+
+  /* 逐段钟面自洽：跨日漏标导致的倒挂立刻暴露 */
+  if (legs.some((l) => l._negative_duration_error)) return 'historical';
+
+  /* 新鲜度（含无效 sampled_at 视为过期） */
   const fresh = legs.map((l) => legFreshness(l, nowMs));
   if (fresh.every((f) => f.stale)) return 'stale';
   const anyStale = fresh.some((f) => f.stale);
+
+  /* 指定日绑定：valid_for_date 与实际出发日一致 + 命中本方向窗口 */
   const inWin = (leg) => {
     const w = parseWindow(leg.direction === 'outbound' ? query?.outbound_window : query?.return_window);
     const d = leg.valid_for_date;
-    return !!(w && d && d >= w[0] && d <= w[1]);
+    return !!(w && d && d === leg.depart_date && d >= w[0] && d <= w[1]);
   };
   const datedCount = legs.filter(inWin).length;
   const allDated = datedCount === legs.length;
+
+  /* 行程时序：去程最后抵达 < 返程最早出发（返程早于/交织于去程即门禁不过） */
+  let orderOk = true;
+  if (out.length && inc.length) {
+    const lastOutArr = Math.max(...out.map((l) => l._utcArr.getTime()));
+    const firstIncDep = Math.min(...inc.map((l) => l._utcDep.getTime()));
+    orderOk = lastOutArr < firstIncDep;
+  }
+
+  /* 成本从当前分段重算——外部 cost_breakdown 不作为状态判定依据（旧总价不得掩盖缺失票价） */
+  const cost = buildCostBreakdown(legs);
+  const costComplete = cost.known_total != null && !cost.currency_mixed && cost.unknown_costs.length === 0;
+
   const hasBoth = out.length > 0 && inc.length > 0;
-  const costComplete = !!(strategy.cost_breakdown && strategy.cost_breakdown.known_total != null && !strategy.cost_breakdown.currency_mixed && !(strategy.cost_breakdown.unknown_costs || []).length);
   const connOk = checkConnections(out).feasible && (inc.length ? checkConnections(inc).feasible : true);
-  if (!anyStale && allDated && hasBoth && costComplete && connOk && !detectReversal(strategy)) return 'dated_verified';
+  if (!anyStale && allDated && hasBoth && orderOk && costComplete && connOk && !detectReversal(strategy)) return 'dated_verified';
   if (datedCount > 0 && !anyStale) return 'dated_partial';
   return 'historical';
 }

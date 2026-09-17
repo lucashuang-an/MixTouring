@@ -101,7 +101,7 @@ const NOW = new Date('2026-09-17T00:00:00+08:00').getTime(); /* 固定回放时�
   ok(hybrid.unknown_costs.length === 2 && hybrid.known_total === 900, 'T05 无价段与住宿进 unknown_costs，已知只含带价段');
 
   const directCost = buildCostBreakdown([{ direction: 'outbound', mode: 'plane', service_no: 'CA799', price_sample: { amount: 1990, currency: 'CNY', scope: 'one_way' }, baggage_terms: { cabin: 1 } }]);
-  const fullCtx = { outbound_window: '2026-09-27 ~ 2026-10-03', return_window: '2026-10-05 ~ 2026-10-11', traveler_count: 1, currency: 'CNY', baggage: 'economy' };
+  const fullCtx = { outbound_window: '2026-09-27 ~ 2026-10-03', return_window: '2026-10-05 ~ 2026-10-11', outbound_date: '2026-09-30', return_date: '2026-10-07', traveler_count: 1, currency: 'CNY', baggage: 'economy' };
   ok(canClaimCheaper(hybrid, directCost, fullCtx, fullCtx).cheaper === false, 'T05 票面 900<1990 但有未知费用 → 不得宣称更省');
 
   /* R5 复审⑤：口径缺失 ≠ 一致 */
@@ -110,43 +110,61 @@ const NOW = new Date('2026-09-17T00:00:00+08:00').getTime(); /* 固定回放时�
   ok(canClaimCheaper(a, b, {}, {}).comparable === false, 'R5 双方口径都缺失 → 不可比（不得宣称更省）');
   ok(canClaimCheaper(a, b, { ...fullCtx }, { ...fullCtx, traveler_count: 2 }).comparable === false, 'T04 人数口径不一致 → 不可比');
   ok(canClaimCheaper(a, b, fullCtx, fullCtx).cheaper === true, 'T04 同口径且成本完整 → 可判更省');
+
+  /* 二轮复审④：同宽泛窗但具体出行日不同 → 不可比 */
+  const otherDates = { ...fullCtx, outbound_date: '2026-10-03', return_date: '2026-10-05' };
+  ok(canClaimCheaper(a, b, fullCtx, otherDates).comparable === false, 'R13 同窗不同具体日期（9/30+10/7 vs 10/3+10/5）→ 不可比');
   const kzt = buildCostBreakdown([{ direction: 'outbound', mode: 'plane', service_no: 'K', price_sample: { amount: 100, currency: 'KZT', scope: 'one_way' }, baggage_terms: { cabin: 1 } }]);
-  ok(canClaimCheaper(kzt, b, fullCtx, fullCtx).cheaper === false, 'R/跨币种无已核验汇率 → 不得比较');
+  ok(canClaimCheaper(kzt, b, fullCtx, fullCtx).cheaper === false, '跨币种无已核验汇率 → 不得比较');
 }
 
-/* ---------- 证据状态机（复审②反例 + 固定时钟） ---------- */
-const [F_OUT, F_IN] = FIXTURE.dated_legs;
+/* ---------- 证据状态机（两轮复审反例全量回归 + 固定时钟） ---------- */
+const [F_OUT, F_IN] = FIXTURE.dated_legs.map((l) => ({ ...l, baggage_terms: { cabin: 1 } })); /* 行李已核验副本（隔离成本缺口） */
 {
-  /* G0 fixture 回放：dated 样本因成本缺口（往返 scope+行李未核）停在 dated_partial */
+  /* G0 fixture 回放：去程往返口径不可拆分 → 重算成本含未知项 → dated_partial */
   const s = { kind: 'direct', trip_type: 'round_trip', outbound: [decorateLeg({ ...F_OUT })], inbound: [decorateLeg({ ...F_IN })] };
-  s.cost_breakdown = buildCostBreakdown(s.outbound.concat(s.inbound));
-  ok(evidenceState(s, Q, NOW) === 'dated_partial', `G0 fixture 回放 = dated_partial（实际 ${evidenceState(s, Q, NOW)}；成本缺口阻止 verified）`);
+  ok(evidenceState(s, Q, NOW) === 'dated_partial', `G0 fixture 回放 = dated_partial（实际 ${evidenceState(s, Q, NOW)}；往返口径/行李缺口由内部重算发现）`);
 
-  /* R2a 复审②：删除 valid_for_date（无 depart_date 回退）→ 不得 verified */
-  const noBind = { ...s, outbound: [{ ...s.outbound[0], valid_for_date: undefined }], inbound: [{ ...s.inbound[0], valid_for_date: undefined }] };
-  noBind.cost_breakdown = { known_total: 5000, currency: 'CNY', currency_mixed: false, unknown_costs: [] };
-  ok(evidenceState(noBind, Q, NOW) === 'historical', 'R2a 删除 valid_for_date → historical（无 depart_date 回退）');
+  /* 旧总价掩盖反例（二轮复审③）：删去程票价 + 保留伪造高总价 → 重算权威，不得 verified */
+  const masked = { kind: 'direct', trip_type: 'round_trip', outbound: [{ ...decorateLeg({ ...F_OUT }), price_sample: undefined }], inbound: [decorateLeg({ ...F_IN })], cost_breakdown: { known_total: 9999, currency: 'CNY', currency_mixed: false, unknown_costs: [] } };
+  ok(evidenceState(masked, Q, NOW) !== 'dated_verified', `R11 删去程票价+伪造旧总价 → 状态判定从当前分段重算（实际 ${evidenceState(masked, Q, NOW)}）`);
 
-  /* R2b 复审②：单段过期 → 不得 verified（固定 now=2026-09-17） */
-  const halfStale = { ...s, outbound: [{ ...s.outbound[0], sampled_at: '2026-01-01T00:00:00+08:00' }] };
-  halfStale.cost_breakdown = { known_total: 5000, currency: 'CNY', currency_mixed: false, unknown_costs: [] };
-  ok(evidenceState(halfStale, Q, NOW) !== 'dated_verified', 'R2b 单段过期 → 不得 dated_verified');
+  /* R9 二轮复审①：证据日期与实际出发日不符 → 视为未绑定，不得 verified */
+  const misdated = {
+    kind: 'direct', trip_type: 'round_trip', complete: true,
+    outbound: [decorateLeg({ ...F_OUT, valid_for_date: '2026-09-29' })],
+    inbound: [decorateLeg({ ...F_IN })]
+  };
+  misdated.cost_breakdown = { known_total: 5000, currency: 'CNY', currency_mixed: false, unknown_costs: [] };
+  ok(evidenceState(misdated, Q, NOW) !== 'dated_verified', `R9 valid_for_date(9/29)≠depart_date(9/30) → 非 verified（实际 ${evidenceState(misdated, Q, NOW)}）`);
 
-  /* R2c 复审②：绑定命中另一方向窗口（outbound 段日期落返程窗）→ 该段不算 dated */
-  const crossWin = { ...s, outbound: [{ ...s.outbound[0], valid_for_date: '2026-10-07' }] };
-  crossWin.cost_breakdown = { known_total: 5000, currency: 'CNY', currency_mixed: false, unknown_costs: [] };
-  ok(evidenceState(crossWin, Q, NOW) === 'dated_partial', 'R2c outbound 绑定命中 return_window 不算出向绑定 → dated_partial');
+  /* R10 二轮复审①：行程时序错乱（宽窗下返程早于去程发生）→ 不得 verified */
+  const wideQ = { ...Q, outbound_window: '2026-09-27 ~ 2026-10-11', return_window: '2026-09-27 ~ 2026-10-11' };
+  const reversed_order = {
+    kind: 'direct', trip_type: 'round_trip', complete: true,
+    outbound: [decorateLeg({ ...F_OUT, depart_date: '2026-10-07', valid_for_date: '2026-10-07' })],
+    inbound: [decorateLeg({ ...F_IN, depart_date: '2026-09-30', valid_for_date: '2026-09-30', arrive_date: '2026-10-01' })]
+  };
+  reversed_order.cost_breakdown = { known_total: 5000, currency: 'CNY', currency_mixed: false, unknown_costs: [] };
+  ok(evidenceState(reversed_order, wideQ, NOW) !== 'dated_verified', `R10 返程(9/30 发)早于去程(10/7 发) → 时序门禁拦截（实际 ${evidenceState(reversed_order, wideQ, NOW)}）`);
 
-  /* 正例：同窗绑定 + 双向齐 + 成本完整（one_way 样本）+ 无过期 → 可达 dated_verified（门禁非一刀切） */
-  const okLeg = (dir, dd, dep, arr, tzD, tzA, from, to, no, amount) => decorateLeg({ direction: dir, mode: 'plane', service_no: no, origin_terminal: from, destination_terminal: to, depart_date: dd, depart_local: dep, depart_time_zone: tzD, arrive_date: dd, arrive_local: arr, arrive_time_zone: tzA, source_url: 'x', sampled_at: '2026-09-16T00:00:00+08:00', price_sample: { amount, currency: 'CNY', scope: 'one_way' }, baggage_terms: { cabin: 1 }, valid_for_date: dd });
+  /* R12 二轮复审②：无效 sampled_at → stale 且验证层拒绝 */
+  const badTime = { ...s, outbound: [{ ...s.outbound[0], sampled_at: 'not-a-date' }] };
+  ok(legFreshness(badTime.outbound[0], NOW).stale === true, 'R12 无效取样时间 → 视为过期（不再漏过门禁）');
+  ok(validateLeg({ ...F_OUT, sampled_at: 'not-a-date' }).some((e) => e.includes('sampled_at')), 'R12 validateLeg 拒绝无法解析的 sampled_at');
+  ok(evidenceState(badTime, Q, NOW) !== 'dated_verified', 'R12 含无效取样时间 → 不得 dated_verified');
+}
+{
+  /* 正例（门禁可达性）：同窗+同具体日期+双向齐+one_way 成本完整+时序正常 → dated_verified */
+  const okLeg = (dir, dd, dep, arrD, arr, tzD, tzA, from, to, no, amount) => decorateLeg({ direction: dir, mode: 'plane', service_no: no, origin_terminal: from, destination_terminal: to, depart_date: dd, depart_local: dep, depart_time_zone: tzD, arrive_date: arrD, arrive_local: arr, arrive_time_zone: tzA, source_url: 'x', sampled_at: '2026-09-16T00:00:00+08:00', price_sample: { amount, currency: 'CNY', scope: 'one_way' }, baggage_terms: { cabin: 1 }, valid_for_date: dd });
   const good = {
     kind: 'direct', trip_type: 'round_trip', complete: true,
-    outbound: [okLeg('outbound', '2026-09-30', '18:30', '21:10', 'Asia/Shanghai', 'Asia/Almaty', '北京大兴 PKX', '阿拉木图 ALA', 'CZ', 1990)],
-    inbound: [okLeg('inbound', '2026-10-07', '21:20', '04:55', 'Asia/Almaty', 'Asia/Shanghai', '阿拉木图 T2', '北京首都 T2', 'KC267', 2300)]
+    outbound: [okLeg('outbound', '2026-09-30', '18:30', '2026-09-30', '21:10', 'Asia/Shanghai', 'Asia/Almaty', '北京大兴 PKX', '阿拉木图 ALA', 'CZ', 1990)],
+    inbound: [okLeg('inbound', '2026-10-07', '21:20', '2026-10-08', '04:55', 'Asia/Almaty', 'Asia/Shanghai', '阿拉木图 T2', '北京首都 T2', 'KC267', 2300)]
   };
-  good.cost_breakdown = buildCostBreakdown(good.outbound.concat(good.inbound));
-  ok(evidenceState(good, Q, NOW) === 'dated_verified', '门禁可达性：同窗绑定+双向齐+成本完整+衔接可行 → dated_verified');
+  ok(evidenceState(good, Q, NOW) === 'dated_verified', '门禁可达性：绑定一致+同窗+时序正常+重算成本完整 → dated_verified');
   ok(evidenceState({ ...good, outbound: [] }, Q, NOW) !== 'dated_verified', 'T03 缺返程方向 → 不得 verified');
+  ok(evidenceState({ ...good, outbound: [{ ...good.outbound[0], valid_for_date: '2026-09-29' }] }, Q, NOW) !== 'dated_verified', 'R9 对偶：正例中篡改证据日期即掉出门禁');
 
   /* T11 stale */
   const old = legFreshness({ ...F_OUT, sampled_at: '2026-06-01T00:00:00+08:00' }, NOW);
