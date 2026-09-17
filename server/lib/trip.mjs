@@ -1,15 +1,16 @@
 /* trip.mjs · Solo Trip v1.2 行程域模型与规则底座（G1 · 产品方案_SoloTrip_v1.2 §5）
- * 契约：TripQuery / TripDraft / Strategy / Leg / Evidence。纪律（开发流程 §G1）：
- * ① direction 必填且去返独立取证——任何「由去程反转构造返程」的输入在验证层拒绝；
- * ② 时刻计算一律走 UTC 中介（本地时间 + IANA 时区 → UTC → 时长/跨日），禁止本地钟面心算；
- * ③ 未知费用不得按 0 计入（进 unknown_costs）；不同币种不得静默换算求和；
- * ④ 「更省」表述仅在 同日期窗+同人数+同币种+同行李口径 且双方成本完整（无未知项）时成立；
- * ⑤ 证据状态机 explore→historical→dated_partial→dated_verified，另有 stale/unsupported；
- *    只有绑定指定日期（valid_for_date 命中查询窗）的段才允许 dated_*。 */
+ * v0.25.2 依复审（工作记录 v0.25.1 八项发现）重构：
+ * ① Leg 分离出发/抵达时区（跨境段不得用单一时区解释两端钟面）；
+ * ② evidenceState 收紧：只认 valid_for_date、按方向绑定各自窗口、任一段过期即阻止 verified、
+ *    dated_verified 为统一门禁（双向齐+全段绑定+无过期+衔接可行+非反转+成本完整）；
+ * ③ 附加费用（extras）纳入币种一致性，无可信汇率不求和；
+ * ④ price_sample.scope='round_trip' 不得计入单段拆账；行李口径未核验进 unknown_costs；
+ * ⑤ canClaimCheaper 先要求口径字段存在，缺失 ≠ 一致；
+ * ⑥ detectReversal 接入 validateStrategy 统一门禁；inbound/outbound 数组方向强制一致。 */
 
 const DIRECTIONS = ['outbound', 'inbound'];
 const MODES = ['plane', 'train', 'bus', 'ferry', 'transfer'];
-const EVIDENCE_STATES = ['explore', 'historical', 'dated_partial', 'dated_verified', 'stale', 'unsupported'];
+const PRICE_SCOPES = ['one_way', 'round_trip'];
 
 /* 换乘/缓冲阈值（分钟）：国际转机衔接的权威数字待 G0 缺口核验（T08），先可配置 */
 export const CONNECTION_RULES = {
@@ -18,7 +19,7 @@ export const CONNECTION_RULES = {
   cross_station_buffer: 30
 };
 
-/* 证据过期阈值（天，按数据源类型配置——产品方案 §4.2：不能用一个固定值代表所有类型） */
+/* 证据过期阈值（天，按数据源类型配置——产品方案 §4.2） */
 export const STALE_AFTER_DAYS = {
   flight_price: 7,
   flight_schedule: 90,
@@ -27,7 +28,7 @@ export const STALE_AFTER_DAYS = {
   visa_rule: 30
 };
 
-/* ---------- 时区计算（Node 内置 Intl，无外部依赖） ---------- */
+/* ---------- 时区计算（Node 内置 Intl，无外部依赖；一切时长经 UTC 中介） ---------- */
 
 function tzOffsetMinutes(utcMs, timeZone) {
   const dtf = new Intl.DateTimeFormat('en-US', {
@@ -53,7 +54,7 @@ export function zonedToUtc(dateStr, timeStr, timeZone) {
   return new Date(guess);
 }
 
-/** UTC → 某时区的本地钟面 { dateStr, timeStr, dayOffsetFromUtcDate } */
+/** UTC → 某时区本地钟面 { dateStr, timeStr } */
 export function utcToZoned(utcMs, timeZone) {
   const dtf = new Intl.DateTimeFormat('en-CA', {
     timeZone, hour12: false,
@@ -61,17 +62,35 @@ export function utcToZoned(utcMs, timeZone) {
   });
   const p = {};
   for (const part of dtf.formatToParts(utcMs)) p[part.type] = part.value;
-  return {
-    dateStr: `${p.year}-${p.month}-${p.day}`,
-    timeStr: `${p.hour === '24' ? '00' : p.hour}:${p.minute}`,
-    tzDate: `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute} ${timeZone}`
-  };
+  return { dateStr: `${p.year}-${p.month}-${p.day}`, timeStr: `${p.hour === '24' ? '00' : p.hour}:${p.minute}` };
 }
 
-/** 两段衔接（前段到达 → 后段出发）的真实间隔分钟——UTC 中介，跨日/跨时区安全 */
+/** 两段衔接（前段到达 → 后段出发）真实间隔分钟——UTC 中介，跨日/跨时区安全 */
 export function connectionGapMinutes(prevLeg, nextLeg) {
   if (!prevLeg?._utcArr || !nextLeg?._utcDep) return null;
   return Math.round((nextLeg._utcDep.getTime() - prevLeg._utcArr.getTime()) / 60000);
+}
+
+/* ---------- Leg 时区归一与装饰 ---------- */
+
+/** 起落时区分离（复审①）：depart_time_zone / arrive_time_zone；提供单一 time_zone 时视为两端相同 */
+function legTimeZones(leg) {
+  const depTz = leg.depart_time_zone || leg.time_zone;
+  const arrTz = leg.arrive_time_zone || leg.time_zone || leg.depart_time_zone;
+  return { depTz, arrTz };
+}
+
+/** 装饰 Leg：派生 _utcDep/_utcArr（各自时区独立解释）与 duration_min；跨日漏标立刻暴露 */
+export function decorateLeg(leg) {
+  const out = { ...leg };
+  const { depTz, arrTz } = legTimeZones(leg);
+  if (!depTz || !arrTz) return { ...out, _negative_duration_error: true, _tz_error: '缺少时区' };
+  out._utcDep = zonedToUtc(leg.depart_date, leg.depart_local, depTz);
+  const arrDate = leg.arrive_date || leg.depart_date;
+  out._utcArr = zonedToUtc(arrDate, leg.arrive_local, arrTz);
+  out.duration_min = Math.round((out._utcArr.getTime() - out._utcDep.getTime()) / 60000);
+  if (out.duration_min < 0) out._negative_duration_error = true;
+  return out;
 }
 
 /* ---------- 验证器 ---------- */
@@ -91,7 +110,8 @@ export function validateTripQuery(q) {
   return errors;
 }
 
-/** Leg 验证：direction/mode 必填；本地起落 + IANA 时区必填（utc_instant 由内部派生，不信任外部传入） */
+function badTz(tz) { return !tz || !/^[A-Za-z_]+\/[A-Za-z_+0-9\-]+$/.test(tz); }
+
 export function validateLeg(leg) {
   const errors = [];
   if (!leg) return ['Leg 缺失'];
@@ -99,7 +119,9 @@ export function validateLeg(leg) {
   if (!MODES.includes(leg.mode)) errors.push('mode 非法：' + leg.mode);
   if (!leg.origin_terminal || !leg.destination_terminal) errors.push('起终场站必填');
   if (!leg.depart_local || !leg.arrive_local) errors.push('本地起落时刻必填');
-  if (!leg.time_zone || !/^[A-Za-z_]+\/[A-Za-z_+0-9\-]+$/.test(leg.time_zone)) errors.push('IANA 时区必填：' + leg.time_zone);
+  const { depTz, arrTz } = legTimeZones(leg);
+  if (badTz(depTz)) errors.push('depart_time_zone（IANA）必填');
+  if (badTz(arrTz)) errors.push('arrive_time_zone（IANA）必填');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(leg.depart_date || '')) errors.push('depart_date（YYYY-MM-DD，当地日期）必填');
   if (!leg.source_url) errors.push('source_url 必填（无来源不入库）');
   if (!leg.sampled_at) errors.push('sampled_at 必填');
@@ -107,6 +129,7 @@ export function validateLeg(leg) {
     const ps = leg.price_sample;
     if (typeof ps.amount !== 'number' || ps.amount <= 0) errors.push('price_sample.amount 非法');
     if (!ps.currency || !/^[A-Z]{3}$/.test(ps.currency)) errors.push('price_sample.currency 必填');
+    if (ps.scope != null && !PRICE_SCOPES.includes(ps.scope)) errors.push('price_sample.scope 非法：' + ps.scope);
   }
   return errors;
 }
@@ -121,15 +144,21 @@ export function validateEvidence(ev) {
   return errors;
 }
 
-/** Strategy 验证。核心红线：round_trip 宣称 complete 时，去返两向都不得为空（T03/T06 防线）。
- *  每个 Leg 必须自带 time_zone（去返常不同时区，如 Asia/Shanghai / Asia/Almaty）。 */
+/** Strategy 统一验证入口（复审⑥）：结构 + 方向一致性 + 反转守卫 + 完整宣称门禁。 */
 export function validateStrategy(s) {
   const errors = [];
   if (!s) return ['Strategy 缺失'];
   if (!s.kind) errors.push('kind 必填（direct/transfer/rail_hybrid/…）');
   const out = s.outbound || [], inc = s.inbound || [];
-  for (const leg of out) errors.push(...validateLeg(leg));
-  for (const leg of inc) errors.push(...validateLeg(leg));
+  for (const leg of out) {
+    if (leg.direction !== 'outbound') errors.push('outbound 数组混入 direction=' + leg.direction);
+    errors.push(...validateLeg(leg));
+  }
+  for (const leg of inc) {
+    if (leg.direction !== 'inbound') errors.push('inbound 数组混入 direction=' + leg.direction);
+    errors.push(...validateLeg(leg));
+  }
+  if (detectReversal(s)) errors.push('inbound 与 outbound 逐段镜像（同班次+场站对调）——禁止由去程反转充当返程（T06）');
   if (s.trip_type === 'round_trip' && s.complete === true) {
     if (!out.length) errors.push('round_trip complete=true 但 outbound 为空');
     if (!inc.length) errors.push('round_trip complete=true 但 inbound 为空（去返须独立取证，禁止反转充当返程）');
@@ -142,7 +171,6 @@ export function validateStrategy(s) {
 
 /* ---------- 规则：衔接可行性 / 反转守卫 / 成本与同口径省钱 ---------- */
 
-/** 逐段衔接校验（T08）：间隔 < 同站/跨站阈值 → 不可行。返回 {feasible, gaps[]} */
 export function checkConnections(legs, rules = CONNECTION_RULES) {
   const gaps = [];
   for (let i = 0; i < legs.length - 1; i++) {
@@ -155,7 +183,6 @@ export function checkConnections(legs, rules = CONNECTION_RULES) {
   return { feasible: gaps.length === 0, gaps };
 }
 
-/** 反转守卫（T06）：inbound 与 outbound 逐段镜像（班次号相同且场站对调）→ 疑似反转 */
 export function detectReversal(strategy) {
   const out = strategy.outbound || [], inc = strategy.inbound || [];
   if (!out.length || !inc.length) return false;
@@ -168,51 +195,66 @@ export function detectReversal(strategy) {
   });
 }
 
-/** 成本拆账（T05）：已知项求和（币种不同不换算直接报未知）；未知项原样保留，绝不按 0 计入 */
+/**
+ * 成本拆账（复审③④）：已知项求和前统一验证币种（extras 在内）；无可信汇率不求和。
+ * price_sample.scope='round_trip' 的段不得计入单段（往返口径不可拆分）→ 进 unknown_costs；
+ * baggage_terms 为 null/undefined 的段 → 行李口径未核验进 unknown_costs。
+ */
 export function buildCostBreakdown(legs, extras = []) {
   const known = [];
   const unknown_costs = [];
   let currency = null;
   let currency_mixed = false;
-  for (const leg of legs) {
-    if (leg.price_sample != null) {
-      if (currency == null) currency = leg.price_sample.currency;
-      else if (currency !== leg.price_sample.currency) currency_mixed = true;
-      known.push({ item: `${leg.direction}:${leg.service_no || leg.mode}`, amount: leg.price_sample.amount, currency: leg.price_sample.currency });
-    } else {
-      unknown_costs.push({ item: `${leg.direction}:${leg.service_no || leg.mode}:票价`, reason: '该段无价格样本' });
+  const accept = (item, amount, cur) => {
+    if (amount == null || !cur) {
+      unknown_costs.push({ item, reason: cur ? '无金额证据' : '无币种证据' });
+      return;
     }
+    if (currency == null) currency = cur;
+    else if (currency !== cur) { currency_mixed = true; unknown_costs.push({ item, reason: `币种 ${cur} 与已计 ${currency} 不同且无可信汇率，不入和` }); return; }
+    known.push({ item, amount, currency: cur });
+  };
+  for (const leg of legs) {
+    const label = `${leg.direction}:${leg.service_no || leg.mode}`;
+    const ps = leg.price_sample;
+    if (ps == null) {
+      unknown_costs.push({ item: label + ':票价', reason: '该段无价格样本' });
+    } else if (ps.scope === 'round_trip') {
+      unknown_costs.push({ item: label + ':票价', reason: `往返口径样本（¥/原币覆盖多段与日期，不可拆分计入单段；scope=${ps.scope}）` });
+    } else {
+      accept(label + ':票价', ps.amount, ps.currency);
+    }
+    if (leg.baggage_terms == null) unknown_costs.push({ item: label + ':行李', reason: '行李口径未核验' });
     if (Array.isArray(leg.unknown_costs)) unknown_costs.push(...leg.unknown_costs);
   }
   for (const e of extras) {
-    if (e.amount != null) known.push(e);
+    if (e.amount != null) accept(e.item, e.amount, e.currency);
     else unknown_costs.push({ item: e.item, reason: e.reason || '无金额证据' });
   }
-  const sameCurrency = known.length && !currency_mixed;
   return {
     items: known,
-    known_total: sameCurrency ? known.reduce((a, b) => a + b.amount, 0) : null,
-    currency: sameCurrency ? currency : null,
+    known_total: known.length && !currency_mixed ? known.reduce((a, b) => a + b.amount, 0) : null,
+    currency: known.length && !currency_mixed ? currency : null,
     currency_mixed,
     unknown_costs
   };
 }
 
 /**
- * 同口径省钱判定（T04/T05 铁律）：仅当 日期窗/人数/币种/行李口径 与基准全等，
- * 且策略与基准成本均完整（无 unknown_costs、非混合币种）时才允许「更省」。
- * 口径不一致 → { comparable:false }；可比 → comparable:true + cheaper 布尔。
+ * 同口径省钱判定（复审⑤）：先要求口径字段【存在】——缺失/空 ≠ 一致；再比较相等性。
+ * 策略或基准存在未知费用、混合币种、跨币种、成本不完整 → 一律不得宣称更省。
  */
 export function canClaimCheaper(strategyCost, baselineCost, strategyCtx, baselineCtx) {
   const ctxKeys = ['outbound_window', 'return_window', 'traveler_count', 'currency', 'baggage'];
   for (const k of ctxKeys) {
-    if ((strategyCtx?.[k] ?? null) !== (baselineCtx?.[k] ?? null)) return { comparable: false, reason: '口径不一致：' + k };
+    const a = strategyCtx?.[k], b = baselineCtx?.[k];
+    if (a == null || a === '' || b == null || b === '') return { comparable: false, reason: '比较口径不完整：' + k };
+    if (a !== b) return { comparable: false, reason: '口径不一致：' + k };
   }
   if ((strategyCost.unknown_costs || []).length) return { comparable: true, cheaper: false, reason: '策略存在未知费用，不得宣称更省' };
   if ((baselineCost.unknown_costs || []).length) return { comparable: true, cheaper: false, reason: '基准存在未知费用' };
   if (strategyCost.currency_mixed || baselineCost.currency_mixed) return { comparable: true, cheaper: false, reason: '混合币种未换算' };
   if (strategyCost.known_total == null || baselineCost.known_total == null) return { comparable: true, cheaper: false, reason: '成本不完整' };
-  /* 策略与基准币种不同 → 无已核验汇率不得比较（产品方案 §5：汇率来源与取样时间须单独记录） */
   if (strategyCost.currency !== baselineCost.currency) return { comparable: true, cheaper: false, reason: '跨币种无已核验汇率，不得比较' };
   return { comparable: true, cheaper: strategyCost.known_total < baselineCost.known_total };
 }
@@ -231,47 +273,43 @@ export function legFreshness(leg, nowMs = Date.now()) {
   return { stale: age > days, ageDays: Math.round(age * 10) / 10, thresholdDays: days };
 }
 
-/** 行程证据状态（T03/T11）：绑定指定日期（valid_for_date 命中查询窗）的段占比决定 dated_*；
- *  全部段 stale → stale；无段 → explore；有段无绑定 → historical。 */
-export function evidenceState(strategy, query, nowMs = Date.now()) {
-  const legs = [...(strategy.outbound || []), ...(strategy.inbound || [])];
-  if (!legs.length) return 'explore';
-  const allStale = legs.every((l) => legFreshness(l, nowMs).stale);
-  if (allStale) return 'stale';
-  const inWindow = (d) => {
-    if (!d) return false;
-    const ow = parseWindow(query?.outbound_window), rw = parseWindow(query?.return_window);
-    if (legs.some((l) => l.direction === 'outbound') && ow && d >= ow[0] && d <= ow[1]) return true;
-    if (legs.some((l) => l.direction === 'inbound') && rw && d >= rw[0] && d <= rw[1]) return true;
-    return false;
-  };
-  const datedLegs = legs.filter((l) => inWindow(l.valid_for_date || l.depart_date));
-  const costComplete = strategy.cost_breakdown && strategy.cost_breakdown.known_total != null && !(strategy.cost_breakdown.unknown_costs || []).length;
-  if (datedLegs.length === legs.length && legs.some((l) => l.direction === 'inbound') && legs.some((l) => l.direction === 'outbound') && costComplete) return 'dated_verified';
-  if (datedLegs.length > 0) return 'dated_partial';
-  return 'historical';
-}
-
 function parseWindow(w) {
   if (!w) return null;
   const m = String(w).match(/^(\d{4}-\d{2}-\d{2})\s*~\s*(\d{4}-\d{2}-\d{2})$/);
   return m ? [m[1], m[2]] : null;
 }
 
-/* ---------- 组装：装饰 UTC 时刻 + 行程草稿 ---------- */
-
-/** 给 Leg 派生 _utcDep/_utcArr（内部字段）与 arrive_utc_date（当地到达日） */
-export function decorateLeg(leg) {
-  const out = { ...leg };
-  out._utcDep = zonedToUtc(leg.depart_date, leg.depart_local, leg.time_zone);
-  const arrDate = leg.arrive_date || leg.depart_date; /* 跨日由 arrive_date 显式给出（当地日） */
-  out._utcArr = zonedToUtc(arrDate, leg.arrive_local, leg.time_zone);
-  out.duration_min = Math.round((out._utcArr.getTime() - out._utcDep.getTime()) / 60000);
-  if (out.duration_min < 0) out._negative_duration_error = true; /* 跨日漏标会被立刻暴露（T07） */
-  return out;
+/**
+ * 行程证据状态（复审②收紧）：
+ * - 指定日绑定只认 valid_for_date（无 depart_date 回退），且按方向绑定各自窗口
+ *   （outbound 段须命中 outbound_window，inbound 段须命中 return_window）；
+ * - 任一段 stale → 不得 dated_verified（全部 stale → stale）；
+ * - dated_verified = 统一门禁：去返双向齐 + 全段绑定命中 + 无过期 + 衔接可行（各方向内）+ 非反转 + 成本完整。
+ */
+export function evidenceState(strategy, query, nowMs = Date.now()) {
+  const out = strategy.outbound || [], inc = strategy.inbound || [];
+  const legs = [...out, ...inc];
+  if (!legs.length) return 'explore';
+  const fresh = legs.map((l) => legFreshness(l, nowMs));
+  if (fresh.every((f) => f.stale)) return 'stale';
+  const anyStale = fresh.some((f) => f.stale);
+  const inWin = (leg) => {
+    const w = parseWindow(leg.direction === 'outbound' ? query?.outbound_window : query?.return_window);
+    const d = leg.valid_for_date;
+    return !!(w && d && d >= w[0] && d <= w[1]);
+  };
+  const datedCount = legs.filter(inWin).length;
+  const allDated = datedCount === legs.length;
+  const hasBoth = out.length > 0 && inc.length > 0;
+  const costComplete = !!(strategy.cost_breakdown && strategy.cost_breakdown.known_total != null && !strategy.cost_breakdown.currency_mixed && !(strategy.cost_breakdown.unknown_costs || []).length);
+  const connOk = checkConnections(out).feasible && (inc.length ? checkConnections(inc).feasible : true);
+  if (!anyStale && allDated && hasBoth && costComplete && connOk && !detectReversal(strategy)) return 'dated_verified';
+  if (datedCount > 0 && !anyStale) return 'dated_partial';
+  return 'historical';
 }
 
-/** TripDraft 版本化保存（T12）：不静默覆盖——每次返回新对象，version 递增 */
+/* ---------- 组装：TripDraft 版本化（T12） ---------- */
+
 export function nextVersion(draft) {
   if (!draft) return { id: 'trip-' + Date.now(), version: 1 };
   return { ...draft, version: (draft.version || 1) + 1, saved_at: new Date().toISOString() };

@@ -27,3 +27,5 @@ jobs:
         run: node pipeline/check-pages.mjs
       - name: 地理技能自测（check-geo.mjs）
         run: node pipeline/check-geo.mjs
+      - name: 行程契约确定性测试（check-trip.mjs，G1 底座回归）
+        run: node server/check-trip.mjs
