@@ -2,7 +2,6 @@
  * 全部成功 → 放行产品评审。workflow_run 的 verify 结论也纳入。 */
 
 const { GH_TOKEN, GITHUB_REPOSITORY, HEAD_SHA, PR_NUMBER, WR_CONCLUSION } = process.env;
-const fs = require('node:fs');
 const out = (k, v) => fs.appendFileSync(process.env.GITHUB_OUTPUT, `${k}=${v}\n`);
 
 const api = async (path, method = 'GET', body) => fetch(`https://api.github.com/repos/${GITHUB_REPOSITORY}${path}`, {

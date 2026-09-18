@@ -1,7 +1,6 @@
 /* e1-publish.mjs · E1 发布器：Issue #3 唯一交接评论（同 SHA 幂等）+ PR 摘要 + product-review 状态。 */
 
 const { GH_TOKEN, GITHUB_REPOSITORY, HEAD_SHA, PR_NUMBER, VERDICT } = process.env;
-const fs = require('node:fs');
 const REVIEW_TEXT = fs.readFileSync(process.env.REVIEW_TEXT || (process.env.RUNNER_TEMP + '/review-text.md'), 'utf8');
 
 const api = async (path, method = 'GET', body) => fetch(`https://api.github.com/repos/${GITHUB_REPOSITORY}${path}`, {

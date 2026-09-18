@@ -3,7 +3,6 @@
  * 纪律：只读——不改代码/数据/提交/推送/合并；OPENAI_API_KEY 缺失时输出占位（不伪造通过）。 */
 
 const { OPENAI_API_KEY, OPENAI_MODEL, GH_TOKEN, GITHUB_REPOSITORY, HEAD_SHA, PR_NUMBER } = process.env;
-const fs = require('node:fs');
 const out = (k, v) => fs.appendFileSync(process.env.GITHUB_OUTPUT, `${k}=${v}\n`);
 
 const api = async (path) => (await fetch(`https://api.github.com/repos/${GITHUB_REPOSITORY}${path}`, {

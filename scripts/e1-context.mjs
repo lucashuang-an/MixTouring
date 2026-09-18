@@ -2,8 +2,7 @@
 const { EVENT_NAME, PR_NUMBER, PR_HEAD, WR_HEAD } = process.env;
 
 if (EVENT_NAME === 'pull_request') {
-  const fs = require('node:fs');
-  fs.writeFileSync(process.env.GITHUB_OUTPUT, `head_sha=${PR_HEAD}\npr_number=${PR_NUMBER}\n`);
+    fs.writeFileSync(process.env.GITHUB_OUTPUT, `head_sha=${PR_HEAD}\npr_number=${PR_NUMBER}\n`);
   process.exit(0);
 }
 
@@ -13,7 +12,6 @@ const res = await fetch(`https://api.github.com/repos/${process.env.GITHUB_REPOS
 });
 const prs = await res.json();
 const hit = Array.isArray(prs) ? prs.find((p) => p.head.sha === WR_HEAD) : null;
-const fs = require('node:fs');
 if (hit) {
   fs.writeFileSync(process.env.GITHUB_OUTPUT, `head_sha=${WR_HEAD}\npr_number=${hit.number}\n`);
 } else {
