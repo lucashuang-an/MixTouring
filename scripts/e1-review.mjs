@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 /* e1-review.mjs · E1 只读产品评审器：读取方案文档、PR diff、CI 结果与 Issue #3 游标，
  * 调 OpenAI 生成评审（固定标题格式 + 结论枚举 + 北京⇄阿拉木图历史/探索边界）。
  * 纪律：只读——不改代码/数据/提交/推送/合并；OPENAI_API_KEY 缺失时输出占位（不伪造通过）。 */

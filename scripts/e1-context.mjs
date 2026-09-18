@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 /* e1-context.mjs · E1 上下文解析：PR 事件直取；workflow_run 场景按 head SHA 反查同仓库 PR。 */
 const { EVENT_NAME, PR_NUMBER, PR_HEAD, WR_HEAD } = process.env;
 

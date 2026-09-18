@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 /* e1-publish.mjs · E1 发布器：Issue #3 唯一交接评论（同 SHA 幂等）+ PR 摘要 + product-review 状态。 */
 
 const { GH_TOKEN, GITHUB_REPOSITORY, HEAD_SHA, PR_NUMBER, VERDICT } = process.env;

@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 /* e1-gate.mjs · E1 CI 门禁：必需 CI 未完成 → 退出（product-review=error）；任一失败 → 「CI 阻断」+ status failure；
  * 全部成功 → 放行产品评审。workflow_run 的 verify 结论也纳入。 */
 
