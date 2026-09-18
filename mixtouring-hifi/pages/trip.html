@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MixTouring · 行程规划（探索与核验）</title>
+    <style id="theme-vars">
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Noto+Sans+SC:wght@400;500&display=swap');
+:root {
+  --mixtouring-background: #F8F9FA;
+  --mixtouring-foreground: #1E2022;
+  --mixtouring-card: #FFFFFF;
+  --mixtouring-primary: #111111;
+  --mixtouring-primary-foreground: #FFFFFF;
+  --mixtouring-muted: #F4F5F7;
+  --mixtouring-muted-foreground: #7C8089;
+  --mixtouring-border: #E8E9EB;
+  --mixtouring-ring: #C86A4B;
+  --mixtouring-input: #FFFFFF;
+  --state-warning: #FBBF24;
+  --state-success: #34c759;
+  --state-error: #E11D48;
+  --mixtouring-font-sans: "Inter", "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+  --shadow-card-soft: 0 4px 20px -2px rgba(0,0,0,0.04);
+}
+    </style>
+    <link rel="stylesheet" href="../assets/desktop.css" />
+</head>
+<body style="margin:0;background:var(--mixtouring-background);font-family:var(--mixtouring-font-sans);color:var(--mixtouring-foreground);-webkit-font-smoothing:antialiased;">
+  <svg xmlns="http://www.w3.org/2000/svg" style="display:none;" aria-hidden="true">
+    <defs>
+      <symbol id="hero-sparkles" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.456-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456Z"/></symbol>
+      <symbol id="hero-exclamation-triangle" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0zM12 15.75h.008v.008H12v-.008z"/></symbol>
+      <symbol id="hero-magnifying-glass" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/></symbol>
+      <symbol id="hero-shield-check" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.959 11.959 0 0 1 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/></symbol>
+    </defs>
+  </svg>
+
+  <div style="max-width: 860px; margin: 0 auto; padding: 28px 20px 60px;">
+    <!-- 品牌区 -->
+    <div style="text-align:center;padding:6px 0 18px;">
+      <span style="font-size:22px;">Mix<span style="color:var(--mixtouring-ring);">Touring</span></span>
+      <div style="font-size:13.5px;color:var(--mixtouring-muted-foreground);margin-top:6px;">一个人出发，先把路想清楚</div>
+    </div>
+
+    <!-- 输入卡（v0.27.0 G2：两字段 + 一句话；解析结果全部可编辑；确认后才查询） -->
+    <div class="detail-card" style="background:var(--mixtouring-card);border-radius:20px;padding:22px;box-shadow:var(--shadow-card-soft);">
+      <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+        <div style="flex:1;min-width:150px;">
+          <div style="font-size:12px;color:var(--mixtouring-muted-foreground);margin-bottom:6px;">出发地</div>
+          <input id="fromInput" type="text" placeholder="出发城市" aria-label="出发地"
+                 style="width:100%;box-sizing:border-box;border:0.5px solid var(--mixtouring-border);outline:none;background:var(--mixtouring-input);border-radius:12px;padding:11px 14px;font-size:14.5px;font-family:inherit;color:var(--mixtouring-foreground);" />
+        </div>
+        <div style="flex:1;min-width:150px;">
+          <div style="font-size:12px;color:var(--mixtouring-muted-foreground);margin-bottom:6px;">目的地</div>
+          <input id="toInput" type="text" placeholder="目的地城市" aria-label="目的地"
+                 style="width:100%;box-sizing:border-box;border:0.5px solid var(--mixtouring-border);outline:none;background:var(--mixtouring-input);border-radius:12px;padding:11px 14px;font-size:14.5px;font-family:inherit;color:var(--mixtouring-foreground);" />
+        </div>
+        <button id="btnSearch" style="background:var(--mixtouring-primary);color:var(--mixtouring-primary-foreground);border:none;border-radius:12px;padding:12px 22px;font-size:14px;font-family:inherit;cursor:pointer;">看看怎么走</button>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;margin-top:12px;">
+        <input id="nlInput" type="text" placeholder="或用一句话说行程：国庆附近一个人从北京去阿拉木图，玩几天后回来" aria-label="一句话行程"
+               style="flex:1;min-width:0;border:0.5px solid var(--mixtouring-border);outline:none;background:var(--mixtouring-input);border-radius:9999px;padding:10px 16px;font-size:13.5px;font-family:inherit;color:var(--mixtouring-foreground);" />
+        <button id="btnParse" style="background:var(--mixtouring-muted);color:var(--mixtouring-foreground);border:none;border-radius:9999px;padding:10px 16px;font-size:13px;font-family:inherit;cursor:pointer;flex-shrink:0;">解析</button>
+      </div>
+
+      <!-- 确认区（v0.26.1/v0.26.3 契约：解析结果全部可编辑；needs_confirmation 显式呈现；确认后才查询） -->
+      <div id="confirmBox" style="display:none;margin-top:14px;padding:14px 16px;border-radius:14px;background:var(--mixtouring-muted);">
+        <div style="font-size:12.5px;color:var(--mixtouring-muted-foreground);margin-bottom:10px;">解析完成——以下字段请确认或修改：</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <label style="font-size:12px;color:var(--mixtouring-muted-foreground);">出发地 <input id="cfFrom" type="text" style="display:block;margin-top:4px;width:120px;box-sizing:border-box;border:0.5px solid var(--mixtouring-border);border-radius:8px;padding:8px 10px;font-size:13.5px;font-family:inherit;" /></label>
+          <label style="font-size:12px;color:var(--mixtouring-muted-foreground);">目的地 <input id="cfTo" type="text" style="display:block;margin-top:4px;width:120px;box-sizing:border-box;border:0.5px solid var(--mixtouring-border);border-radius:8px;padding:8px 10px;font-size:13.5px;font-family:inherit;" /></label>
+          <label style="font-size:12px;color:var(--mixtouring-muted-foreground);">行程类型
+            <select id="cfType" style="display:block;margin-top:4px;border:0.5px solid var(--mixtouring-border);border-radius:8px;padding:8px;font-size:13.5px;font-family:inherit;background:#fff;">
+              <option value="pending">待确认</option>
+              <option value="round_trip">往返</option>
+              <option value="one_way">单程</option>
+            </select>
+          </label>
+          <label style="font-size:12px;color:var(--mixtouring-muted-foreground);">去程窗口（可修改） <input id="cfOut" type="text" placeholder="2026-09-27 ~ 2026-10-03" style="display:block;margin-top:4px;width:200px;box-sizing:border-box;border:0.5px solid var(--mixtouring-border);border-radius:8px;padding:8px 10px;font-size:13.5px;font-family:inherit;" /></label>
+          <label style="font-size:12px;color:var(--mixtouring-muted-foreground);">返程窗口（往返必填） <input id="cfRet" type="text" placeholder="2026-10-05 ~ 2026-10-11" style="display:block;margin-top:4px;width:200px;box-sizing:border-box;border:0.5px solid var(--mixtouring-border);border-radius:8px;padding:8px 10px;font-size:13.5px;font-family:inherit;" /></label>
+          <label style="font-size:12px;color:var(--mixtouring-muted-foreground);">人数 <input id="cfCount" type="number" min="1" value="1" style="display:block;margin-top:4px;width:70px;box-sizing:border-box;border:0.5px solid var(--mixtouring-border);border-radius:8px;padding:8px 10px;font-size:13.5px;font-family:inherit;" /></label>
+        </div>
+        <div id="confirmNeeds" style="margin-top:10px;font-size:12.5px;color:#A8543A;line-height:1.7;"></div>
+        <button id="btnConfirm" style="margin-top:10px;background:var(--mixtouring-primary);color:var(--mixtouring-primary-foreground);border:none;border-radius:10px;padding:11px 20px;font-size:13.5px;font-family:inherit;cursor:pointer;">确认并查询</button>
+      </div>
+    </div>
+
+    <!-- 结果区（探索与核验助手：证据状态 + 结构 + 待核项；无可购/省钱承诺） -->
+    <div id="resultArea" style="margin-top:18px;"></div>
+  </div>
+
+  <script src="../assets/app.js"></script>
+  <script>
+  (function () {
+    var resultArea = document.getElementById('resultArea');
+
+    function post(url, body) {
+      return fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+        .then(function (r) { return r.json(); });
+    }
+
+    /* ---------- 一句话解析（T02：解析结果全部可编辑，缺字段显式提示） ---------- */
+    document.getElementById('btnParse').addEventListener('click', function () {
+      var text = document.getElementById('nlInput').value.trim();
+      if (!text) { MT.toast('先输入一句话行程'); return; }
+      post('/api/trip/parse', { text: text }).then(function (res) {
+        if (res.code !== 0) { MT.toast(res.msg || '解析失败'); return; }
+        var q = res.data.query;
+        document.getElementById('confirmBox').style.display = 'block';
+        document.getElementById('cfFrom').value = q.origin || '';
+        document.getElementById('cfTo').value = q.destination || '';
+        document.getElementById('cfType').value = q.trip_type || 'pending';
+        document.getElementById('cfOut').value = q.outbound_window || '';
+        document.getElementById('cfRet').value = q.return_window || '';
+        document.getElementById('cfCount').value = q.traveler_count || 1;
+        document.getElementById('confirmNeeds').innerHTML =
+          (res.data.needs_confirmation || []).map(function (n) { return '· ' + MT.esc(n); }).join('<br>');
+        MT.toast('已解析，请确认字段后查询');
+      }).catch(function () { MT.toast('解析服务不可用'); });
+    });
+
+    /* ---------- 确认并查询（用户确认后才调 /api/trip/search） ---------- */
+    document.getElementById('btnConfirm').addEventListener('click', function () {
+      var from = document.getElementById('cfFrom').value.trim();
+      var to = document.getElementById('cfTo').value.trim();
+      if (!from || !to) { MT.toast('先补全出发地和目的地'); return; }
+      doSearch({
+        origin: from, destination: to,
+        trip_type: document.getElementById('cfType').value,
+        outbound_window: document.getElementById('cfOut').value.trim() || null,
+        return_window: document.getElementById('cfRet').value.trim() || null,
+        traveler_count: Number(document.getElementById('cfCount').value) || 1,
+        currency: 'CNY'
+      });
+    });
+
+    /* 两字段直达（无日期 → 探索态，结果页会提示补窗口） */
+    document.getElementById('btnSearch').addEventListener('click', function () {
+      var from = document.getElementById('fromInput').value.trim();
+      var to = document.getElementById('toInput').value.trim();
+      if (!from || !to) { MT.toast('先选好出发地和目的地'); return; }
+      if (from === to) { MT.toast('出发地和目的地不能相同'); return; }
+      doSearch({ origin: from, destination: to, trip_type: 'pending', traveler_count: 1, currency: 'CNY' });
+    });
+
+    /* ---------- 结果渲染（v0.27.0 G2：只读探索结果——证据状态/取样时间/双向结构/未知项） ---------- */
+    var lastStrategy = null;
+    var STATE_LABEL = {
+      explore: ['探索态', '这条路线还没有已取证样本'],
+      historical: ['历史参考', '样本为真实来源但未绑定本次出行日期'],
+      dated_partial: ['部分核验', '部分段已绑定指定日期证据，仍有缺口'],
+      dated_verified: ['指定日期可核验', '双向证据齐备（仍需到原平台确认余票）'],
+      stale: ['样本已过期', '证据超过有效期，请重新查询'],
+      unsupported: ['暂不支持', '查询不合法或超出覆盖范围']
+    };
+    function stateBadge(state) {
+      var s = STATE_LABEL[state] || [state, ''];
+      var color = state === 'dated_verified' ? '#1E7F45' : state === 'stale' || state === 'unsupported' ? '#A16207' : '#A8543A';
+      return '<span style="font-size:12px;padding:4px 12px;border-radius:9999px;background:rgba(200,106,75,0.08);color:' + color + ';">证据状态 · ' + MT.esc(s[0]) + '</span>' +
+        '<div style="font-size:12px;color:var(--mixtouring-muted-foreground);margin-top:6px;">' + MT.esc(s[1]) + '</div>';
+    }
+    function doSearch(q) {
+      resultArea.innerHTML = '<div style="text-align:center;padding:30px;color:var(--mixtouring-muted-foreground);font-size:13.5px;">正在检索…</div>';
+      post('/api/trip/search', q).then(function (res) {
+        if (res.code !== 0) { resultArea.innerHTML = ''; MT.toast(res.error || res.msg || '查询失败'); return; }
+        renderResult(res.data);
+      }).catch(function () { resultArea.innerHTML = ''; MT.toast('检索服务不可用'); });
+    }
+    function renderResult(data) {
+      lastStrategy = data.strategies[0] || null;
+      var html = '<div class="detail-card" style="background:var(--mixtouring-card);border-radius:20px;padding:20px;box-shadow:var(--shadow-card-soft);margin-top:4px;">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">' +
+        '<h2 style="font-size:17px;margin:0;">' + MT.esc(data.query.origin) + ' → ' + MT.esc(data.query.destination) + '</h2>' +
+        stateBadge(data.evidence_state) + '</div>';
+      if (!data.strategies.length) {
+        html += '<p style="font-size:13.5px;color:var(--mixtouring-muted-foreground);line-height:1.7;">暂无已核验的走法。' +
+          data.next_steps.map(function (n) { return '<br>· ' + MT.esc(n); }).join('') + '</p>';
+      } else {
+        var st = data.strategies[0];
+        st.structure.forEach(function (seg) {
+          html += '<div style="margin-top:14px;padding:12px 14px;border-radius:14px;background:var(--mixtouring-muted);">' +
+            '<div style="font-size:13px;">' + (seg.direction === 'outbound' ? '去程' : '返程') +
+            (seg.service_no ? ' · <strong>' + MT.esc(seg.service_no) + '</strong>' : ' · <span style="color:#A16207;">班次待核验</span>') + '</div>' +
+            '<div style="font-size:12.5px;color:var(--mixtouring-muted-foreground);margin-top:4px;">' + MT.esc(seg.origin_terminal) + ' → ' + MT.esc(seg.destination_terminal) + ' · ' + MT.esc(seg.depart_local) + ' → ' + MT.esc(seg.arrive_local) + '</div>' +
+            (seg.source_url ? '<a href="' + seg.source_url + '" target="_blank" rel="noopener" style="font-size:11.5px;color:#1E7F45;">来源 ›</a>' : '') +
+            '</div>';
+        });
+        if (st.price_samples.length) {
+          html += '<div style="margin-top:12px;font-size:12px;color:var(--mixtouring-muted-foreground);">价格样本（非当日可购报价）：' +
+            st.price_samples.map(function (p) { return MT.esc(String(p.amount) + ' ' + p.currency + '（' + p.scope + '，样本日 ' + (p.sampled_at || '').slice(0, 10) + '）'); }).join('；') + '</div>';
+        }
+        if (st.cost_breakdown.unknown_costs.length) {
+          html += '<div style="margin-top:10px;font-size:12px;color:#A16207;">待核验费用：' +
+            st.cost_breakdown.unknown_costs.map(function (u) { return MT.esc(u.item); }).join('、') + '</div>';
+        }
+        (st.warnings || []).forEach(function (w) {
+          html += '<div style="margin-top:8px;font-size:12px;color:#A16207;">⚠ ' + MT.esc(w) + '</div>';
+        });
+        html += '<div style="margin-top:12px;font-size:12.5px;color:var(--mixtouring-muted-foreground);line-height:1.7;">下一步：' +
+          data.next_steps.map(function (n) { return MT.esc(n); }).join('；') + '</div>';
+        html += '<button id="btnChecklist" style="margin-top:12px;background:none;border:0.5px solid var(--mixtouring-border);border-radius:10px;padding:9px 16px;font-size:12.5px;font-family:inherit;cursor:pointer;color:var(--mixtouring-ring);">展开逐段核验清单</button>';
+        html += '<div id="checklistBox" style="margin-top:10px;"></div>';
+      }
+      html += '<p style="font-size:11.5px;color:var(--mixtouring-muted-foreground);margin:14px 0 0;line-height:1.6;">MixTouring 不提供购票服务；价格为估算样本，请按分段信息到原平台自行核验购票。行程默认私密。</p></div>';
+      resultArea.innerHTML = html;
+      var btn = document.getElementById('btnChecklist');
+      if (btn) btn.addEventListener('click', function () {
+        post('/api/trip/checklist', { strategy: lastStrategy }).then(function (res) {
+          var box = document.getElementById('checklistBox');
+          box.innerHTML = res.data.checklist.map(function (r) {
+            return '<div style="padding:10px 12px;border-radius:12px;background:var(--mixtouring-muted);margin-bottom:8px;">' +
+              '<div style="font-size:12.5px;">' + (r.direction === 'outbound' ? '去程' : '返程') + (r.service_no ? ' · ' + MT.esc(r.service_no) : '') + ' · ' + MT.esc(r.segment) + '</div>' +
+              '<div style="font-size:11.5px;color:var(--mixtouring-muted-foreground);margin-top:4px;">' + MT.esc(r.local_times) + ' · ' + MT.esc(r.query_entry) + '</div>' +
+              (r.missing.length ? '<div style="font-size:11.5px;color:#A16207;margin-top:4px;">待核：' + r.missing.map(MT.esc).join('、') + '</div>' : '<div style="font-size:11.5px;color:#1E7F45;margin-top:4px;">段信息齐备（仍需到原平台确认）</div>') +
+              '</div>';
+          }).join('') + '<div style="font-size:11.5px;color:var(--mixtouring-muted-foreground);">' + MT.esc(res.data.note) + '</div>';
+        });
+      });
+    }
+  })();
+  </script>
+</body>
+</html>
