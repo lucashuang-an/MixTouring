@@ -187,14 +187,32 @@ async function main() {
     console.log('✓ /api/trip/search 反向查询 → 探索态（不由 B–A 反转构造）');
   } else { failed++; console.error('✗ /api/trip/search 反向未返回探索态：' + JSON.stringify(tripReverse).slice(0, 200)); }
 
+  /* v0.26.3 复审①验收：真实路由 + 真实城市源（含 Trip 词典）跑产品方案 §6 原句——国际 OD 必须可识别 */
   const tripParse = await (await fetch(BASE + '/api/trip/parse', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: '国庆附近一个人从北京去阿拉木图，玩几天后回来' }) })).json();
-  if (tripParse.code === 0 && tripParse.data.query && tripParse.data.query.trip_type === 'round_trip' && tripParse.data.query.traveler_count === 1) {
-    console.log('✓ /api/trip/parse 往返 + 一人意图（engine ' + tripParse.data.parse_engine + '）');
-  } else { failed++; console.error('✗ /api/trip/parse 意图异常：' + JSON.stringify(tripParse).slice(0, 200)); }
+  const pq = tripParse.data?.query;
+  if (tripParse.code === 0 && pq && pq.origin === '北京' && pq.destination === '阿拉木图' && pq.trip_type === 'round_trip' && pq.traveler_count === 1) {
+    console.log('✓ /api/trip/parse §6 原句：北京→阿拉木图 国际 OD + 往返 + 一人（engine ' + tripParse.data.parse_engine + '）');
+  } else { failed++; console.error('✗ /api/trip/parse 国际 OD 解析失败：' + JSON.stringify(tripParse).slice(0, 200)); }
 
-  if (tripParse.data?.query?.return_window === null && tripParse.data.needs_confirmation?.some((s) => s.includes('返程'))) {
+  /* v0.26.3 复审②验收：「国庆附近」保留弹性假期区间，不收缩为 10/01 单日 */
+  if (pq && /^\d{4}-09-27 ~ \d{4}-10-07$/.test(pq.outbound_window || '')) {
+    console.log('✓ /api/trip/parse 国庆附近 → 假期宽窗 ' + pq.outbound_window);
+  } else { failed++; console.error('✗ /api/trip/parse 假期窗收缩异常：' + JSON.stringify(pq?.outbound_window)); }
+
+  if (pq?.return_window === null && tripParse.data.needs_confirmation?.some((s) => s.includes('返程'))) {
     console.log('✓ /api/trip/parse 缺返程窗要求用户补全');
   } else { failed++; console.error('✗ /api/trip/parse 缺返程窗未提示补全'); }
+
+  /* v0.26.3 复审③验收：明确「10 月 1 日」→ 单日窗；「直达」→ 不猜单程 */
+  const tripExact = await (await fetch(BASE + '/api/trip/parse', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: '10月1日从北京去阿拉木图' }) })).json();
+  if (tripExact.code === 0 && tripExact.data.query.outbound_window === '2026-10-01 ~ 2026-10-01') {
+    console.log('✓ /api/trip/parse 明确 10/01 → 单日窗');
+  } else { failed++; console.error('✗ /api/trip/parse 明确日期窗异常：' + JSON.stringify(tripExact.data?.query?.outbound_window)); }
+
+  const tripDirect = await (await fetch(BASE + '/api/trip/parse', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: '北京直达阿拉木图' }) })).json();
+  if (tripDirect.code === 0 && tripDirect.data.query.trip_type === 'pending') {
+    console.log('✓ /api/trip/parse 「直达」→ 不猜单程（pending 待确认）');
+  } else { failed++; console.error('✗ /api/trip/parse 「直达」误判：' + JSON.stringify(tripDirect.data?.query?.trip_type)); }
 
   const tripOneWay = await (await fetch(BASE + '/api/trip/search', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...tripSearch.data.query, trip_type: 'one_way', return_window: null }) })).json();
   if (tripOneWay.code === 0 && tripOneWay.data.strategies.length === 1 && tripOneWay.data.strategies[0].inbound.length === 0 && tripOneWay.data.strategies[0].structure.length === 1) {

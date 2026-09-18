@@ -20,6 +20,12 @@ import { parseTripIntent, searchTripStrategies, buildVerificationChecklist } fro
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT) || 3000;
 
+/* Trip 目的地词典（v0.26.3 复审①：国际/偏远 OD 不在方案库 25 城——数据驱动扩展，识别不到仍待确认） */
+const TRIP_CITIES = (() => {
+  try { return JSON.parse(readFileSync(join(root, 'pipeline/data/trips/trip-cities.json'), 'utf8')).cities || []; }
+  catch (err) { console.error('✗ trip-cities.json 加载失败（Trip 解析将无扩展词典）：' + err.message); return []; }
+})();
+
 /* ---------- 存储层装载 + 双校验（fail fast）+ 热重载（离线管道写回后无需重启） ---------- */
 const PLANS_PATH = join(root, 'pipeline/data/plans.json');
 let plansMtime = 0;
@@ -256,7 +262,7 @@ app.use(async (ctx, next) => {
   if (path === '/api/trip/parse' && ctx.method === 'POST') {
     const body = await readBody(ctx);
     if (!body.text || !String(body.text).trim()) { ctx.body = { code: 1, msg: '缺少 text' }; return; }
-    const out = await parseTripIntent(String(body.text), db.cities);
+    const out = await parseTripIntent(String(body.text), db.cities, TRIP_CITIES);
     ctx.body = { code: 0, data: out };
     return;
   }

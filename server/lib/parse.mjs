@@ -194,6 +194,14 @@ export async function parseTrip(text, cities) {
   }
 
   // 2) 规则兜底（离线可跑，能力边界见文件头）
+  return parseTripRule(q, cities);
+}
+
+/** 规则版解析（独立导出：Trip 触点用确定性匹配保证可验收，LLM 缺字段时也用它补齐）。
+ * @returns {from,to,date,conf,engine:'rule',note} */
+export function parseTripRule(text, cities) {
+  const q = String(text || '').trim();
+  if (!q) return { from: null, to: null, date: null, conf: 0, engine: 'rule', note: '空输入' };
   const rule = assignFromTo(q, extractCities(q, cities));
   const dateRule = parseDateRule(q);
   const fields = (rule.from ? 1 : 0) + (rule.to ? 1 : 0) + (dateRule.value ? 1 : 0);

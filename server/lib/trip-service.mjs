@@ -10,7 +10,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { parseTrip } from './parse.mjs';
+import { parseTrip, parseTripRule } from './parse.mjs';
 import { validateTripQuery, evidenceState, decorateLeg, buildCostBreakdown, detectReversal, checkConnections } from './trip.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -18,48 +18,74 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 /* ---------- 意图提取（纯规则，确定性可测） ---------- */
 
 const ROUND_TRIP_RE = /来回|往返|再回|回来|返回|然后回|玩.*天.*回/;
-const ONE_WAY_RE = /单程|一路|直达(?!.*(回|返))/;
+/* v0.26.3 复审③：「直达」只说明交通偏好，不代表单程——只有明确表述才确定 one_way */
+const ONE_WAY_RE = /单程|只去不回|不去别处/;
 const SOLO_RE = /一个人|独自|单独|solo/i;
 const PAIR_RE = /两个人|两人|双人|和朋友|和对象/;
+/* v0.26.3 复审②：「国庆附近/前后/期间」保留弹性假期区间，不得收缩为 10/01 单日 */
+const NEAR_HOLIDAY_RE = /国庆\s*(?:附近|前后|期间|那几天)/;
 
-/** 从一句话里提取非 OD 意图字段（往返/人数）。OD 解析走 parseTrip（LLM/规则），此处只做确定性关键词。 */
-export function extractIntentFields(text) {
+/** 当年（已过 10/7 则次年）国庆假期宽窗——2026 为中秋 9/25-27 + 国庆 10/1-7 连休 */
+export function nationalHolidayWindow(nowMs = Date.now()) {
+  const now = new Date(nowMs);
+  let year = now.getFullYear();
+  if (now > new Date(year, 9, 7, 23, 59, 59)) year += 1;
+  return `${year}-09-27 ~ ${year}-10-07`;
+}
+
+/** 从一句话里提取非 OD 意图字段（往返/人数/弹性假期窗）。确定性，不依赖 LLM。 */
+export function extractIntentFields(text, nowMs = Date.now()) {
   const t = String(text || '');
   const intent = {};
   if (ROUND_TRIP_RE.test(t)) intent.trip_type = 'round_trip';
   else if (ONE_WAY_RE.test(t)) intent.trip_type = 'one_way';
   if (SOLO_RE.test(t)) intent.traveler_count = 1;
   else if (PAIR_RE.test(t)) intent.traveler_count = 2;
+  if (NEAR_HOLIDAY_RE.test(t)) intent.outbound_window = nationalHolidayWindow(nowMs);
   return intent;
 }
 
 /**
  * parseTripIntent：一句话 → TripQuery 草稿（产品方案 §4.1：默认 1 人；缺字段进 needs_confirmation，不猜）。
+ * @param cities 方案库城市词典（25 城）
+ * @param tripCities Trip 目的地词典（pipeline/data/trips/trip-cities.json，国际/偏远目的地随边库扩展；
+ *        v0.26.3 复审①：国际 OD 不在方案库词典——阿拉木图类目的地由此数据驱动，不硬编码）
  * @returns {Promise<{query, needs_confirmation[], parse_engine}>}
  */
-export async function parseTripIntent(text, cities) {
-  const base = await parseTrip(text, cities);
-  const intent = extractIntentFields(text);
+export async function parseTripIntent(text, cities, tripCities = [], nowMs = Date.now()) {
+  const merged = [...(cities || []), ...(Array.isArray(tripCities) ? tripCities : [])];
+  const intent = extractIntentFields(text, nowMs);
   const needs = [];
+  /* LLM 优先，但 LLM 部分命中（如只认出出发地）会屏蔽规则兜底（parseTrip 既有行为）——
+   * v0.26.3 复审①：Trip 触点对缺失字段用规则版补齐（确定性），engine 如实标注 */
+  const base = await parseTrip(text, merged);
+  const rule = parseTripRule(text, merged);
+  const from = base.from || rule.from;
+  const to = base.to || rule.to;
+  const baseDate = base.date || rule.date;
+  const filledByRule = base.engine === 'llm' && ((base.from && !base.to && !!to) || (!base.from && !!base.to && !!from));
   const trip_type = intent.trip_type || 'pending';
-  const outboundDate = /^\d{4}\/\d{2}\/\d{2}$/.test(base.date || '') ? base.date.replaceAll('/', '-') : null;
-  if (!base.from) needs.push('出发地未识别，请补全');
-  if (!base.to) needs.push('目的地未识别，请补全');
-  if (trip_type === 'round_trip' && !outboundDate) needs.push('往返行程请补去程日期或大致窗口');
+  const outboundDate = /^\d{4}\/\d{2}\/\d{2}$/.test(baseDate || '') ? baseDate.replaceAll('/', '-') : null;
+  /* 弹性假期窗优先（复审②：不可静默收缩为单日）；明确单日输入保持单日窗 */
+  const outbound_window = intent.outbound_window || (outboundDate ? `${outboundDate} ~ ${outboundDate}` : null);
+  if (!from) needs.push('出发地未识别，请补全');
+  if (!to) needs.push('目的地未识别，请补全');
+  if (trip_type === 'round_trip' && !outbound_window) needs.push('往返行程请补去程日期或大致窗口');
   if (trip_type === 'round_trip') needs.push('往返行程请补返程日期或窗口');
   if (trip_type === 'pending') needs.push('没听出单程还是往返，请补充（不影响先看路线方向）');
+  if (intent.outbound_window) needs.push('已按假期窗口预填出行的区间，可修改');
   return {
     query: {
-      origin: base.from || null,
-      destination: base.to || null,
+      origin: from || null,
+      destination: to || null,
       trip_type,
-      outbound_window: outboundDate ? `${outboundDate} ~ ${outboundDate}` : null,
+      outbound_window,
       return_window: null, /* 单日期解析无法证明返程日——返程窗进 needs_confirmation 由用户给 */
       traveler_count: intent.traveler_count ?? 1,
       currency: 'CNY'
     },
     needs_confirmation: needs,
-    parse_engine: base.engine || 'rule'
+    parse_engine: base.engine === 'llm' ? (filledByRule ? 'llm+rule' : base.engine) : 'rule'
   };
 }
 

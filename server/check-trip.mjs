@@ -213,12 +213,39 @@ const [F_OUT, F_IN] = FIXTURE.dated_legs.map((l) => ({ ...l, baggage_terms: { ca
 
 /* ---------- v0.26.0 服务动作：意图提取（T01/T02 规则部分，确定性） ---------- */
 {
-  const i1 = extractIntentFields('国庆附近一个人从北京去阿拉木图，玩几天后回来');
+  const i1 = extractIntentFields('国庆附近一个人从北京去阿拉木图，玩几天后回来', NOW);
   ok(i1.trip_type === 'round_trip' && i1.traveler_count === 1, 'T02 意图：往返 + 一人（solo）识别');
   const i2 = extractIntentFields('北京到乌鲁木齐 单程');
   ok(i2.trip_type === 'one_way', '意图：单程关键词');
   const i3 = extractIntentFields('北京到喀什');
   ok(i3.trip_type === undefined, '无往返/单程线索 → 不猜 trip_type（交给 parseTrip 默认）');
+}
+
+/* ---------- v0.26.3 复审①②③回归（解析层三缺口） ---------- */
+{
+  /* R14 复审③：「直达」是交通偏好不是行程类型 */
+  ok(extractIntentFields('北京直达阿拉木图').trip_type === undefined, 'C3 「直达」不再误判 one_way → 维持待确认');
+  ok(extractIntentFields('北京到乌鲁木齐 单程').trip_type === 'one_way', 'C3 明确「单程」仍识别');
+
+  /* R15 复审②：「国庆附近」保留弹性假期区间（固定时钟 2026-09-17 → 当年窗口） */
+  const near = extractIntentFields('国庆附近一个人从北京去阿拉木图', NOW);
+  ok(near.outbound_window === '2026-09-27 ~ 2026-10-07', `C2 国庆附近 → 假期宽窗（实际 ${near.outbound_window}），不收缩为 10/01`);
+  const nearNextYear = extractIntentFields('国庆附近出发', new Date('2026-10-20').getTime());
+  ok(nearNextYear.outbound_window === '2027-09-27 ~ 2027-10-07', 'C2 已过 10/7 → 次年窗口');
+
+  /* R16 复审①：parseTripIntent 合并 Trip 城市词典——真实城市源识别阿拉木图（规则版确定性） */
+  const tripCities = JSON.parse(readFileSync(join(root, 'pipeline/data/trips/trip-cities.json'), 'utf8')).cities;
+  const r = await parseTripIntent('国庆附近一个人从北京去阿拉木图，玩几天后回来', ['北京', '上海'], tripCities, NOW);
+  ok(r.query.origin === '北京' && r.query.destination === '阿拉木图', `C1 真实词典解析国际 OD（实际 ${r.query.origin}→${r.query.destination}）`);
+  ok(r.query.trip_type === 'round_trip' && r.query.traveler_count === 1, 'C1 往返 + 1 人');
+  ok(r.query.outbound_window === '2026-09-27 ~ 2026-10-07', 'C1 假期宽窗（不收缩为单日）');
+  ok(r.needs_confirmation.some((n) => n.includes('返程')), 'C1 返程窗仍要求用户补全（不推断）');
+  /* 明确「10 月 1 日」输入 → 单日窗（不误伤精确意图） */
+  const exact = await parseTripIntent('10月1日从北京去阿拉木图', ['北京'], tripCities, NOW);
+  ok(exact.query.outbound_window === '2026-10-01 ~ 2026-10-01', `C1 明确日期 → 单日窗（实际 ${exact.query.outbound_window}）`);
+  /* 未知城市仍待确认（不编造） */
+  const unknownCity = await parseTripIntent('从北京去乌兰巴托', ['北京'], tripCities, NOW);
+  ok(unknownCity.query.destination === null && unknownCity.needs_confirmation.some((n) => n.includes('目的地')), 'C1 未知城市保持待确认（trip 词典外不编造）');
 }
 
 /* ---------- v0.26.0 服务动作：策略检索（fixture 驱动 + 反向不反转） ---------- */
