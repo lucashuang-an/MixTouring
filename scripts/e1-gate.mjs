@@ -20,7 +20,7 @@ if (!HEAD_SHA) {
 /* 轮询等待 CI 完成（最多 ~8 分钟；PR synchronize 时 verify 刚触发） */
 let combined = null;
 for (let i = 0; i < 32; i++) {
-  const r = await (await api(`/commits/${HEAD_SHA}/status`)).json();
+  const r = await api(`/commits/${HEAD_SHA}/status`);
   const states = (r.statuses || []).map((s) => s.state);
   const hasVerify = (r.statuses || []).some((s) => s.context === 'verify');
   if (hasVerify && states.every((s) => s !== 'pending')) { combined = r; break; }
