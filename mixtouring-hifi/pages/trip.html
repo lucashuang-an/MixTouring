@@ -100,13 +100,15 @@
         .then(function (r) { return r.json(); });
     }
 
-    /* ---------- 一句话解析（T02：解析结果全部可编辑，缺字段显式提示） ---------- */
+    /* ---------- 一句话解析（T02：解析结果全部可编辑，缺字段显式提示；v0.29.0 附国内/国际路由） ---------- */
+    var lastRoute = null;
     document.getElementById('btnParse').addEventListener('click', function () {
       var text = document.getElementById('nlInput').value.trim();
       if (!text) { MT.toast('先输入一句话行程'); return; }
       post('/api/trip/parse', { text: text }).then(function (res) {
         if (res.code !== 0) { MT.toast(res.msg || '解析失败'); return; }
         var q = res.data.query;
+        lastRoute = res.data.route || null;
         document.getElementById('confirmBox').style.display = 'block';
         document.getElementById('cfFrom').value = q.origin || '';
         document.getElementById('cfTo').value = q.destination || '';
@@ -114,13 +116,21 @@
         document.getElementById('cfOut').value = q.outbound_window || '';
         document.getElementById('cfRet').value = q.return_window || '';
         document.getElementById('cfCount').value = q.traveler_count || 1;
+        var needs = (res.data.needs_confirmation || []).slice();
+        if (lastRoute && lastRoute.route_type === 'needs_confirmation') {
+          needs.push('· 目的地尚未收录（或超出词典）：确认后按国际行程探索，或改用已收录城市');
+        } else if (lastRoute && lastRoute.route_type === 'domestic') {
+          needs.push('· 已识别为国内路线：查询后将进入国内样本链路（历史/样本参考）');
+        } else if (lastRoute && lastRoute.route_type === 'international') {
+          needs.push('· 已识别为国际路线：将进入行程探索与核验链路');
+        }
         document.getElementById('confirmNeeds').innerHTML =
-          (res.data.needs_confirmation || []).map(function (n) { return '· ' + MT.esc(n); }).join('<br>');
+          needs.map(function (n) { return '· ' + MT.esc(n); }).join('<br>');
         MT.toast('已解析，请确认字段后查询');
       }).catch(function () { MT.toast('解析服务不可用'); });
     });
 
-    /* ---------- 确认并查询（用户确认后才调 /api/trip/search；往返缺返程窗客户端阻断——评审 G2②） ---------- */
+    /* ---------- 确认并查询（用户确认后才调检索；按决策③路由分流） ---------- */
     document.getElementById('btnConfirm').addEventListener('click', function () {
       var from = document.getElementById('cfFrom').value.trim();
       var to = document.getElementById('cfTo').value.trim();
@@ -136,23 +146,41 @@
         return;
       }
       if (needs.length) { document.getElementById('confirmNeeds').innerHTML = needs.map(MT.esc).join('<br>'); return; }
-      doSearch({
-        origin: from, destination: to,
-        trip_type: type,
-        outbound_window: document.getElementById('cfOut').value.trim() || null,
-        return_window: type === 'round_trip' ? ret : null,
-        traveler_count: Number(document.getElementById('cfCount').value) || 1,
-        currency: 'CNY'
-      });
+      /* 路由分流（决策③）：解析阶段已判定；用户改城市后按当前字段重新判定 */
+      post('/api/trip/route', { origin: from, destination: to }).then(function (r) {
+        var rt = r.data && r.data.route_type;
+        if (rt === 'domestic') {
+          /* 国内 → 既有国内样本链路（历史/样本参考，遵守样本日期边界） */
+          location.href = 'search.html?' + new URLSearchParams({ from: from, to: to }).toString();
+          return;
+        }
+        if (rt === 'needs_confirmation') { MT.toast('目的地尚未收录：已登记探索意向前请先确认城市名'); }
+        doSearch({
+          origin: from, destination: to,
+          trip_type: type,
+          outbound_window: document.getElementById('cfOut').value.trim() || null,
+          return_window: type === 'round_trip' ? ret : null,
+          traveler_count: Number(document.getElementById('cfCount').value) || 1,
+          currency: 'CNY'
+        });
+      }).catch(function () { MT.toast('路由服务不可用'); });
     });
 
-    /* 两字段直达（无日期 → 探索态，结果页会提示补窗口） */
+    /* 两字段直达（路由后分流：国内走样本链路 / 国际走探索流程） */
     document.getElementById('btnSearch').addEventListener('click', function () {
       var from = document.getElementById('fromInput').value.trim();
       var to = document.getElementById('toInput').value.trim();
       if (!from || !to) { MT.toast('先选好出发地和目的地'); return; }
       if (from === to) { MT.toast('出发地和目的地不能相同'); return; }
-      doSearch({ origin: from, destination: to, trip_type: 'pending', traveler_count: 1, currency: 'CNY' });
+      post('/api/trip/route', { origin: from, destination: to }).then(function (r) {
+        var rt = r.data && r.data.route_type;
+        if (rt === 'domestic') {
+          location.href = 'search.html?' + new URLSearchParams({ from: from, to: to }).toString();
+          return;
+        }
+        if (rt === 'needs_confirmation') { MT.toast('目的地尚未收录：已按国际探索处理'); }
+        doSearch({ origin: from, destination: to, trip_type: 'pending', traveler_count: 1, currency: 'CNY' });
+      }).catch(function () { MT.toast('路由服务不可用'); });
     });
 
     /* ---------- 结果渲染（v0.27.0 G2 + v0.28.1 评审修复：双时区/取样时间/适用日期逐段呈现） ---------- */

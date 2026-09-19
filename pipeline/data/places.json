@@ -1,0 +1,36 @@
+{
+  "_meta": {
+    "说明": "PlaceResolver 地点词典（v0.29.0 决策③路由 + 决策⑤ Place Grounding 底座）。确定性路由依据：两端均 country=CN → domestic；任一端非 CN → international；未收录 → needs_confirmation（不猜）。结构可扩展：新地点经取证/登记后追加，字段含国家、IANA 时区、类型。",
+    "类型枚举": "kind: city | airport | station | poi（当前仅 city；机场/车站/景点随 G2.5 扩展）",
+    "时区口径": "国内城市统一 Asia/Shanghai（官方时区）；境外按 IANA"
+  },
+  "places": [
+    { "name": "北京", "country": "CN", "tz": "Asia/Shanghai", "kind": "city" },
+    { "name": "上海", "country": "CN", "tz": "Asia/Shanghai", "kind": "city" },
+    { "name": "广州", "country": "CN", "tz": "Asia/Shanghai", "kind": "city" },
+    { "name": "深圳", "country": "CN", "tz": "Asia/Shanghai", "kind": "city" },
+    { "name": "成都", "country": "CN", "tz": "Asia/Shanghai", "kind": "city" },
+    { "name": "重庆", "country": "CN", "tz": "Asia/Shanghai", "kind": "city" },
+    { "name": "西安", "country": "CN", "tz": "Asia/Shanghai", "kind": "city" },
+    { "name": "杭州", "country": "CN", "tz": "Asia/Shanghai", "kind": "city" },
+    { "name": "武汉", "country": "CN", "tz": "Asia/Shanghai", "kind": "city" },
+    { "name": "南京", "country": "CN", "tz": "Asia/Shanghai", "kind": "city" },
+    { "name": "长沙", "country": "CN", "tz": "Asia/Shanghai", "kind": "city" },
+    { "name": "厦门", "country": "CN", "tz": "Asia/Shanghai", "kind": "city" },
+    { "name": "昆明", "country": "CN", "tz": "Asia/Shanghai", "kind": "city" },
+    { "name": "三亚", "country": "CN", "tz": "Asia/Shanghai", "kind": "city" },
+    { "name": "哈尔滨", "country": "CN", "tz": "Asia/Shanghai", "kind": "city" },
+    { "name": "沈阳", "country": "CN", "tz": "Asia/Shanghai", "kind": "city" },
+    { "name": "乌鲁木齐", "country": "CN", "tz": "Asia/Shanghai", "kind": "city" },
+    { "name": "喀什", "country": "CN", "tz": "Asia/Shanghai", "kind": "city" },
+    { "name": "拉萨", "country": "CN", "tz": "Asia/Shanghai", "kind": "city" },
+    { "name": "贵阳", "country": "CN", "tz": "Asia/Shanghai", "kind": "city" },
+    { "name": "兰州", "country": "CN", "tz": "Asia/Shanghai", "kind": "city" },
+    { "name": "银川", "country": "CN", "tz": "Asia/Shanghai", "kind": "city" },
+    { "name": "西宁", "country": "CN", "tz": "Asia/Shanghai", "kind": "city" },
+    { "name": "海口", "country": "CN", "tz": "Asia/Shanghai", "kind": "city" },
+    { "name": "西双版纳", "country": "CN", "tz": "Asia/Shanghai", "kind": "city" },
+    { "name": "阿拉木图", "country": "KZ", "tz": "Asia/Almaty", "kind": "city" },
+    { "name": "阿斯塔纳", "country": "KZ", "tz": "Asia/Almaty", "kind": "city" }
+  ]
+}

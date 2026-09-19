@@ -17,7 +17,7 @@ import {
   detectReversal, buildCostBreakdown, canClaimCheaper,
   evidenceState, legFreshness, nextVersion
 } from './lib/trip.mjs';
-import { extractIntentFields, parseTripIntent, searchTripStrategies, buildVerificationChecklist } from './lib/trip-service.mjs';
+import { extractIntentFields, parseTripIntent, searchTripStrategies, buildVerificationChecklist, resolveRoute, findPlace, capabilities } from './lib/trip-service.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 let fail = 0;
@@ -246,6 +246,16 @@ const [F_OUT, F_IN] = FIXTURE.dated_legs.map((l) => ({ ...l, baggage_terms: { ca
   /* 未知城市仍待确认（不编造） */
   const unknownCity = await parseTripIntent('从北京去乌兰巴托', ['北京'], tripCities, NOW);
   ok(unknownCity.query.destination === null && unknownCity.needs_confirmation.some((n) => n.includes('目的地')), 'C1 未知城市保持待确认（trip 词典外不编造）');
+}
+
+/* ---------- v0.29.0 决策③：确定性国内/国际路由 ---------- */
+{
+  ok(resolveRoute('北京', '喀什').route_type === 'domestic', '决策③验收：北京→喀什 → 国内链路');
+  ok(resolveRoute('北京', '阿拉木图').route_type === 'international', '决策③验收：北京→阿拉木图 → 国际链路');
+  ok(resolveRoute('北京', '香港').route_type === 'needs_confirmation', '决策③：未收录城市（香港）→ needs_confirmation 不静默选链路');
+  ok(resolveRoute('阿拉木图', '北京').route_type === 'international', '反向国际 OD 同样走国际链路（仍不做反转构造返程）');
+  ok(findPlace('阿拉木图').tz === 'Asia/Almaty' && findPlace('北京').tz === 'Asia/Shanghai', '地点词典含国家与时区（PlaceResolver 底座）');
+  ok(capabilities(true, true).llm === true && capabilities(false, true).planner_version === 'v0.29.0', 'capabilities 只含布尔与版本');
 }
 
 /* ---------- v0.26.0 服务动作：策略检索（fixture 驱动 + 反向不反转） ---------- */

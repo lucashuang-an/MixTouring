@@ -15,6 +15,40 @@ import { validateTripQuery, evidenceState, decorateLeg, buildCostBreakdown, dete
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
+/* ---------- PlaceResolver 与确定性路由（v0.29.0 决策③⑤） ----------
+ * 地点词典 = pipeline/data/places.json（国家/时区/类型）；路由为确定性规则，不交给 LLM 猜测：
+ * 两端均中国大陆 → domestic（国内样本链路）；任一端非 CN → international（v1.2 行程链路）；
+ * 未收录/缺国家信息 → needs_confirmation（不静默选链路）。港澳台按跨境复杂度走 international。 */
+
+let PLACES = null;
+function loadPlaces() {
+  if (!PLACES) {
+    try { PLACES = JSON.parse(readFileSync(join(root, 'pipeline/data/places.json'), 'utf8')).places || []; }
+    catch { PLACES = []; }
+  }
+  return PLACES;
+}
+
+export function findPlace(name) {
+  if (!name) return null;
+  const n = String(name).trim();
+  return loadPlaces().find((p) => p.name === n) || null;
+}
+
+/** 确定性路由（决策③）：返回 { route_type, origin_place, destination_place } */
+export function resolveRoute(origin, destination) {
+  const o = findPlace(origin);
+  const d = findPlace(destination);
+  if (!o || !d) return { route_type: 'needs_confirmation', origin_place: o, destination_place: d };
+  const isDomestic = o.country === 'CN' && d.country === 'CN';
+  return { route_type: isDomestic ? 'domestic' : 'international', origin_place: o, destination_place: d };
+}
+
+/** 能力声明（决策⑤）：仅返回布尔与版本，不泄露任何凭据 */
+export function capabilities(llmReady, webSearchReady) {
+  return { llm: !!llmReady, web_search: !!webSearchReady, planner_version: 'v0.29.0' };
+}
+
 /* ---------- 意图提取（纯规则，确定性可测） ---------- */
 
 const ROUND_TRIP_RE = /来回|往返|再回|回来|返回|然后回|玩.*天.*回/;
