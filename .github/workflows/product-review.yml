@@ -1,6 +1,7 @@
-# 产品评审事件链路（E1 卡）：PR 交付 → CI 门禁 → 只读产品评审 → 状态/评论回流
-# 纪律（开发流程 §4.1）：以 PR head SHA 为唯一对象；必需 CI 未完成则退出，任一失败写「CI 阻断」
-# 且不启动产品评审；同 SHA 幂等（不重复评审）；评审器只读，不改代码/数据/提交/推送/合并。
+# 产品评审事件链路（E1 卡 · v0.28.1 依评审重构为订阅制/无模型版）：
+# PR 交付 → CI 门禁 → 「CI ready / CI blocked」无模型评论与 product-review 状态。
+# 不调用任何 LLM API、不读取任何密钥（按评审 P0 已彻底移除 API 密钥方案）；
+# 产品评审本身由仓库负责人在 ChatGPT Work 的 GitHub PR 事件任务执行（订阅制）。
 name: product-review
 on:
   pull_request:
@@ -18,7 +19,6 @@ permissions:
 jobs:
   review:
     runs-on: ubuntu-latest
-    # 同仓库 PR 事件直接跑；workflow_run 只处理 verify 成功/失败完成且 head 在同仓库（fork 不暴露密钥）
     if: >-
       github.event_name == 'pull_request' ||
       (github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure')
@@ -39,34 +39,23 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
           WR_HEAD: ${{ github.event.workflow_run.head_sha }}
-          WR_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
         run: node scripts/e1-context.mjs
 
-      - name: CI 门禁（未完成退出 / 失败阻断）
+      - name: CI 门禁（输出 ready/blocked 结论与评论文本）
         id: gate
         env:
           GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ steps.ctx.outputs.head_sha }}
-          PR_NUMBER: ${{ steps.ctx.outputs.pr_number }}
           WR_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
         run: node scripts/e1-gate.mjs
 
-      - name: 只读产品评审（OpenAI；key 缺失时输出占位说明，不伪造通过）
-        id: review
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          HEAD_SHA: ${{ steps.ctx.outputs.head_sha }}
-          PR_NUMBER: ${{ steps.ctx.outputs.pr_number }}
-        run: node scripts/e1-review.mjs
-
-      - name: 发布评审（Issue #3 唯一交接评论 + PR 摘要 + product-review 状态；同 SHA 幂等）
+      - name: 发布 CI ready/blocked 评论与 product-review 状态（评审由 ChatGPT Work 事件任务执行）
+        if: steps.ctx.outputs.head_sha != ''
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           HEAD_SHA: ${{ steps.ctx.outputs.head_sha }}
           PR_NUMBER: ${{ steps.ctx.outputs.pr_number }}
-          VERDICT: ${{ steps.review.outputs.verdict }}
-        run: node scripts/e1-publish.mjs
+          CI_STATE: ${{ steps.gate.outputs.ci_state }}
+          CI_COMMENT: ${{ steps.gate.outputs.ci_comment }}
+        run: node scripts/e1-notify.mjs

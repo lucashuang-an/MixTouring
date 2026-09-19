@@ -120,16 +120,27 @@
       }).catch(function () { MT.toast('解析服务不可用'); });
     });
 
-    /* ---------- 确认并查询（用户确认后才调 /api/trip/search） ---------- */
+    /* ---------- 确认并查询（用户确认后才调 /api/trip/search；往返缺返程窗客户端阻断——评审 G2②） ---------- */
     document.getElementById('btnConfirm').addEventListener('click', function () {
       var from = document.getElementById('cfFrom').value.trim();
       var to = document.getElementById('cfTo').value.trim();
       if (!from || !to) { MT.toast('先补全出发地和目的地'); return; }
+      var type = document.getElementById('cfType').value;
+      var ret = document.getElementById('cfRet').value.trim();
+      var needs = [];
+      if (type === 'round_trip' && !/^\d{4}-\d{2}-\d{2}\s*~\s*\d{4}-\d{2}-\d{2}$/.test(ret)) {
+        /* 评审 G2②：返程未确认不得把查询当作完整往返——客户端阻断并聚焦字段 */
+        needs.push('· 往返行程必须先补返程窗口（或把行程类型改为单程）');
+        document.getElementById('confirmNeeds').innerHTML = needs.map(MT.esc).join('<br>');
+        document.getElementById('cfRet').focus();
+        return;
+      }
+      if (needs.length) { document.getElementById('confirmNeeds').innerHTML = needs.map(MT.esc).join('<br>'); return; }
       doSearch({
         origin: from, destination: to,
-        trip_type: document.getElementById('cfType').value,
+        trip_type: type,
         outbound_window: document.getElementById('cfOut').value.trim() || null,
-        return_window: document.getElementById('cfRet').value.trim() || null,
+        return_window: type === 'round_trip' ? ret : null,
         traveler_count: Number(document.getElementById('cfCount').value) || 1,
         currency: 'CNY'
       });
@@ -144,8 +155,8 @@
       doSearch({ origin: from, destination: to, trip_type: 'pending', traveler_count: 1, currency: 'CNY' });
     });
 
-    /* ---------- 结果渲染（v0.27.0 G2：只读探索结果——证据状态/取样时间/双向结构/未知项） ---------- */
-    var lastStrategy = null;
+    /* ---------- 结果渲染（v0.27.0 G2 + v0.28.1 评审修复：双时区/取样时间/适用日期逐段呈现） ---------- */
+    var lastQuery = null, lastStrategyId = null;
     var STATE_LABEL = {
       explore: ['探索态', '这条路线还没有已取证样本'],
       historical: ['历史参考', '样本为真实来源但未绑定本次出行日期'],
@@ -161,14 +172,21 @@
         '<div style="font-size:12px;color:var(--mixtouring-muted-foreground);margin-top:6px;">' + MT.esc(s[1]) + '</div>';
     }
     function doSearch(q) {
+      lastQuery = q;
       resultArea.innerHTML = '<div style="text-align:center;padding:30px;color:var(--mixtouring-muted-foreground);font-size:13.5px;">正在检索…</div>';
       post('/api/trip/search', q).then(function (res) {
         if (res.code !== 0) { resultArea.innerHTML = ''; MT.toast(res.error || res.msg || '查询失败'); return; }
         renderResult(res.data);
       }).catch(function () { resultArea.innerHTML = ''; MT.toast('检索服务不可用'); });
     }
+    /* 取样/适用信息或缺失占位（评审 G2③：缺失写「待核验」，不伪造） */
+    function evidenceLine(seg) {
+      var sampled = seg.sampled_at ? '取样于 ' + MT.esc(String(seg.sampled_at).slice(0, 10)) : '<span style="color:#A16207;">取样时间待核验</span>';
+      var valid = seg.valid_for_date ? '适用于 ' + MT.esc(seg.valid_for_date) : '<span style="color:#A16207;">适用日期待核验</span>';
+      return sampled + ' · ' + valid;
+    }
     function renderResult(data) {
-      lastStrategy = data.strategies[0] || null;
+      lastQuery = data.query;
       var html = '<div class="detail-card" style="background:var(--mixtouring-card);border-radius:20px;padding:20px;box-shadow:var(--shadow-card-soft);margin-top:4px;">';
       html += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">' +
         '<h2 style="font-size:17px;margin:0;">' + MT.esc(data.query.origin) + ' → ' + MT.esc(data.query.destination) + '</h2>' +
@@ -178,12 +196,17 @@
           data.next_steps.map(function (n) { return '<br>· ' + MT.esc(n); }).join('') + '</p>';
       } else {
         var st = data.strategies[0];
+        lastStrategyId = st.id || null;
         st.structure.forEach(function (seg) {
+          var depTz = seg.depart_time_zone || '<span style="color:#A16207;">出发时区待核验</span>';
+          var arrTz = seg.arrive_time_zone || '<span style="color:#A16207;">抵达时区待核验</span>';
           html += '<div style="margin-top:14px;padding:12px 14px;border-radius:14px;background:var(--mixtouring-muted);">' +
             '<div style="font-size:13px;">' + (seg.direction === 'outbound' ? '去程' : '返程') +
             (seg.service_no ? ' · <strong>' + MT.esc(seg.service_no) + '</strong>' : ' · <span style="color:#A16207;">班次待核验</span>') + '</div>' +
-            '<div style="font-size:12.5px;color:var(--mixtouring-muted-foreground);margin-top:4px;">' + MT.esc(seg.origin_terminal) + ' → ' + MT.esc(seg.destination_terminal) + ' · ' + MT.esc(seg.depart_local) + ' → ' + MT.esc(seg.arrive_local) + '</div>' +
-            (seg.source_url ? '<a href="' + seg.source_url + '" target="_blank" rel="noopener" style="font-size:11.5px;color:#1E7F45;">来源 ›</a>' : '') +
+            '<div style="font-size:12.5px;color:var(--mixtouring-muted-foreground);margin-top:4px;">' + MT.esc(seg.origin_terminal) + ' → ' + MT.esc(seg.destination_terminal) + '</div>' +
+            '<div style="font-size:12.5px;margin-top:4px;">' + MT.esc(seg.depart_local) + '（' + depTz + '）→ ' + MT.esc(seg.arrive_local) + '（' + arrTz + '）</div>' +
+            '<div style="font-size:11.5px;color:var(--mixtouring-muted-foreground);margin-top:4px;">' + evidenceLine(seg) + '</div>' +
+            (seg.source_url ? '<a href="' + seg.source_url + '" target="_blank" rel="noopener" style="font-size:11.5px;color:#1E7F45;">来源 ›</a>' : '<span style="font-size:11.5px;color:#A16207;">来源待核验</span>') +
             '</div>';
         });
         if (st.price_samples.length) {
@@ -206,8 +229,10 @@
       resultArea.innerHTML = html;
       var btn = document.getElementById('btnChecklist');
       if (btn) btn.addEventListener('click', function () {
-        post('/api/trip/checklist', { strategy: lastStrategy }).then(function (res) {
+        /* 评审 G2①：按服务端契约 {query, strategy_id} 由服务端重取策略，不自报证据 */
+        post('/api/trip/checklist', { query: lastQuery, strategy_id: lastStrategyId }).then(function (res) {
           var box = document.getElementById('checklistBox');
+          if (res.code !== 0) { box.innerHTML = '<div style="font-size:12.5px;color:#A16207;">' + MT.esc(res.msg || '核验清单获取失败，请重新检索') + '</div>'; return; }
           box.innerHTML = res.data.checklist.map(function (r) {
             return '<div style="padding:10px 12px;border-radius:12px;background:var(--mixtouring-muted);margin-bottom:8px;">' +
               '<div style="font-size:12.5px;">' + (r.direction === 'outbound' ? '去程' : '返程') + (r.service_no ? ' · ' + MT.esc(r.service_no) : '') + ' · ' + MT.esc(r.segment) + '</div>' +
