@@ -15,7 +15,7 @@ import { parseTrip } from './lib/parse.mjs';
 import { answerAsk, suggestWish } from './lib/qa.mjs';
 import { addWish, listWishes, removeWish } from './lib/wishlist.mjs';
 import { llmConfigured, llmModel } from './lib/llm.mjs';
-import { parseTripIntent, searchTripStrategies, buildVerificationChecklist } from './lib/trip-service.mjs';
+import { parseTripIntent, searchTripStrategies, buildVerificationChecklist, resolveRoute, capabilities, webSearchConfigured } from './lib/trip-service.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT) || 3000;
@@ -258,12 +258,29 @@ app.use(async (ctx, next) => {
 
   /* ---------- Solo Trip v1.2 行程级契约（G1 收尾：探索与核验助手范围，旧七页接口不动） ---------- */
 
-  /* POST /api/trip/parse {text} → 一句话行程意图（OD/往返/人数；缺字段进 needs_confirmation，不猜） */
+  /* POST /api/trip/parse {text} → 一句话行程意图（OD/往返/人数；缺字段进 needs_confirmation，不猜）
+   * v0.29.0 决策③：响应附 route_type（确定性国内/国际路由，由地点词典判定；未收录 → needs_confirmation） */
   if (path === '/api/trip/parse' && ctx.method === 'POST') {
     const body = await readBody(ctx);
     if (!body.text || !String(body.text).trim()) { ctx.body = { code: 1, msg: '缺少 text' }; return; }
     const out = await parseTripIntent(String(body.text), db.cities, TRIP_CITIES);
+    out.route = out.query.origin && out.query.destination
+      ? resolveRoute(out.query.origin, out.query.destination)
+      : { route_type: 'needs_confirmation' };
     ctx.body = { code: 0, data: out };
+    return;
+  }
+
+  /* POST /api/trip/route {origin,destination} → 确定性国内/国际路由（决策③；两字段入口分流用） */
+  if (path === '/api/trip/route' && ctx.method === 'POST') {
+    const body = await readBody(ctx);
+    ctx.body = { code: 0, data: resolveRoute(body.origin, body.destination) };
+    return;
+  }
+
+  /* GET /api/capabilities → 服务端能力声明（决策⑤：仅布尔与版本，不泄露凭据） */
+  if (path === '/api/capabilities' && ctx.method === 'GET') {
+    ctx.body = { code: 0, data: capabilities(llmConfigured(), webSearchConfigured(process.env).configured) };
     return;
   }
 

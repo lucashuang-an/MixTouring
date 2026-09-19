@@ -25,7 +25,7 @@
 - **所有输出（交互、文档、注释、commit message）一律使用简体中文**，品牌字标（MixTouring）除外。
 - **开工前先 `git fetch origin`**：main 可能有其他 agent 的新提交，先 rebase 再动手；实现前先查工作记录最新版本，避免与远端 agent 撞车做重复功能（历史教训，见 §8）。
 - 每次产品决策/改动在 `工作记录.md` **倒序**追加版本记录（v0.x.y + 日期 + 背景/改动/影响范围），不删除历史。
-- **ZCode 与产品评审交接**：ZCode 每次开工前，除本文件和最新版工作记录，还要读取 [产品评审交接板 Issue #3](https://github.com/lucashuang-an/MixTouring/issues/3) 的最新一条带被审 SHA 的评审。`需修复`／`阻断` 先处理，再做下一开发卡；修复后在该 Issue 回复修复项、提交 SHA、检查结果和未解问题。Codex 负责产品／技术方案评审并在 Issue 发布结论、修复清单、验收条件和下一卡规划，同时在用户对话报告；沉默或 CI 通过都不等于产品验收。`通过`或满足`有条件通过`所列条件后，才按最新交接进入下一卡。不得在公开 Issue 发布凭据、个人数据或安全敏感复现细节。
+- **ZCode 与产品评审交接（v0.26.2 修订：手动触发制）**：ZCode 每次开工前，除本文件和最新版工作记录，还要读取 [产品评审记录 Issue #5](https://github.com/lucashuang-an/MixTouring/issues/5) 的最新评审/决策评论。评审由用户在本对话主动发起（转述 ZCode 提交/PR/变更），Codex 只读评审后在本 Issue 追加以 `Codex 产品评审｜被审 SHA <完整 SHA>` 开头的结论；`需修复`／`阻断` 先处理，再做下一开发卡；修复后由用户转述新的 SHA 触发下一轮。产品/技术方案类决策（如双链路路由、任意地点规划）也以 Issue #5 评论为基准。不使用定时任务、自动工作流或 API 自动唤醒评审。不得在公开 Issue 发布凭据、个人数据或安全敏感复现细节。
 - 不主动创建额外说明性 `.md`；新上下文优先沉淀进本文件或工作记录。经用户确认的新产品方案与开发流程以 `产品方案_SoloTrip_v1.2.md`、`开发流程_SoloTrip_v1.2.md` 两份基准文档承载，勿再并行新建零散说明。
 - 当前无 LLM key 的环境一切功能照常（规则版闭环）；key 走 `server/.env`（gitignored）：`LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL`（OpenAI 兼容端点即可）。
 - LLM 用量逐任务记录在 `server/logs/llm-usage.jsonl`（gitignored），供算法优化分析。
