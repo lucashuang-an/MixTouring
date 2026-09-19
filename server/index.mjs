@@ -16,6 +16,7 @@ import { answerAsk, suggestWish } from './lib/qa.mjs';
 import { addWish, listWishes, removeWish } from './lib/wishlist.mjs';
 import { llmConfigured, llmModel } from './lib/llm.mjs';
 import { parseTripIntent, searchTripStrategies, buildVerificationChecklist, resolveRoute, capabilities, webSearchConfigured } from './lib/trip-service.mjs';
+import { planAnywhere } from './lib/anywhere.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT) || 3000;
@@ -305,6 +306,18 @@ app.use(async (ctx, next) => {
     const strategy = result.strategies.find((item) => item.id === body.strategy_id);
     if (!strategy) { ctx.body = { code: 1, msg: '策略不存在或已失效，请重新检索' }; return; }
     ctx.body = { code: 0, data: buildVerificationChecklist(strategy) };
+    return;
+  }
+
+  /* POST /api/anywhere/plan → G2.5 任意地点规划（首卡：地点识别 + 约束 chips + 三类纯交通假设骨架 + 逐段取证/降级）
+   * 防幻觉契约：候选一律 candidate_hypothesis，无未取证数字；web_search 不可用时明确降级为探索态 */
+  if (path === '/api/anywhere/plan' && ctx.method === 'POST') {
+    const body = await readBody(ctx);
+    if (!body || (!String(body.text || '').trim() && !String(body.origin || '').trim() && !String(body.destination || '').trim())) {
+      ctx.body = { code: 1, msg: '缺少 text 或 origin/destination' };
+      return;
+    }
+    ctx.body = { code: 0, data: await planAnywhere(body) };
     return;
   }
 

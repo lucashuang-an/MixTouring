@@ -16,9 +16,11 @@
 | 重建前端数据 | `node pipeline/build-mock.mjs` | `mock.js` 是生成文件，**勿手改** |
 | AI 文案生成（离线） | `node pipeline/generate-ai-copy.mjs --generate` | 需 `LLM_API_KEY`；产出过防幻觉守门才写盘 |
 | 心愿自动采集 | `node --env-file-if-exists=server/.env pipeline/collect-wish.mjs --all --limit 2` | 联网采样→守门写回→心愿回流；失败自动计数转人工 |
-| CI | push 自动触发 | GitHub Actions 跑 verify + check-pages + check-geo；collect 定时任务需配 Secrets 并设 `LLM_COLLECT=1` |
+| 行程契约确定性测试 | `node server/check-trip.mjs` | G1 底座回归，无需起服务 |
+| G2.5 任意地点规划测试 | `node server/check-anywhere.mjs` | 确定性（注入桩，无网络无 key），v0.30.0 起 |
+| CI | push 自动触发 | GitHub Actions 跑 verify + check-pages + check-geo + check-trip + check-anywhere；collect 定时任务需配 Secrets 并设 `LLM_COLLECT=1` |
 
-**提交前三件套（必跑，全绿才提交）**：`check-pages` + `check-geo` + `verify`。
+**提交前必跑（全绿才提交）**：`check-pages` + `check-geo` + `verify` + `check-trip` + `check-anywhere`。
 
 ## 1. 协作工作流（硬性流程）
 
@@ -36,7 +38,7 @@
 - **核心价值**：AI 解释可核验的直达、多程航班、铁路与混搭取舍；假期按一个人的完整总成本判断，直达占优时如实说明。
 - **定位**：纯内容与方案产品，**不做买票/交易服务**。
 - **首批目标用户**：已有目的地、希望独自安排旅程的 Solo Trip 旅行者；独处、交流、同行分别由用户自愿选择。Web 先行（桌面侧边栏 + 移动端底栏响应式）。
-- **当前阶段**：旧产品 Phase 1–3 已完成；v1.2 的 G1 行程规则和探索／核验服务接口已实现，G2 页面尚未接入。**指定日期可执行往返比较、城市停留完整旅程与社区试点尚未实现**。北京 ⇄ 阿拉木图、2026 国庆附近为第一验证 case；外部证据缺口仍按探索／部分核验处理。
+- **当前阶段（2026-09-20）**：旧产品 Phase 1–3 已完成；v1.2 的 G1 行程契约、G2 统一入口与只读探索结果页（trip.html）已交付并收口；G2.5 任意地点规划首卡已交付（候选一律待验证假设，防幻觉契约见 §4.2）。**指定日期可执行往返比较、城市停留完整旅程与社区试点尚未实现**。北京 ⇄ 阿拉木图、2026 国庆附近为第一验证 case；外部证据缺口仍按探索／部分核验处理。
 - 开发阶段路线与交接细节见 §6。
 
 ## 3. 目录结构
@@ -47,7 +49,7 @@ MIXTOURING/
 ├── render.yaml + Dockerfile      ← 部署产物（封存备用，国内优先港服）
 ├── server/                       ← Koa 后端 + 静态服务（data 在 ../pipeline/data）
 │   ├── index.mjs                 ← 装载+双校验+geo增强+热重载；全部 API 路由
-│   ├── lib/ llm.mjs(parse/ask/copy 唯一LLM出口+用量日志) parse.mjs(触点①) qa.mjs(触点③) wishlist.mjs(队列)
+│   ├── lib/ llm.mjs(parse/ask/copy 唯一LLM出口+用量日志) parse.mjs(触点①) qa.mjs(触点③) wishlist.mjs(队列) trip.mjs(行程契约) trip-service.mjs(G1/G2 行程服务) anywhere.mjs(G2.5 任意地点规划)
 │   └── verify.mjs                ← 全接口与 mock 派生逐字节比对
 ├── pipeline/                     ← 数据生产管道（业务规则的代码权威实现）
 │   ├── data/ plans.json(存储层唯一数据源) wishlist.json(心愿队列) cities-geo.json(179城地理事实)

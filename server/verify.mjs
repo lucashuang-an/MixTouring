@@ -229,6 +229,38 @@ async function main() {
     console.log('✓ /api/trip/checklist 不接受客户端伪造策略');
   } else { failed++; console.error('✗ /api/trip/checklist 接受了伪造策略：' + JSON.stringify(forgedCl).slice(0, 200)); }
 
+  /* ---------- G2.5 任意地点规划（v0.30.0；规则路径断言，LLM/搜索路径由 check-anywhere 注入桩覆盖） ---------- */
+  const anyPlan = await (await fetch(BASE + '/api/anywhere/plan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ origin: '北京', destination: '喀什' }) })).json();
+  const apOk = anyPlan.code === 0 && anyPlan.data.route.route_type === 'domestic' &&
+    anyPlan.data.candidates.length >= 1 && anyPlan.data.candidates.every((c) => c.hypothesis === true) &&
+    anyPlan.data.candidates.every((c) => c.legs.every((l) => l.evidence_state === 'explore')) &&
+    !JSON.stringify(anyPlan.data.candidates).includes('"price"');
+  if (apOk) {
+    console.log('✓ /api/anywhere/plan 北京→喀什：假设骨架（' + anyPlan.data.candidates.length + ' 类）全探索态零价格字段');
+  } else { failed++; console.error('✗ /api/anywhere/plan 异常：' + JSON.stringify(anyPlan).slice(0, 200)); }
+
+  const anyAlias = await (await fetch(BASE + '/api/anywhere/plan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ origin: 'PEK', destination: 'ALA' }) })).json();
+  if (anyAlias.code === 0 && anyAlias.data.intent.origin === '北京首都国际机场' && anyAlias.data.intent.destination === '阿拉木图国际机场' && anyAlias.data.route.route_type === 'international') {
+    console.log('✓ /api/anywhere/plan 别名解析：PEK/ALA → 规范机场名 + 国际路由');
+  } else { failed++; console.error('✗ /api/anywhere/plan 别名解析异常：' + JSON.stringify(anyAlias).slice(0, 200)); }
+
+  const anyText = await (await fetch(BASE + '/api/anywhere/plan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: '从北京首都机场去喀纳斯，预算5000元，不接受夜间到达' }) })).json();
+  if (anyText.code === 0 && anyText.data.intent.origin === '北京首都国际机场' && anyText.data.intent.destination === '喀纳斯' &&
+    anyText.data.intent.constraints.budget_max_cny === 5000 && anyText.data.intent.constraints.night_arrival === 'avoid' &&
+    anyText.data.intent.constraint_chips.length === 2) {
+    console.log('✓ /api/anywhere/plan 一句话模式：机场别名 + 景点 + 约束 chips 同句提取');
+  } else { failed++; console.error('✗ /api/anywhere/plan 一句话模式异常：' + JSON.stringify(anyText).slice(0, 200)); }
+
+  const anyUnknown = await (await fetch(BASE + '/api/anywhere/plan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ origin: '北京', destination: '塔什干' }) })).json();
+  if (anyUnknown.code === 0 && anyUnknown.data.needs_confirmation.length === 1 && anyUnknown.data.candidates.length === 0) {
+    console.log('✓ /api/anywhere/plan 未收录目的地 → needs_confirmation，不出候选（不猜）');
+  } else { failed++; console.error('✗ /api/anywhere/plan 未收录目的地未阻断：' + JSON.stringify(anyUnknown).slice(0, 200)); }
+
+  const anyEmpty = await (await fetch(BASE + '/api/anywhere/plan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({}) })).json();
+  if (anyEmpty.code === 1) {
+    console.log('✓ /api/anywhere/plan 空请求被拒');
+  } else { failed++; console.error('✗ /api/anywhere/plan 空请求未拒：' + JSON.stringify(anyEmpty).slice(0, 200)); }
+
   console.log(failed ? `\n✗ ${failed} 项不一致` : '\n✓ 全部接口与 mock.js 派生结果一致');
   process.exit(failed ? 1 : 0);
 }
