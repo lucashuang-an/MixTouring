@@ -216,6 +216,7 @@ const [F_OUT, F_IN] = FIXTURE.dated_legs.map((l) => ({ ...l, baggage_terms: { ca
   const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   const evil = '<img src=x onerror=alert(1)>';
   ok(!esc(evil).includes('<img') && esc(evil).includes('&lt;img'), '转义行为：恶意时区字符串被转义');
+  ok(esc(null) === '' && esc(undefined) === '' && esc('') === '', '转义鲁棒性：空值输入返回空串（不抛错）');
 }
 
 /* ---------- R8 复审⑧：fixture 星期残留清理 ---------- */
