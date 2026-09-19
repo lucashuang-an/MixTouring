@@ -206,6 +206,19 @@ const [F_OUT, F_IN] = FIXTURE.dated_legs.map((l) => ({ ...l, baggage_terms: { ca
   ok(validateTripQuery(Q).length === 0, 'G0 基线查询合法');
 }
 
+/* ---------- v0.29.3 时区转义回归（三轮评审 P2 收尾：恶意时区字符串不得进入 HTML） ---------- */
+{
+  /* 静态断言：trip.html 段卡时区渲染必须走 MT.esc（防止未来改动回退） */
+  const tripSrc = readFileSync(join(root, 'mixtouring-hifi/pages/trip.html'), 'utf8');
+  ok(tripSrc.includes('depTz = seg.depart_time_zone ? MT.esc(seg.depart_time_zone)'), '转义回归：出发时区渲染走 MT.esc');
+  ok(tripSrc.includes('arrTz = seg.arrive_time_zone ? MT.esc(seg.arrive_time_zone)'), '转义回归：抵达时区渲染走 MT.esc');
+  /* 行为断言：与 app.js 的 MT.esc 同逻辑（转义后不含原始 payload） */
+  const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  const evil = '<img src=x onerror=alert(1)>';
+  ok(!esc(evil).includes('<img') && esc(evil).includes('&lt;img'), '转义行为：恶意时区字符串被转义');
+  ok(esc(null) === '' && esc(undefined) === '' && esc('') === '', '转义鲁棒性：空值输入返回空串（不抛错）');
+}
+
 /* ---------- R8 复审⑧：fixture 星期残留清理 ---------- */
 {
   ok(!JSON.stringify(FIXTURE).includes('周二'), 'R8 fixture 无「周二」残留（CA799 note 已更正为周三）');
