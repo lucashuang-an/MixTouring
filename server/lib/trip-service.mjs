@@ -22,7 +22,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
  * 未收录/缺国家信息 → needs_confirmation（不静默选链路）。 */
 
 let PLACES = null;
-function loadPlaces() {
+export function loadPlaces() {
   if (!PLACES) {
     try { PLACES = JSON.parse(readFileSync(join(root, 'pipeline/data/places.json'), 'utf8')).places || []; }
     catch { PLACES = []; }

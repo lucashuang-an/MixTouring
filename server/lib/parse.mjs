@@ -106,8 +106,8 @@ function extractCities(text, cities) {
   return found.sort((a, b) => a.idx - b.idx);
 }
 
-/** 依据连接词判断候选序列中哪个是 from、哪个是 to */
-function assignFromTo(text, seq) {
+/** 依据连接词判断候选序列中哪个是 from、哪个是 to（v0.30.0 起导出：G2.5 任意地点扫描复用同一判定） */
+export function assignFromTo(text, seq) {
   if (seq.length === 0) return { from: null, to: null, conf: 0 };
   const fromIdx = seq.map((s) => s.idx);
   const toIdx = seq.map((s) => s.idx);
