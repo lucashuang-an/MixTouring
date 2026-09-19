@@ -146,15 +146,21 @@
         return;
       }
       if (needs.length) { document.getElementById('confirmNeeds').innerHTML = needs.map(MT.esc).join('<br>'); return; }
-      /* 路由分流（决策③）：解析阶段已判定；用户改城市后按当前字段重新判定 */
+      /* 路由分流（决策③ + 评审二轮 P0-1）：needs_confirmation 时立即停止——保留用户输入、
+         展示确认动作，未确认前不调 /api/trip/search、不显示任何结果页 */
       post('/api/trip/route', { origin: from, destination: to }).then(function (r) {
         var rt = r.data && r.data.route_type;
+        if (rt === 'needs_confirmation') {
+          document.getElementById('confirmNeeds').innerHTML =
+            '· 目的地「' + MT.esc(to) + '」尚未收录：请确认城市名后重试，或改用已收录城市（未发起查询）';
+          MT.toast('目的地尚未收录，未发起查询');
+          return;
+        }
         if (rt === 'domestic') {
           /* 国内 → 既有国内样本链路（历史/样本参考，遵守样本日期边界） */
           location.href = 'search.html?' + new URLSearchParams({ from: from, to: to }).toString();
           return;
         }
-        if (rt === 'needs_confirmation') { MT.toast('目的地尚未收录：已登记探索意向前请先确认城市名'); }
         doSearch({
           origin: from, destination: to,
           trip_type: type,
@@ -166,7 +172,7 @@
       }).catch(function () { MT.toast('路由服务不可用'); });
     });
 
-    /* 两字段直达（路由后分流：国内走样本链路 / 国际走探索流程） */
+    /* 两字段直达（路由后分流；评审二轮 P0-1：needs_confirmation 立即停止，不进任何结果页） */
     document.getElementById('btnSearch').addEventListener('click', function () {
       var from = document.getElementById('fromInput').value.trim();
       var to = document.getElementById('toInput').value.trim();
@@ -178,7 +184,14 @@
           location.href = 'search.html?' + new URLSearchParams({ from: from, to: to }).toString();
           return;
         }
-        if (rt === 'needs_confirmation') { MT.toast('目的地尚未收录：已按国际探索处理'); }
+        if (rt === 'needs_confirmation') {
+          resultArea.innerHTML = '<div class="detail-card" style="background:var(--mixtouring-card);border-radius:20px;padding:20px;">' +
+            '<div style="font-size:14px;">目的地「' + MT.esc(to) + '」尚未收录</div>' +
+            '<div style="font-size:12.5px;color:var(--mixtouring-muted-foreground);margin-top:8px;line-height:1.7;">请确认城市名后重试，或改用已收录城市。' +
+            '也可以把这条路线告诉我们，进入核验队列后我们会优先取证。</div></div>';
+          MT.toast('目的地尚未收录，未发起查询');
+          return;
+        }
         doSearch({ origin: from, destination: to, trip_type: 'pending', traveler_count: 1, currency: 'CNY' });
       }).catch(function () { MT.toast('路由服务不可用'); });
     });
@@ -228,13 +241,18 @@
         st.structure.forEach(function (seg) {
           var depTz = seg.depart_time_zone || '<span style="color:#A16207;">出发时区待核验</span>';
           var arrTz = seg.arrive_time_zone || '<span style="color:#A16207;">抵达时区待核验</span>';
+          /* 评审二轮 P0-3：段卡显示完整「出发日期 当地时刻（出发时区）→ 到达日期 当地时刻（抵达时区）」——跨日/跨时区直接可判读 */
+          var depDate = seg.depart_date ? MT.esc(seg.depart_date) : '<span style="color:#A16207;">日期待核验</span>';
+          var arrDate = seg.arrive_date ? MT.esc(seg.arrive_date) : '<span style="color:#A16207;">日期待核验</span>';
+          var crossDay = seg.arrive_date && seg.depart_date && seg.arrive_date !== seg.depart_date;
+          var crossMark = crossDay ? ' <span style="color:#A16207;">（' + (seg.arrive_date > seg.depart_date ? '跨日' : '跨时区') + '到达）</span>' : '';
           html += '<div style="margin-top:14px;padding:12px 14px;border-radius:14px;background:var(--mixtouring-muted);">' +
             '<div style="font-size:13px;">' + (seg.direction === 'outbound' ? '去程' : '返程') +
             (seg.service_no ? ' · <strong>' + MT.esc(seg.service_no) + '</strong>' : ' · <span style="color:#A16207;">班次待核验</span>') + '</div>' +
             '<div style="font-size:12.5px;color:var(--mixtouring-muted-foreground);margin-top:4px;">' + MT.esc(seg.origin_terminal) + ' → ' + MT.esc(seg.destination_terminal) + '</div>' +
-            '<div style="font-size:12.5px;margin-top:4px;">' + MT.esc(seg.depart_local) + '（' + depTz + '）→ ' + MT.esc(seg.arrive_local) + '（' + arrTz + '）</div>' +
+            '<div style="font-size:12.5px;margin-top:4px;">' + depDate + ' ' + MT.esc(seg.depart_local) + '（' + depTz + '）→ ' + arrDate + ' ' + MT.esc(seg.arrive_local) + '（' + arrTz + '）' + crossMark + '</div>' +
             '<div style="font-size:11.5px;color:var(--mixtouring-muted-foreground);margin-top:4px;">' + evidenceLine(seg) + '</div>' +
-            (seg.source_url ? '<a href="' + seg.source_url + '" target="_blank" rel="noopener" style="font-size:11.5px;color:#1E7F45;">来源 ›</a>' : '<span style="font-size:11.5px;color:#A16207;">来源待核验</span>') +
+            (seg.source_url && /^https:/.test(seg.source_url) ? '<a href="' + MT.esc(seg.source_url) + '" target="_blank" rel="noopener" style="font-size:11.5px;color:#1E7F45;">来源 ›</a>' : '<span style="font-size:11.5px;color:#A16207;">来源待核验</span>') +
             '</div>';
         });
         if (st.price_samples.length) {

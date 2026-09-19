@@ -248,14 +248,24 @@ const [F_OUT, F_IN] = FIXTURE.dated_legs.map((l) => ({ ...l, baggage_terms: { ca
   ok(unknownCity.query.destination === null && unknownCity.needs_confirmation.some((n) => n.includes('目的地')), 'C1 未知城市保持待确认（trip 词典外不编造）');
 }
 
-/* ---------- v0.29.0 决策③：确定性国内/国际路由 ---------- */
+/* ---------- v0.29.0 决策③：确定性国内/国际路由（v0.29.1 评审二轮 P0-2 更新：港澳台进国际） ---------- */
 {
   ok(resolveRoute('北京', '喀什').route_type === 'domestic', '决策③验收：北京→喀什 → 国内链路');
   ok(resolveRoute('北京', '阿拉木图').route_type === 'international', '决策③验收：北京→阿拉木图 → 国际链路');
-  ok(resolveRoute('北京', '香港').route_type === 'needs_confirmation', '决策③：未收录城市（香港）→ needs_confirmation 不静默选链路');
+  /* 评审二轮 P0-2 更正：港澳台按既定规则进入国际链路（is_mainland=false），不再是 needs_confirmation */
+  ok(resolveRoute('北京', '香港').route_type === 'international', '二轮 P0-2：北京→香港 → international');
+  ok(resolveRoute('香港', '北京').route_type === 'international', '二轮 P0-2：香港→北京（反向）→ international');
+  ok(resolveRoute('北京', '澳门').route_type === 'international', '二轮 P0-2：北京→澳门 → international');
+  ok(resolveRoute('北京', '台北').route_type === 'international', '二轮 P0-2：北京→台北 → international');
+  ok(resolveRoute('香港', '台北').route_type === 'international', '港澳台互往 → international（不建第三套链路）');
   ok(resolveRoute('阿拉木图', '北京').route_type === 'international', '反向国际 OD 同样走国际链路（仍不做反转构造返程）');
   ok(findPlace('阿拉木图').tz === 'Asia/Almaty' && findPlace('北京').tz === 'Asia/Shanghai', '地点词典含国家与时区（PlaceResolver 底座）');
-  ok(capabilities(true, true).llm === true && capabilities(false, true).planner_version === 'v0.29.0', 'capabilities 只含布尔与版本');
+  ok(findPlace('香港').is_mainland === false && findPlace('北京').is_mainland === true, 'is_mainland 口径：港澳台非大陆');
+  /* 评审二轮 P1-5：capabilities 四组合（web_search 独立于 LLM 判定） */
+  ok(capabilities(false, false).llm === false && capabilities(false, false).web_search === false, 'P1-5 组合1：均关');
+  ok(capabilities(true, false).llm === true && capabilities(true, false).web_search === false, 'P1-5 组合2：仅 LLM → web_search=false');
+  ok(capabilities(false, true).web_search === true && capabilities(false, true).llm === false, 'P1-5 组合3：仅 web_search');
+  ok(capabilities(true, true).llm === true && capabilities(true, true).web_search === true, 'P1-5 组合4：均开');
 }
 
 /* ---------- v0.26.0 服务动作：策略检索（fixture 驱动 + 反向不反转） ---------- */

@@ -15,7 +15,7 @@ import { parseTrip } from './lib/parse.mjs';
 import { answerAsk, suggestWish } from './lib/qa.mjs';
 import { addWish, listWishes, removeWish } from './lib/wishlist.mjs';
 import { llmConfigured, llmModel } from './lib/llm.mjs';
-import { parseTripIntent, searchTripStrategies, buildVerificationChecklist, resolveRoute, capabilities } from './lib/trip-service.mjs';
+import { parseTripIntent, searchTripStrategies, buildVerificationChecklist, resolveRoute, capabilities, webSearchConfigured } from './lib/trip-service.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT) || 3000;
@@ -280,7 +280,7 @@ app.use(async (ctx, next) => {
 
   /* GET /api/capabilities → 服务端能力声明（决策⑤：仅布尔与版本，不泄露凭据） */
   if (path === '/api/capabilities' && ctx.method === 'GET') {
-    ctx.body = { code: 0, data: capabilities(llmConfigured(), llmConfigured()) };
+    ctx.body = { code: 0, data: capabilities(llmConfigured(), webSearchConfigured(process.env).configured) };
     return;
   }
 

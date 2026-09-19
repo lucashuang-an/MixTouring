@@ -15,10 +15,11 @@ import { validateTripQuery, evidenceState, decorateLeg, buildCostBreakdown, dete
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-/* ---------- PlaceResolver 与确定性路由（v0.29.0 决策③⑤） ----------
- * 地点词典 = pipeline/data/places.json（国家/时区/类型）；路由为确定性规则，不交给 LLM 猜测：
- * 两端均中国大陆 → domestic（国内样本链路）；任一端非 CN → international（v1.2 行程链路）；
- * 未收录/缺国家信息 → needs_confirmation（不静默选链路）。港澳台按跨境复杂度走 international。 */
+/* ---------- PlaceResolver 与确定性路由（v0.29.0 决策③；v0.29.1 评审②重构） ----------
+ * 地点词典 = pipeline/data/places.json（country/is_mainland/tz/kind）；路由为确定性规则，不交给 LLM 猜测：
+ * 两端均为「中国大陆地点」（country=CN 且 is_mainland=true）→ domestic（国内样本链路）；
+ * 任一端为港澳台（is_mainland=false）或境外 → international（v1.2 行程链路）；
+ * 未收录/缺国家信息 → needs_confirmation（不静默选链路）。 */
 
 let PLACES = null;
 function loadPlaces() {
@@ -35,18 +36,29 @@ export function findPlace(name) {
   return loadPlaces().find((p) => p.name === n) || null;
 }
 
-/** 确定性路由（决策③）：返回 { route_type, origin_place, destination_place } */
+/** 确定性路由（决策③ + 评审②口径）：国内=两端均为中国大陆地点 */
 export function resolveRoute(origin, destination) {
   const o = findPlace(origin);
   const d = findPlace(destination);
   if (!o || !d) return { route_type: 'needs_confirmation', origin_place: o, destination_place: d };
-  const isDomestic = o.country === 'CN' && d.country === 'CN';
+  const isDomestic = o.country === 'CN' && o.is_mainland === true && d.country === 'CN' && d.is_mainland === true;
   return { route_type: isDomestic ? 'domestic' : 'international', origin_place: o, destination_place: d };
+}
+
+/** web_search 能力独立推导（评审 P1-5）：searchWeb 依赖智谱独立 /web_search 端点——
+ * 兼容聊天模型的 key/base 不代表该端点可用。仅当配置了 key 且 base 指向智谱（或显式 WEB_SEARCH_AVAILABLE=1）时视为已配置。
+ * 返回 {configured, basis}——布尔由调用方消费，不泄露任何凭据。 */
+export function webSearchConfigured(env = process.env) {
+  const key = !!env.LLM_API_KEY;
+  const base = env.LLM_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4';
+  const zhipuBase = base.includes('bigmodel.cn');
+  if (env.WEB_SEARCH_AVAILABLE === '1') return { configured: key, basis: 'explicit' };
+  return { configured: key && zhipuBase, basis: zhipuBase ? 'zhipu-endpoint' : 'non-zhipu-base' };
 }
 
 /** 能力声明（决策⑤）：仅返回布尔与版本，不泄露任何凭据 */
 export function capabilities(llmReady, webSearchReady) {
-  return { llm: !!llmReady, web_search: !!webSearchReady, planner_version: 'v0.29.0' };
+  return { llm: !!llmReady, web_search: !!webSearchReady, planner_version: 'v0.29.1' };
 }
 
 /* ---------- 意图提取（纯规则，确定性可测） ---------- */
