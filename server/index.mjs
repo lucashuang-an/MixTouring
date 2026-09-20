@@ -17,6 +17,7 @@ import { addWish, listWishes, removeWish } from './lib/wishlist.mjs';
 import { llmConfigured, llmModel } from './lib/llm.mjs';
 import { parseTripIntent, searchTripStrategies, buildVerificationChecklist, resolveRoute, capabilities, webSearchConfigured } from './lib/trip-service.mjs';
 import { planAnywhere } from './lib/anywhere.mjs';
+import { webSearchStatus } from './lib/llm.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT) || 3000;
@@ -279,9 +280,9 @@ app.use(async (ctx, next) => {
     return;
   }
 
-  /* GET /api/capabilities → 服务端能力声明（决策⑤：仅布尔与版本，不泄露凭据） */
+  /* GET /api/capabilities → 服务端能力声明（决策⑤ + v0.31.0 P1-4：configured 与最近真实状态分开，不泄露凭据） */
   if (path === '/api/capabilities' && ctx.method === 'GET') {
-    ctx.body = { code: 0, data: capabilities(llmConfigured(), webSearchConfigured(process.env).configured) };
+    ctx.body = { code: 0, data: capabilities(llmConfigured(), webSearchConfigured(process.env).configured, webSearchStatus().status) };
     return;
   }
 

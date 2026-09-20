@@ -29,7 +29,7 @@
 - 每次产品决策/改动在 `工作记录.md` **倒序**追加版本记录（v0.x.y + 日期 + 背景/改动/影响范围），不删除历史。
 - **ZCode 与产品评审交接（v0.26.2 修订：手动触发制）**：ZCode 每次开工前，除本文件和最新版工作记录，还要读取 [产品评审记录 Issue #5](https://github.com/lucashuang-an/MixTouring/issues/5) 的最新评审/决策评论。评审由用户在本对话主动发起（转述 ZCode 提交/PR/变更），Codex 只读评审后在本 Issue 追加以 `Codex 产品评审｜被审 SHA <完整 SHA>` 开头的结论；`需修复`／`阻断` 先处理，再做下一开发卡；修复后由用户转述新的 SHA 触发下一轮。产品/技术方案类决策（如双链路路由、任意地点规划）也以 Issue #5 评论为基准。不使用定时任务、自动工作流或 API 自动唤醒评审。不得在公开 Issue 发布凭据、个人数据或安全敏感复现细节。
 - 不主动创建额外说明性 `.md`；新上下文优先沉淀进本文件或工作记录。经用户确认的新产品方案与开发流程以 `产品方案_SoloTrip_v1.2.md`、`开发流程_SoloTrip_v1.2.md` 两份基准文档承载，勿再并行新建零散说明。
-- 当前无 LLM key 的环境一切功能照常（规则版闭环）；key 走 `server/.env`（gitignored）：`LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL`（OpenAI 兼容端点即可）。
+- 当前无 LLM key 的环境一切功能照常（规则版闭环）；key 走 `server/.env`（gitignored）：`LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL`（OpenAI 兼容端点即可）。G2.5 开放地点核验通道：OSM Nominatim（`OSM_NOMINATIM_BASE` 可覆盖自建镜像）→ Photon（photon.komoot.io）自动兜底，均无需 key；两者都不可达时按「核验通道不可用」诚实阻断。
 - LLM 用量逐任务记录在 `server/logs/llm-usage.jsonl`（gitignored），供算法优化分析。
 
 ## 2. 项目概览
@@ -141,3 +141,4 @@ MIXTOURING/
 - **淡季混搭未必省钱**：如实展示，AI 文案转向体验价值，勿美化数字。
 - **CSS 覆盖三坑**（desktop.css 实战）：页面 body 有内联样式只能 `!important` 覆盖；Tailwind v4 的 `-translate-x-*` 走独立 `translate` 属性；body 内 critical-layout 样式块晚于 head 里的 link，覆盖需提特异性而非靠级联顺序。
 - **智谱 glm-4-flash 约束遵循偏弱**：文案生成曾手写数字被守门拦截（拦截即浪费整次调用）；优化方向见工作记录 v0.11.1。
+- **fetch 自定义 header 禁止非 ASCII**（v0.31.0 实测）：User-Agent 含中文会抛 `ByteString` TypeError，把 Nominatim/Photon 两通道瞬间全断且难定位——自定义头一律纯英文。

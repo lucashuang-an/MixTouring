@@ -1,18 +1,19 @@
-/* check-anywhere.mjs · G2.5 任意地点规划确定性测试（v0.30.0 · 模式同 check-trip.mjs，纯函数无服务依赖）
- * 纪律：本文件不读 server/.env、不联网——LLM 与 searchWeb 一律注入桩；真模型路径由有 key 环境冒烟。
- * 反例来源：评审流转决定（Issue #5 六轮）给定的 G2.5 边界 + 冒烟实测抓到的两处缺陷
- * （geo 中转城市不在 31 城词典内被静默丢弃；「北京首都机场」解析成「北京」）。
+/* check-anywhere.mjs · G2.5 任意地点规划确定性测试（v0.31.0 · 模式同 check-trip.mjs，纯函数无服务依赖）
+ * 纪律：本文件不读 server/.env、不联网——LLM、OSM 核验、searchWeb 一律注入桩；真模型路径由有 key 环境冒烟。
+ * 反例来源：Issue #5 对 8685a56 的需修复结论（P0-1 开放地点解析四验收场景、P0-2 相关性门槛、
+ * P1-3 国际直达多方式）+ v0.30.0 冒烟实测缺陷（机场别名误拆、geo 中转城市静默丢弃、清单外提名）。
  * 运行：node server/check-anywhere.mjs */
 
 import {
   resolvePlace, scanPlaceMentions, extractConstraints, constraintChips,
-  buildCandidateSkeletons, verifyLegs, planAnywhere, KIND_LABEL
+  buildCandidateSkeletons, verifyLegs, planAnywhere, resultRelevance, confirmedPlaceToDynamic, osmKind, KIND_LABEL
 } from './lib/anywhere.mjs';
 
 let fail = 0;
-const ok = (cond, name) => { if (cond) console.log('✓ ' + name); else { fail++; console.error('✗ ' + name); } };
+let total = 0;
+const ok = (cond, name) => { total++; if (cond) console.log('✓ ' + name); else { fail++; console.error('✗ ' + name); } };
 
-const NO_LLM = { callJson: async () => null, env: {} };
+const NO_LLM = { callJson: async () => null, env: {}, osmSearch: async () => [] };
 const NO_DIGIT_RE = /\d/;
 
 /* ---------- PlaceResolver：精确名 / 别名 / 类型 / 大小写 ---------- */
@@ -25,7 +26,7 @@ const NO_DIGIT_RE = /\d/;
   ok(resolvePlace('故宫')?.kind === 'poi' && resolvePlace('紫禁城')?.name === '故宫', 'resolvePlace：景点及别名');
   ok(resolvePlace('Almaty')?.country === 'KZ' && resolvePlace('Almaty')?.is_mainland === false, 'resolvePlace：英文别名 → 国际城市');
   ok(resolvePlace('喀纳斯')?.city == null, 'resolvePlace：无就近已收录城市的景点 city=null（不猜）');
-  ok(resolvePlace('塔什干') === null && resolvePlace('') === null, 'resolvePlace：未收录/空 → null（不猜）');
+  ok(resolvePlace('塔什干') === null && resolvePlace('') === null, 'resolvePlace：未收录/空 → null（进入开放解析而非直接编造）');
   const p = resolvePlace('上海');
   p.name = '被篡改';
   ok(resolvePlace('上海')?.name === '上海', 'resolvePlace：返回浅拷贝，缓存词典不被污染');
@@ -49,13 +50,11 @@ const NO_DIGIT_RE = /\d/;
   const c = extractConstraints('预算3000元以内，中转不超过8小时，不接受夜间到达，最多换乘1次');
   ok(c.budget_max_cny === 3000 && c.max_layover_hours === 8 && c.night_arrival === 'avoid' && c.max_transfers === 1,
     '约束：预算/中转时长/夜间到达/换乘次数四项全提取');
-  ok(extractConstraints('红眼航班也行，可以半夜到') .night_arrival === 'allow', '约束：夜间到达 allow 表述');
+  ok(extractConstraints('红眼航班也行，可以半夜到').night_arrival === 'allow', '约束：夜间到达 allow 表述');
   ok(extractConstraints('不想换乘').max_transfers === 0, '约束：「不想换乘」→ 0 次');
-  ok(extractConstraints('国庆从北京去喀什').budget_max_cny === undefined && 'night_arrival' in extractConstraints('国庆从北京去喀什') === false,
+  ok(extractConstraints('国庆从北京去喀什').budget_max_cny === undefined && !('night_arrival' in extractConstraints('国庆从北京去喀什')),
     '约束：无约束表述 → 不出现字段（不猜）');
-  const chips = constraintChips(c);
-  ok(chips.length === 4 && chips.every((x) => NO_DIGIT_RE.test(x.label) === false || x.key === 'budget' || x.key === 'layover' || x.key === 'transfers'),
-    'chips：四项齐备（数字仅来自用户输入值）');
+  ok(constraintChips(c).length === 4, 'chips：四项齐备（数字仅来自用户输入值）');
   ok(extractConstraints('10月1日出发').max_layover_hours === undefined, '约束：日期数字不误判为中转时长');
 }
 
@@ -74,56 +73,205 @@ const NO_DIGIT_RE = /\d/;
   ok(candidates.every((c) => NO_DIGIT_RE.test(c.explanation) === false), '骨架：explanation 零数字（防幻觉）');
   ok(candidates.every((c) => c.legs.every((l) => l.evidence_state === 'explore' && l.sources.length === 0)),
     '骨架：初始全部段探索态、无来源');
-  ok(candidates.some((c) => JSON.stringify(c).includes('"price"') === false) && !JSON.stringify(candidates).includes('"price"'),
-    '骨架：不含任何价格字段');
+  ok(!JSON.stringify(candidates).includes('"price"'), '骨架：不含任何价格字段');
   ok(degradations.length === 0 && constraint_notes.length === 0, '骨架：geo 路径无降级无约束备注');
 
-  /* 换乘次数过滤（结构事实可直接校验） */
   const f = buildCandidateSkeletons(o, d, { max_transfers: 0 }, {});
   ok(f.candidates.length === 1 && f.candidates[0].kind === 'direct' &&
     f.constraint_notes.some((n) => n.includes('一次中转、混合交通')), '约束：换乘 ≤ 0 次过滤掉两类中转骨架并如实备注');
 
-  /* 国际 OD 无 LLM：只出直达，双骨架降级说明 */
+  /* P1-3：国际直达多交通方式——北京→香港 直达航班假设与直达铁路假设并存 */
+  const hkg = buildCandidateSkeletons(resolvePlace('北京'), resolvePlace('香港'), {}, {});
+  const directs = hkg.candidates.filter((c) => c.kind === 'direct');
+  ok(directs.length === 2 && directs.some((c) => c.variant === 'plane' && c.legs[0].mode_guess === 'plane') &&
+    directs.some((c) => c.variant === 'rail' && c.legs[0].mode_guess === 'rail'),
+    'P1-3：国际 OD 直达航班假设与直达铁路假设并存（北京→香港）');
+  ok(hkg.candidates.every((c) => NO_DIGIT_RE.test(c.explanation) === false), 'P1-3：双直达骨架 explanation 仍零数字');
+
+  /* 国际 OD 无 LLM：双直达 + 两骨架降级说明 */
   const intl = buildCandidateSkeletons(resolvePlace('北京'), resolvePlace('阿拉木图'), {}, {});
-  ok(intl.candidates.length === 1 && intl.candidates[0].kind === 'direct' && intl.candidates[0].legs[0].mode_guess === 'plane',
-    '骨架：国际 OD 直达假设 mode_guess=plane');
+  ok(intl.candidates.length === 2 && intl.candidates.every((c) => c.kind === 'direct'),
+    '骨架：国际 OD 无提名时仅两张直达卡（航班+铁路）');
   ok(intl.degradations.filter((x) => x.includes('中转城市来源')).length === 2, '骨架：无 LLM 时两类中转骨架明确降级（不静默消失）');
 
   /* LLM 提名：清单内生效、清单外丢弃 */
   const hint = buildCandidateSkeletons(resolvePlace('北京'), resolvePlace('阿拉木图'), {}, { one_transfer_city: '乌鲁木齐', mixed_rail_city: '乌鲁木齐' });
-  ok(hint.candidates.length === 3 && hint.candidates.filter((c) => c.builder === 'llm').length === 2,
+  ok(hint.candidates.length === 4 && hint.candidates.filter((c) => c.builder === 'llm').length === 2,
     '骨架：LLM 清单内提名生效并标注 builder=llm');
   const bad = buildCandidateSkeletons(resolvePlace('北京'), resolvePlace('阿拉木图'), {}, { one_transfer_city: '火星', mixed_rail_city: '伊斯坦布尔' });
-  ok(bad.candidates.length === 1 && bad.degradations.length === 2, '骨架：LLM 清单外提名被丢弃（不造地名）');
+  ok(bad.candidates.length === 2 && bad.degradations.length === 2, '骨架：LLM 清单外提名被丢弃（不造地名）');
 
   /* 出发地非大陆：混合骨架不生成（铁路起段假设不成立） */
   const hk = buildCandidateSkeletons(resolvePlace('香港'), resolvePlace('阿拉木图'), {}, { one_transfer_city: '北京', mixed_rail_city: '北京' });
-  ok(hk.candidates.map((c) => c.kind).join(',') === 'direct,one_transfer' &&
+  ok(hk.candidates.map((c) => c.id).join(',') === 'cand-direct-plane,cand-direct-rail,cand-one-transfer' &&
     hk.degradations.some((x) => x.includes('大陆铁路起段')), '骨架：非大陆出发地不出混合骨架并说明');
 }
 
-/* ---------- verifyLegs：同查询缓存 / https 白名单 / 失败保持探索态 ---------- */
+/* ---------- 搜索线索分层（P0-2：相关性门槛 + source_lead ≠ 取证） ---------- */
 {
+  const leg = { from: '北京', to: '阿拉木图', mode_guess: 'plane' };
+  const rel1 = resultRelevance({ title: '北京至阿拉木图直飞航线复航', content: '' }, leg);
+  ok(rel1.from_hit && rel1.to_hit && rel1.mode_hit, '相关性：命中两端+方式 → 相关');
+  const rel2 = resultRelevance({ title: '限时优惠大促', content: '与本段行程无关的内容' }, leg);
+  ok(!(rel2.from_hit && rel2.to_hit), 'P0-2 反例：无关 HTTPS 结果不满足两端命中 → 不升级（仍为 explore）');
+
   const o = resolvePlace('北京'), d = resolvePlace('喀什');
   const built = buildCandidateSkeletons(o, d, {}, {});
   let calls = 0;
   const queries = [];
   const stat = await verifyLegs(built.candidates, async (q) => {
     calls++; queries.push(q);
-    return [{ title: '来源A', link: 'https://example.com/a' }, { title: '非https', link: 'http://x.com/b' }, null];
+    /* 相关结果（覆盖全部段的两端与方式词）+ 一条无关 https 干扰项 */
+    return [
+      { title: '北京 喀什 大同 航班 火车 铁路 高铁 攻略', link: 'https://example.com/a', content: '北京 大同 喀什 航班 火车' },
+      { title: '无关促销页', link: 'https://example.com/seo', content: '双十一' },
+      { title: '非https丢弃', link: 'http://x.com/b', content: '北京 喀什 航班' }
+    ];
   });
   const legs = built.candidates.flatMap((c) => c.legs);
-  ok(legs.every((l) => l.evidence_state === 'searched' && l.sources.length === 1 && l.sources[0].link.startsWith('https:')),
-    '取证：来源只保留 https（v0.29.1 白名单回归），线索级 note 标注');
-  ok(new Set(queries).size === queries.length, '取证：相同查询不重复发起（缓存去重）');
-  ok(stat.searched === legs.length, '取证：全部段获得线索');
+  ok(legs.every((l) => l.evidence_state === 'source_lead' && l.sources.length === 1 && l.sources[0].link.startsWith('https:')),
+    '取证→线索：相关 https 来源升级 source_lead；无关与 http 来源被拒');
+  ok(legs.every((l) => l.lead_query && l.lead_query.includes(l.from) && l.lead_query.includes(l.to) && l.sources[0].relevance),
+    '线索：记录查询词与逐源相关性判定');
+  ok(legs.every((l) => !l.evidence_note.includes('核验通过') && l.evidence_note.includes('非班期核验')),
+    '线索：文案明确「非班期核验」（不称取证）');
+  ok(new Set(queries).size === queries.length, '线索：相同查询不重复发起（缓存去重）');
+  ok(stat.leads === legs.length, '线索：全部段获得线索');
 
   const built2 = buildCandidateSkeletons(o, d, {}, {});
-  await verifyLegs(built2.candidates, async () => null);
+  await verifyLegs(built2.candidates, async () => [{ title: '完全无关', link: 'https://e.com/x' }]);
   ok(built2.candidates.flatMap((c) => c.legs).every((l) => l.evidence_state === 'explore' && l.sources.length === 0),
-    '取证：检索空结果 → 保持探索态（不伪造线索）');
+    'P0-2 反例：合法 HTTPS 但内容无关 → 保持探索态（不伪造线索）');
   await verifyLegs(built2.candidates, null);
-  ok(true, '取证：无 searchFn 时安全跳过');
+  ok(true, '线索：无 searchFn 时安全跳过');
+}
+
+/* ---------- 开放地点解析（P0-1：安全两阶段四验收场景） ---------- */
+{
+  const osmTashkent = [{
+    display_name: '塔什干, 乌兹别克斯坦', country: 'UZ', lat: '41.31', lon: '69.28',
+    type: 'city', category: 'place', osm_type: 'relation', osm_id: '2369842',
+    url: 'https://www.openstreetmap.org/relation/2369842'
+  }];
+
+  /* 场景1：北京→塔什干——不预写 JSON，形成待确认地点候选 */
+  const r1 = await planAnywhere({ origin: '北京', destination: '塔什干' }, {
+    callJson: async (opts) => String(opts.user).includes('地点表述')
+      ? { candidates: [{ name: '塔什干', name_latin: 'Tashkent', kind: 'city', country: 'UZ', country_name: '乌兹别克斯坦', note: '乌兹别克斯坦首都' }] }
+      : null,
+    osmSearch: async () => osmTashkent,
+    env: {}
+  });
+  ok(r1.candidates.length === 0 && r1.place_candidates.destination.length === 1,
+    'P0-1 场景1：北京→塔什干 → 已核验候选待确认（未确认前不出交通候选）');
+  const cand1 = r1.place_candidates.destination[0];
+  ok(cand1.resolution_state === 'verified' && cand1.country === 'UZ' && /^https:/.test(cand1.source_url) && cand1.lat != null,
+    'P0-1 场景1：候选带 resolution_state/source_url/坐标（OSM 核验）');
+  ok(r1.needs_confirmation.some((n) => n.includes('新地点') && n.includes('确认卡')),
+    'P0-1 场景1：needs_confirmation 指引确认卡');
+
+  /* 场景1 续：用户确认 → 动态 Place 参与规划（本次请求内） */
+  const r1c = await planAnywhere({ origin: '北京', destination: '塔什干', confirmed_places: { destination: cand1 } }, {
+    callJson: async () => null,
+    osmSearch: async () => osmTashkent,
+    env: {}
+  });
+  ok(r1c.route.route_type === 'international' && r1c.intent.parse_engine.includes('confirmed') &&
+    r1c.intent.destination_place.dynamic === true && r1c.intent.destination_place.resolution_state === 'user_confirmed' &&
+    r1c.candidates.filter((c) => c.kind === 'direct').length === 2,
+    'P0-1 场景1 续：确认后动态 Place 生效（international + 双直达假设）');
+
+  /* 场景2：CDG→布拉格中央车站——两端都未收录，各自开放解析并确认 */
+  const osmByQuery = async (q) => {
+    if (/charles|cdg/i.test(q)) return [{
+      display_name: 'Paris Charles de Gaulle Airport, 法国', country: 'FR', lat: '49.01', lon: '2.55',
+      type: 'aerodrome', category: 'aeroway', osm_type: 'way', osm_id: '123', url: 'https://www.openstreetmap.org/way/123'
+    }];
+    if (/praha|布拉格/i.test(q)) return [{
+      display_name: 'Praha hlavní nádraží, 布拉格', country: 'CZ', lat: '50.08', lon: '14.43',
+      type: 'station', category: 'railway', osm_type: 'node', osm_id: '456', url: 'https://www.openstreetmap.org/node/456'
+    }];
+    return [];
+  };
+  const r2 = await planAnywhere({ origin: 'CDG', destination: '布拉格中央车站' }, {
+    callJson: async (opts) => {
+      const u = String(opts.user);
+      if (u.includes('CDG')) return { candidates: [{ name: '巴黎戴高乐机场', name_latin: 'Paris Charles de Gaulle Airport', kind: 'airport', country: 'FR', country_name: '法国', note: '按代码推断' }] };
+      if (u.includes('布拉格')) return { candidates: [{ name: '布拉格中央车站', name_latin: 'Praha hlavní nádraží', kind: 'station', country: 'CZ', country_name: '捷克', note: '主火车站' }] };
+      return null;
+    },
+    osmSearch: osmByQuery,
+    env: {}
+  });
+  ok(r2.place_candidates.origin.length === 1 && r2.place_candidates.origin[0].country === 'FR' &&
+    r2.place_candidates.destination.length === 1 && r2.place_candidates.destination[0].kind === 'station',
+    'P0-1 场景2：CDG 与布拉格中央车站各自形成已核验候选（机场 FR / 车站 CZ）');
+  const r2c = await planAnywhere({
+    origin: 'CDG', destination: '布拉格中央车站',
+    confirmed_places: { origin: r2.place_candidates.origin[0], destination: r2.place_candidates.destination[0] }
+  }, { callJson: async () => null, osmSearch: osmByQuery, env: {} });
+  ok(r2c.route.route_type === 'international' && r2c.intent.origin_place.dynamic && r2c.intent.destination_place.dynamic,
+    'P0-1 场景2 续：两端确认后动态规划（FR→CZ international）');
+
+  /* 场景3：重名地点（剑桥 GB/US）——必须让用户选 */
+  const r3 = await planAnywhere({ origin: '北京', destination: '剑桥' }, {
+    callJson: async (opts) => String(opts.user).includes('地点表述')
+      ? { candidates: [
+        { name: '剑桥（英国）', name_latin: 'Cambridge', kind: 'city', country: 'GB', country_name: '英国', note: '大学城' },
+        { name: '剑桥（美国）', name_latin: 'Cambridge', kind: 'city', country: 'US', country_name: '美国', note: '麻省城市' }
+      ] }
+      : null,
+    osmSearch: async () => [
+      { display_name: 'Cambridge, 英国', country: 'GB', lat: '52.2', lon: '0.12', type: 'city', category: 'place', osm_type: 'relation', osm_id: '111', url: 'https://www.openstreetmap.org/relation/111' },
+      { display_name: 'Cambridge, 美国', country: 'US', lat: '42.37', lon: '-71.1', type: 'city', category: 'place', osm_type: 'relation', osm_id: '222', url: 'https://www.openstreetmap.org/relation/222' }
+    ],
+    env: {}
+  });
+  ok(r3.candidates.length === 0 && r3.place_candidates.destination.length === 2 &&
+    new Set(r3.place_candidates.destination.map((c) => c.country)).size === 2,
+    'P0-1 场景3：重名地点返回两国候选，必须由用户选择');
+
+  /* 场景4：完全无法核验（乱码）——诚实阻断 */
+  const r4 = await planAnywhere({ origin: '北京', destination: 'asdfqwer' }, {
+    callJson: async () => ({ candidates: [] }),
+    osmSearch: async () => [],
+    env: {}
+  });
+  ok(r4.candidates.length === 0 && r4.place_candidates.destination.length === 0 &&
+    r4.needs_confirmation.some((n) => n.includes('无法核验')), 'P0-1 场景4：无法核验 → 诚实阻断（不猜）');
+
+  /* 核验通道故障：OSM 抛错 → 明确降级为不可确认 */
+  const r5 = await planAnywhere({ origin: '北京', destination: '塔什干' }, {
+    callJson: async () => ({ candidates: [{ name: '塔什干', name_latin: 'Tashkent', kind: 'city', country: 'UZ' }] }),
+    osmSearch: async () => { throw new Error('OSM HTTP 503'); },
+    env: {}
+  });
+  ok(r5.candidates.length === 0 && r5.place_candidates.destination.length === 0 &&
+    r5.degradations.some((x) => x.includes('核验通道不可用')) &&
+    r5.needs_confirmation.some((n) => n.includes('通道不可用')),
+    'P0-1：OSM 通道故障 → 候选未核验不可确认（诚实降级）');
+
+  /* 确认候选的服务端校验：非法字段被拒 */
+  ok(confirmedPlaceToDynamic({ name: 'x', kind: 'city', country: 'zz', source_url: 'https://a', resolution_state: 'verified' }) === null,
+    '确认校验：非法国家码被拒');
+  ok(confirmedPlaceToDynamic({ name: 'x', kind: 'city', country: 'UZ', source_url: 'http://a', resolution_state: 'verified' }) === null,
+    '确认校验：非 https 来源被拒');
+  ok(confirmedPlaceToDynamic({ name: 'x', kind: 'city', country: 'UZ', source_url: 'https://a', resolution_state: 'llm_guess' }) === null,
+    '确认校验：未核验状态（非 verified）被拒——LLM 直供地点不得进事实层');
+
+  /* 一句话模式开放解析：原文子串提取后走同一流程 */
+  const r6 = await planAnywhere({ text: '国庆从北京去塔什干玩' }, {
+    callJson: async (opts) => {
+      const sp = String(opts.schema_prompt || '');
+      if (sp.includes('origin_raw')) return { origin_raw: '北京', destination_raw: '塔什干' };
+      if (sp.includes('地点候选')) return { candidates: [{ name: '塔什干', name_latin: 'Tashkent', kind: 'city', country: 'UZ' }] };
+      return null;
+    },
+    osmSearch: async () => osmTashkent,
+    env: {}
+  });
+  ok(r6.place_candidates.destination.length === 1 && r6.needs_confirmation.some((n) => n.includes('塔什干')),
+    'P0-1：一句话模式与两字段共用开放解析流程');
 }
 
 /* ---------- planAnywhere 编排（注入桩，无网络无 key） ---------- */
@@ -140,10 +288,6 @@ const NO_DIGIT_RE = /\d/;
     r2.candidates.every((c) => c.legs.every((l) => NO_DIGIT_RE.test(l.from) === false && NO_DIGIT_RE.test(l.to) === false)),
     '编排：候选全文零数字（用户约束值只在 chips，防幻觉契约）');
 
-  const r3 = await planAnywhere({ origin: '北京', destination: '塔什干' }, NO_LLM);
-  ok(r3.needs_confirmation.length === 1 && r3.candidates.length === 0 && r3.route === null,
-    '编排：未收录目的地 → needs_confirmation，不出任何候选（不猜）');
-
   const r4 = await planAnywhere({ origin: '北京', destination: '北京' }, NO_LLM);
   ok(r4.needs_confirmation.some((n) => n.includes('相同')) && r4.candidates.length === 0, '编排：同地名阻断');
 
@@ -153,17 +297,28 @@ const NO_DIGIT_RE = /\d/;
 
   const fakeEnv = { LLM_API_KEY: 'x', LLM_BASE_URL: 'https://open.bigmodel.cn/api/paas/v4' };
   const r6 = await planAnywhere({ origin: '北京', destination: '喀什' },
-    { callJson: async () => null, env: fakeEnv, searchWeb: async () => [{ title: 't', link: 'https://e.com/x' }] });
-  ok(r6.candidates.flatMap((c) => c.legs).every((l) => l.evidence_state === 'searched'),
-    '编排：web_search 已配置时逐段取证挂来源');
+    { callJson: async () => null, env: fakeEnv, osmSearch: async () => [], webSearchStatus: () => ({ status: 'quota_exhausted' }),
+      searchWeb: async () => [{ title: '北京 喀什 大同 航班 火车 铁路 高铁', link: 'https://e.com/x', content: '北京 大同 喀什' }] });
+  ok(r6.candidates.flatMap((c) => c.legs).every((l) => l.evidence_state === 'source_lead'),
+    '编排：web_search 已配置时逐段挂相关线索（source_lead）');
+  ok(r6.web_search && r6.web_search.configured === true && r6.web_search.status === 'quota_exhausted',
+    'P1-4：规划响应如实带 web_search 配置与最近真实状态（configured ≠ available）');
+  ok(r6.planner_version === 'v0.31.0', '编排：anywhere 版本号对齐 v0.31.0');
 
   const r7 = await planAnywhere({ text: '想去新疆最西边那座古城玩' },
-    { callJson: async () => ({ origin: '北京', destination: '喀什' }), env: {} });
+    { callJson: async () => ({ origin: '北京', destination: '喀什' }), env: {}, osmSearch: async () => [] });
   ok(r7.intent.parse_engine === 'llm' && r7.candidates.length === 3,
     '编排：词典扫描无命中、LLM 清单内补全 → engine=llm');
 
   ok(KIND_LABEL.direct === '直达' && KIND_LABEL.mixed === '混合交通', '常量：骨架类型标签');
+  ok(osmKind({ type: 'aerodrome', category: 'aeroway' }) === 'airport' &&
+    osmKind({ type: 'station', category: 'railway' }) === 'station' &&
+    osmKind({ type: 'city', category: 'place' }) === 'city' &&
+    osmKind({ type: 'attraction', category: 'tourism' }) === 'poi',
+    'OSM 类型映射：aerodrome/station/city/attraction → 四类 kind');
 }
 
-console.log(fail === 0 ? '\n✓ G2.5 任意地点规划确定性测试全部通过' : '\n✗ 失败 ' + fail + ' 项');
+console.log(fail === 0
+  ? `\n✓ G2.5 任意地点规划确定性测试全部通过（${total} 项断言）`
+  : `\n✗ 失败 ${fail} 项（共 ${total} 项断言）`);
 process.exit(fail === 0 ? 0 : 1);

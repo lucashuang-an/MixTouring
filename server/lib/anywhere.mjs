@@ -1,20 +1,25 @@
-/* lib/anywhere.mjs · G2.5 AI 任意地点规划（首卡，v0.30.0）
- * 评审给定边界（Issue #5 六轮复审流转决定）：
- *   PlaceResolver 扩展（城市/机场/车站/景点及别名）→ 约束化 Intent（预算/最长中转时长/夜间到达/换乘次数）
- *   → CandidateBuilder 生成直达/一次中转/混合交通三类 candidate_hypothesis → 逐段 searchWeb 取证
- *   → 无证据段保持探索态；不得提前进入 G3 的多玩一城/住宿/私人保存/社区。
- * 防幻觉契约：AI 输出只分 intent / candidate_hypothesis / explanation，绝不写入已验证事实；
- *   一切候选均为待验证假设，骨架不含未经取证的数字（用户自输的约束值除外）；
- *   中转城市可由 LLM 提名，但必须从已收录城市清单中选择（清单外一律丢弃，不造地名）。
- * 诚实边界：词典（places.json 名称+别名）与 LLM 辅助都识别不了的地点 → needs_confirmation（不猜）；
- *   web_search 不可用或调用失败 → 明确降级说明，全部段保持探索态。 */
+/* lib/anywhere.mjs · G2.5 任意地点规划（v0.31.0 修复卡）
+ * 评审驱动（Issue #5 对 8685a56 的需修复结论）：
+ *   P0-1 开放地点解析（安全两阶段）：词典未命中 → LLM 只提标准化候选（不进事实层）
+ *        → OpenStreetMap Nominatim 可核验来源确认（国家/类型/坐标/稳定标识/来源 URL）
+ *        → 用户确认后生成「本次请求内」动态 Place（带 resolution_state/source_url/resolved_at）
+ *        → 未确认前禁止生成交通候选；无法核验则诚实阻断。两字段与一句话共用同一流程。
+ *   P0-2 线索与事实分层：搜索命中只升为 source_lead（搜索线索），须同时命中该段两端地点与交通方式；
+ *        候选仍是假设；只有后续结构化事实才进入既有 dated_partial/dated_verified 证据链。
+ *   P1-3 国际直达多交通方式：不再把 international 等同航班——直达航班假设与直达铁路假设并存，取证后再保留成立者。
+ *   P1-4 能力如实化：规划响应带本次 web_search 配置与最近真实状态（configured ≠ available）。
+ * 防幻觉契约（延续 v0.30.0）：候选一律 candidate_hypothesis、无未取证数字；LLM 提名只从清单选；
+ *   识别不了、核验不了 → 明确阻断，不猜。 */
 
-import { callJson as callJsonDefault, searchWeb as searchWebDefault } from './llm.mjs';
+import { callJson as callJsonDefault, searchWeb as searchWebDefault, webSearchStatus as webSearchStatusDefault } from './llm.mjs';
 import { assignFromTo } from './parse.mjs';
-import { loadPlaces, resolveRoute, webSearchConfigured } from './trip-service.mjs';
+import { loadPlaces, webSearchConfigured } from './trip-service.mjs';
 import { candidatesBetween } from '../../pipeline/lib/geo-skill.mjs';
+import { ANYWHERE_PLANNER_VERSION } from './versions.mjs';
 
-export const ANYWHERE_VERSION = 'v0.30.0';
+export const ANYWHERE_VERSION = ANYWHERE_PLANNER_VERSION;
+
+const PLACE_KINDS = ['city', 'airport', 'station', 'poi'];
 
 /* ---------- PlaceResolver（词典精确名 + 别名；拉丁字母不区分大小写；返回浅拷贝防缓存污染） ---------- */
 
@@ -136,6 +141,191 @@ function sanitizeConstraints(raw) {
   return c;
 }
 
+/* ---------- 路由判定（词典与动态地点对象共用同一规则，与 trip-service.resolveRoute 口径一致） ---------- */
+
+function isDomesticPair(o, d) {
+  const dom = (p) => p.country === 'CN' && p.is_mainland === true;
+  return !!(o && d && dom(o) && dom(d));
+}
+
+export function routeTypeOf(o, d) {
+  if (!o || !d) return 'needs_confirmation';
+  return isDomesticPair(o, d) ? 'domestic' : 'international';
+}
+
+/* ---------- 开放地点解析（P0-1 安全两阶段） ---------- */
+
+function llmPlaceCandidatesPrompt() {
+  return '你是 MixTouring 的开放地点候选生成器。用户给出一个未收录的地点表述，请提出最多 3 个标准化地点候选，' +
+    '用于后续地理编码核验。只输出 JSON 对象：{"candidates":[{"name":"规范中文名","name_latin":"用于地理编码的拉丁字母或当地语言名",' +
+    '"kind":"city|airport|station|poi","country":"ISO 3166-1 alpha-2 大写两字母（不确定置 null）",' +
+    '"country_name":"中文国家/地区名（不确定置 null）","note":"一句话依据（不得出现任何数字）"}]}。' +
+    '不是地点、乱码或过于含糊时返回 {"candidates":[]}。绝不编造：所有不确定字段置 null。';
+}
+
+/** OSM Nominatim 地理编码（可核验地点来源：国家/类型/坐标/稳定标识 + 来源 URL）。
+ * 遵守其用量政策：低频调用 + 自识别 User-Agent；基址可用 OSM_NOMINATIM_BASE 覆盖（自建镜像/代理）。
+ * 注：部分网络环境 Nominatim 不可达（如国内默认线路超时），由 geocodeDefault 落到 Photon 第二通道。 */
+export async function osmSearch(query, { limit = 3, timeoutMs = 8000 } = {}) {
+  const base = (process.env.OSM_NOMINATIM_BASE || 'https://nominatim.openstreetmap.org').replace(/\/+$/, '');
+  const url = base + '/search?' + new URLSearchParams({
+    q: String(query).slice(0, 120), format: 'jsonv2', addressdetails: '1',
+    limit: String(limit), accept_language: 'zh'
+  });
+  const res = await fetch(url, {
+    headers: { 'User-Agent': 'MixTouring/dev (+https://github.com/lucashuang-an/MixTouring; place verification)' },
+    signal: AbortSignal.timeout(timeoutMs)
+  });
+  if (!res.ok) throw new Error('OSM HTTP ' + res.status);
+  const arr = await res.json();
+  return (Array.isArray(arr) ? arr : []).map((r) => ({
+    display_name: r.display_name || '',
+    country: String((r.address && r.address.country_code) || '').toUpperCase(),
+    lat: r.lat != null ? String(r.lat) : null,
+    lon: r.lon != null ? String(r.lon) : null,
+    type: r.type || null,
+    category: r.category || r.class || null,
+    osm_type: r.osm_type || null,
+    osm_id: r.osm_id != null ? String(r.osm_id) : null,
+    url: r.osm_type && r.osm_id != null ? 'https://www.openstreetmap.org/' + r.osm_type + '/' + r.osm_id : null,
+    source_name: 'OpenStreetMap (Nominatim)'
+  }));
+}
+
+/** Photon（Komoot 的 OSM 地理编码服务）：Nominatim 不可达时的第二核验通道，同样返回稳定 OSM 标识。 */
+export async function photonSearch(query, { limit = 3, timeoutMs = 8000 } = {}) {
+  const url = 'https://photon.komoot.io/api?' + new URLSearchParams({ q: String(query).slice(0, 120), limit: String(limit) });
+  const res = await fetch(url, {
+    headers: { 'User-Agent': 'MixTouring/dev (+https://github.com/lucashuang-an/MixTouring; place verification)' },
+    signal: AbortSignal.timeout(timeoutMs)
+  });
+  if (!res.ok) throw new Error('Photon HTTP ' + res.status);
+  const body = await res.json();
+  const osmTypeMap = { R: 'relation', N: 'node', W: 'way' };
+  return (body.features || []).map((f) => {
+    const p = f.properties || {};
+    const osmType = osmTypeMap[p.osm_type] || null;
+    const osmId = p.osm_id != null ? String(p.osm_id) : null;
+    const coords = f.geometry && Array.isArray(f.geometry.coordinates) ? f.geometry.coordinates : null;
+    return {
+      display_name: [p.name, p.city, p.state, p.country].filter(Boolean).join(', '),
+      country: String(p.countrycode || '').toUpperCase(),
+      lat: coords ? String(coords[1]) : null,
+      lon: coords ? String(coords[0]) : null,
+      type: p.osm_value || p.type || null,
+      category: p.osm_key || null,
+      osm_type: osmType, osm_id: osmId,
+      url: osmType && osmId ? 'https://www.openstreetmap.org/' + osmType + '/' + osmId : null,
+      source_name: 'OpenStreetMap (Photon)'
+    };
+  });
+}
+
+/** 地点核验默认通道：Nominatim 优先，超时/失败落到 Photon；两者都失败才判定通道不可用。 */
+export async function geocodePlace(query, opts) {
+  try {
+    const r = await osmSearch(query, opts);
+    if (r.length) return r;
+  } catch { /* 落第二通道 */ }
+  return await photonSearch(query, opts);
+}
+
+export function osmKind(r) {
+  const t = [r.type, r.category].filter(Boolean).join(' ').toLowerCase();
+  if (/station|halt|tram_stop|railway/.test(t)) return 'station';
+  if (/aerodrome|airport/.test(t)) return 'airport';
+  if (/city|town|village|municipality|suburb|administrative|county|state|province/.test(t)) return 'city';
+  return 'poi';
+}
+
+/**
+ * 开放地点解析：LLM 候选（或无 LLM 时按原始表述）→ OSM 核验。
+ * @returns {Promise<{candidates, blocked_reason?}>} candidates 为已核验（resolution_state='verified'）；
+ *   blocked_reason: 'source_unavailable'（核验通道故障）| 'no_match'（无候选且无核验结果）——都诚实阻断。
+ */
+async function openResolvePlace(rawName, contextText, deps, degradations) {
+  const callJson = deps.callJson || callJsonDefault;
+  const osm = deps.osmSearch || geocodePlace;
+  const raw = String(rawName || '').trim();
+  if (!raw) return { candidates: [], blocked_reason: 'no_match' };
+
+  let llmCands = [];
+  if (callJson) {
+    const out = await callJson({
+      schema_prompt: llmPlaceCandidatesPrompt(),
+      user: '地点表述：「' + raw + '」' + (contextText ? '（出行上下文：' + String(contextText).slice(0, 120) + '）' : ''),
+      kind: 'anywhere'
+    });
+    if (out && Array.isArray(out.candidates)) {
+      llmCands = out.candidates.filter((c) => c && typeof c.name === 'string' && c.name.trim());
+    }
+  }
+  /* 无 LLM（未配 key）也能走核验：按原始表述直接地理编码 */
+  const primary = (llmCands[0] && (llmCands[0].name_latin || llmCands[0].name)) || raw;
+
+  let osmResults = null;
+  try {
+    osmResults = await osm(primary);
+  } catch {
+    osmResults = null;
+  }
+  if (osmResults === null) {
+    degradations.push('地点「' + raw + '」的外部来源核验通道不可用（OSM Nominatim/Photon 均失败）：候选未核验，暂不能确认（诚实阻断，不猜）');
+    return { candidates: [], blocked_reason: 'source_unavailable' };
+  }
+  if (!osmResults.length) {
+    degradations.push('地点「' + raw + '」未找到可核验的外部来源：无法生成可确认候选（不猜）');
+    return { candidates: [], blocked_reason: 'no_match' };
+  }
+  const seen = new Set();
+  const candidates = [];
+  const usedLlm = llmCands.length > 0;
+  for (const r of osmResults) {
+    if (!r.url || seen.has(r.url)) continue;
+    seen.add(r.url);
+    const llmHit = usedLlm ? (llmCands.find((c) => c.country == null || c.country === r.country) || null) : null;
+    candidates.push({
+      name: (llmHit && llmHit.name) || r.display_name.split(',')[0].trim() || raw,
+      name_latin: (llmHit && llmHit.name_latin) || null,
+      kind: (llmHit && PLACE_KINDS.includes(llmHit.kind) ? llmHit.kind : osmKind(r)),
+      country: r.country || null,
+      country_name: (llmHit && llmHit.country_name) || null,
+      lat: r.lat, lon: r.lon,
+      source_url: r.url,
+      source_name: r.source_name || 'OpenStreetMap',
+      resolution_state: 'verified',
+      note: (llmHit && llmHit.note) ||
+        (usedLlm
+          ? '由 OpenStreetMap 地理编码核验（国家/类型/坐标与稳定标识）'
+          : '按原始表述直接核验（AI 候选不可用）：名称为字面匹配，请核对国家与类型后再确认'),
+      resolved_at: new Date().toISOString()
+    });
+  }
+  return { candidates };
+}
+
+/** 用户确认的候选 → 本次请求内动态 Place（服务端字段校验：仅接受已核验、https 来源、合法国家码）。 */
+export function confirmedPlaceToDynamic(cand) {
+  if (!cand || typeof cand !== 'object') return null;
+  const name = typeof cand.name === 'string' && cand.name.trim() ? cand.name.trim() : null;
+  const kind = PLACE_KINDS.includes(cand.kind) ? cand.kind : null;
+  const country = typeof cand.country === 'string' && /^[A-Z]{2}$/.test(cand.country) ? cand.country : null;
+  const source = typeof cand.source_url === 'string' && /^https:/.test(cand.source_url) ? cand.source_url : null;
+  if (!name || !kind || !country || !source || cand.resolution_state !== 'verified') return null;
+  return {
+    name, kind, country,
+    is_mainland: country === 'CN', /* 港澳台在 OSM/LLM 侧为独立国家/地区码，不会误落 CN */
+    tz: null, city: null, aliases: [],
+    lat: cand.lat != null ? String(cand.lat) : null,
+    lon: cand.lon != null ? String(cand.lon) : null,
+    resolution_state: 'user_confirmed',
+    source_url: source, source_name: cand.source_name || 'OpenStreetMap',
+    resolved_at: cand.resolved_at || new Date().toISOString(),
+    dynamic: true,
+    matched_via: 'confirmed'
+  };
+}
+
 /* ---------- CandidateBuilder：三类纯交通骨架（candidate_hypothesis，无未取证数字） ---------- */
 
 function newLeg(seq, fromPlace, toPlace, modeGuess) {
@@ -145,15 +335,16 @@ function newLeg(seq, fromPlace, toPlace, modeGuess) {
     to: toPlace.name, to_kind: toPlace.kind,
     via: null,
     mode_guess: modeGuess, /* 假设的交通方式（guess：待取证确认，非事实） */
-    evidence_state: 'explore',
+    evidence_state: 'explore', /* explore | source_lead（P0-2：搜索线索，非取证） */
     sources: [],
     evidence_note: null,
-    manual_check: modeGuess === 'rail' ? '到 12306 核对该段车次' : modeGuess === 'plane' ? '到航司官网/平台核对该段航班' : '到平台核对该段班期'
+    lead_query: null,
+    manual_check: modeGuess === 'rail'
+      ? '到 12306/铁路售票渠道核对该段车次'
+      : modeGuess === 'plane'
+        ? '到航司官网/平台核对该段航班'
+        : '到平台核对该段班期'
   };
-}
-
-function isDomesticPair(o, d) {
-  return o.country === 'CN' && o.is_mainland === true && d.country === 'CN' && d.is_mainland === true;
 }
 
 /** 机场/车站/景点映射到 geo 库城市名（city 字段；无归属或非城市 → null） */
@@ -165,9 +356,11 @@ function geoCityName(place) {
 const HUB_SOURCE_LABEL = { 'rule:geo': '按地理顺路筛选（确定性估算，非班期事实）', 'llm': '由 AI 从已收录城市中提名（待验证假设）' };
 
 export const KIND_LABEL = { direct: '直达', one_transfer: '一次中转', mixed: '混合交通' };
+export const DIRECT_VARIANT_LABEL = { plane: '直达航班假设', rail: '直达铁路假设' };
 
 /**
  * 生成三类骨架。hub 来源两级：geo 顺路候选（两端城市都在 geo 库，确定性）→ LLM 提名（清单内）。
+ * P1-3：国际直达不再等同于航班——直达航班假设与直达铁路假设并存（如北京→香港跨境高铁），取证后再保留成立者。
  * @param {object} llmHints {one_transfer_city, mixed_rail_city}（城市清单校验在本函数消费点执行，清单外丢弃）
  * @returns {{candidates, degradations, constraint_notes}}
  */
@@ -198,18 +391,25 @@ export function buildCandidateSkeletons(o, d, constraints, llmHints = {}) {
   if (!oneHub && llmHints.one_transfer_city) { oneHub = llmHintCity(llmHints.one_transfer_city); oneHubSrc = 'llm'; }
   if (!mixedHub && llmHints.mixed_rail_city) { mixedHub = llmHintCity(llmHints.mixed_rail_city); mixedHubSrc = 'llm'; }
 
-  /* ① 直达骨架（任何 OD 都出；换乘 0 次） */
-  candidates.push({
-    id: 'cand-direct',
-    kind: 'direct',
-    hypothesis: true,
-    transfers: 0,
-    builder: 'rule',
-    legs: [newLeg(1, o, d, intl ? 'plane' : null)],
-    explanation: intl
-      ? '假设存在直达航班（国际 OD 通常仅航班直连）：班期与价格待逐段取证，未取证前不做任何比较'
-      : '假设存在直达航班或直达列车：具体班期待逐段取证'
-  });
+  /* ① 直达骨架：国内一张卡（方式未知待取证）；国际两张卡——直达航班假设 + 直达铁路假设并存（P1-3） */
+  if (intl) {
+    candidates.push({
+      id: 'cand-direct-plane', kind: 'direct', variant: 'plane', hypothesis: true, transfers: 0, builder: 'rule',
+      legs: [newLeg(1, o, d, 'plane')],
+      explanation: '假设存在直达航班：班期与价格待逐段取证，未取证前不做任何比较'
+    });
+    candidates.push({
+      id: 'cand-direct-rail', kind: 'direct', variant: 'rail', hypothesis: true, transfers: 0, builder: 'rule',
+      legs: [newLeg(1, o, d, 'rail')],
+      explanation: '假设存在直达铁路/陆路方案（跨境铁路或高铁口岸线）：是否成立待取证，与航班假设并存供核验'
+    });
+  } else {
+    candidates.push({
+      id: 'cand-direct', kind: 'direct', hypothesis: true, transfers: 0, builder: 'rule',
+      legs: [newLeg(1, o, d, null)],
+      explanation: '假设存在直达航班或直达列车：具体班期待逐段取证'
+    });
+  }
 
   /* ② 一次中转骨架 */
   if (oneHub) {
@@ -252,7 +452,7 @@ export function buildCandidateSkeletons(o, d, constraints, llmHints = {}) {
     const dropped = candidates.filter((c2) => c2.transfers > constraints.max_transfers);
     if (dropped.length) {
       constraint_notes.push('已按「换乘 ≤ ' + constraints.max_transfers + ' 次」过滤：' +
-        dropped.map((c2) => KIND_LABEL[c2.kind]).join('、') + ' 骨架未展示');
+        dropped.map((c2) => candidateTitle(c2)).join('、') + ' 骨架未展示');
     }
     candidates.length = 0;
     candidates.push(...kept);
@@ -264,47 +464,79 @@ export function buildCandidateSkeletons(o, d, constraints, llmHints = {}) {
   return { candidates, degradations, constraint_notes };
 }
 
-/* ---------- 逐段 searchWeb 取证（有线索 ≠ 已核验；失败保持探索态） ---------- */
+function candidateTitle(c) {
+  return c.variant ? DIRECT_VARIANT_LABEL[c.variant] : KIND_LABEL[c.kind];
+}
+
+/* ---------- 逐段搜索线索（P0-2：source_lead ≠ 取证；相关性门槛；失败保持探索态） ---------- */
 
 function searchQueryFor(leg) {
   const modeWord = leg.mode_guess === 'rail' ? '火车' : leg.mode_guess === 'plane' ? '航班' : '交通';
   return leg.from + ' 到 ' + leg.to + ' ' + modeWord + ' 怎么走';
 }
 
-/** 逐段取证：同查询缓存（限速纪律）；来源只保留 https 链接（v0.29.1 白名单教训）；不展示摘要防数字误引。 */
+/** 相关性判定：来源文本须同时命中该段两端地点名与交通方式词（大小写不敏感）。 */
+export function resultRelevance(r, leg) {
+  const hay = (String(r.title || '') + ' ' + String(r.content || '')).toLowerCase();
+  const from = String(leg.from).toLowerCase();
+  const to = String(leg.to).toLowerCase();
+  const modeRe = leg.mode_guess === 'rail'
+    ? /火车|铁路|高铁|动车|train|rail/
+    : leg.mode_guess === 'plane'
+      ? /航班|飞机|直飞|air\s|airline|flight|fly/
+      : null;
+  return {
+    from_hit: !!from && hay.includes(from),
+    to_hit: !!to && hay.includes(to),
+    mode_hit: modeRe ? modeRe.test(hay) : true
+  };
+}
+
+/** 逐段搜索线索：同查询缓存（限速纪律）；来源只保留 https 且通过相关性判定（v0.31.0 P0-2）；
+ *  记录查询词与逐源相关性；不展示摘要防数字误引；无相关结果保持探索态。 */
 export async function verifyLegs(candidates, searchFn) {
-  if (!searchFn) return { searched: 0 };
+  if (!searchFn) return { leads: 0 };
   const cache = new Map();
-  let searched = 0;
+  let leads = 0;
   for (const cand of candidates) {
     for (const leg of cand.legs) {
       const q = searchQueryFor(leg);
+      leg.lead_query = q;
       let res = cache.get(q);
       if (res === undefined) {
         res = await searchFn(q);
         cache.set(q, res);
       }
-      const sources = (res || [])
-        .filter((r) => r && typeof r.link === 'string' && /^https:/.test(r.link))
-        .slice(0, 3)
-        .map((r) => ({ title: String(r.title || '').slice(0, 120), link: r.link, sampled_at: new Date().toISOString() }));
-      if (sources.length) {
-        leg.evidence_state = 'searched';
-        leg.sources = sources;
-        leg.evidence_note = '已检索到公开来源线索（线索级，非班期核验）';
-        searched++;
+      const relevant = [];
+      for (const r of (res || [])) {
+        if (!(r && typeof r.link === 'string' && /^https:/.test(r.link))) continue;
+        const rel = resultRelevance(r, leg);
+        if (rel.from_hit && rel.to_hit && rel.mode_hit) {
+          relevant.push({ title: String(r.title || '').slice(0, 120), link: r.link, sampled_at: new Date().toISOString(), relevance: rel });
+        }
+      }
+      if (relevant.length) {
+        leg.evidence_state = 'source_lead';
+        leg.sources = relevant.slice(0, 3);
+        leg.evidence_note = '搜索线索（命中该段两端与方式；非班期核验）';
+        leads++;
       }
     }
   }
-  return { searched };
+  return { leads };
 }
 
-/* ---------- 编排：解析 → 约束 → 骨架 → 取证（web_search 可用才取证，否则明确降级） ---------- */
+/* ---------- 编排：解析（词典 → 开放两阶段 → 确认） → 约束 → 骨架 → 线索检索（可用才检索，否则明确降级） ---------- */
 
 function llmResolvePrompt(namesJson) {
   return '你是 MixTouring 的地点解析器。从用户一句话中识别出发地与目的地，只能从下列已收录地点清单中选择' +
     '（含城市/机场/车站/景点的名称与常见别名）；识别不了就置 null，绝不编造。只输出 JSON 对象：' +
     '{"origin":"清单内地点名|null","destination":"清单内地点名|null"}。清单：' + namesJson;
+}
+
+function llmExtractRawPrompt() {
+  return '从用户的一句出行描述中提取「出发地」与「目的地」的原文子串：逐字照抄、不改写、不翻译、不补全；' +
+    '提取不出就置 null。只输出 JSON 对象：{"origin_raw":"原文子串|null","destination_raw":"原文子串|null"}。';
 }
 
 function llmHubPrompt(citiesJson, originName, destName) {
@@ -316,8 +548,9 @@ function llmHubPrompt(citiesJson, originName, destName) {
 
 /**
  * G2.5 任意地点规划入口。
- * @param {object} input {text} 一句话模式，或 {origin, destination, constraints} 两字段模式（约束可显式传入覆盖文本提取）
- * @param {object} deps 测试注入 {callJson, searchWeb, env}
+ * @param {object} input {text} 一句话模式，或 {origin, destination, constraints} 两字段模式（约束可显式传入覆盖文本提取）；
+ *   confirmed_places {origin, destination}：用户在确认卡选择的已核验候选（上一次响应 place_candidates 中的一项）。
+ * @param {object} deps 测试注入 {callJson, searchWeb, osmSearch, env, webSearchStatus}
  */
 export async function planAnywhere(input, deps = {}) {
   const callJson = deps.callJson || callJsonDefault;
@@ -327,21 +560,23 @@ export async function planAnywhere(input, deps = {}) {
   const places = loadPlaces();
   const allNames = places.map((p) => p.name);
   const cityNames = places.filter((p) => p.kind === 'city').map((p) => p.name);
+  const place_candidates = { origin: [], destination: [] };
 
   let o = null, d = null;
   let parse_engine = 'none';
+  let confirmedUsed = false;
   const rawOrigin = input.origin != null ? String(input.origin).trim() : null;
   const rawDest = input.destination != null ? String(input.destination).trim() : null;
+  const text = input.text != null ? String(input.text) : null;
 
+  /* 词典解析（两字段 = 精确/别名；一句话 = 扫描 + from/to 判定 → LLM 65 词表兜底） */
   if (rawOrigin || rawDest) {
-    /* 两字段模式：词典精确/别名解析；未收录 → needs_confirmation（不猜，不走 LLM 猜地名） */
     o = rawOrigin ? resolvePlace(rawOrigin) : null;
     d = rawDest ? resolvePlace(rawDest) : null;
     parse_engine = (o || d) ? 'dict' : 'none';
-  } else if (input.text) {
-    /* 一句话模式：词典扫描 + from/to 判定 → 缺失再 LLM 辅助（清单内校验） */
-    const seq = scanPlaceMentions(input.text).map((s) => ({ city: s.place.name, idx: s.idx }));
-    const ft = assignFromTo(String(input.text), seq);
+  } else if (text) {
+    const seq = scanPlaceMentions(text).map((s) => ({ city: s.place.name, idx: s.idx }));
+    const ft = assignFromTo(text, seq);
     const byName = new Map(places.map((p) => [p.name, p]));
     o = ft.from ? byName.get(ft.from) || null : null;
     d = ft.to ? byName.get(ft.to) || null : null;
@@ -349,7 +584,7 @@ export async function planAnywhere(input, deps = {}) {
     if (!o || !d) {
       const llmOut = await callJson({
         schema_prompt: llmResolvePrompt(JSON.stringify(allNames)),
-        user: '行程：' + String(input.text),
+        user: '行程：' + text,
         kind: 'anywhere'
       });
       if (llmOut && typeof llmOut === 'object') {
@@ -365,7 +600,48 @@ export async function planAnywhere(input, deps = {}) {
       : (o || d ? 'llm' : 'none');
   }
 
-  const constraints = { ...extractConstraints(input.text), ...sanitizeConstraints(input.constraints) };
+  /* 用户确认的动态 Place（优先于开放解析；字段校验失败即忽略，保持待确认） */
+  const conf = input.confirmed_places || {};
+  if (!o && conf.origin) {
+    const dyn = confirmedPlaceToDynamic(conf.origin);
+    if (dyn) { o = dyn; confirmedUsed = true; }
+    else needs.push('出发地确认候选无效（须为已核验候选），请重新选择');
+  }
+  if (!d && conf.destination) {
+    const dyn = confirmedPlaceToDynamic(conf.destination);
+    if (dyn) { d = dyn; confirmedUsed = true; }
+    else needs.push('目的地确认候选无效（须为已核验候选），请重新选择');
+  }
+  if (confirmedUsed) parse_engine = parse_engine === 'none' ? 'confirmed' : parse_engine + '+confirmed';
+
+  /* 开放地点解析（P0-1）：未识别端点 → LLM 候选 + OSM 核验 → place_candidates 待用户确认 */
+  const openResolve = async (endpoint, rawLabel) => {
+    const res = await openResolvePlace(rawLabel, text, { callJson, osmSearch: deps.osmSearch }, degradations);
+    place_candidates[endpoint] = res.candidates;
+    if (res.candidates.length) {
+      needs.push((endpoint === 'origin' ? '出发地' : '目的地') + '「' + rawLabel + '」为新地点，已生成 ' +
+        res.candidates.length + ' 个已核验候选：请在确认卡中选择后继续（未确认前不生成交通候选）');
+    } else if (res.blocked_reason === 'source_unavailable') {
+      needs.push((endpoint === 'origin' ? '出发地' : '目的地') + '「' + rawLabel + '」外部核验通道不可用，暂不能确认新地点');
+    } else {
+      needs.push((endpoint === 'origin' ? '出发地' : '目的地') + '「' + rawLabel + '」无法核验：请换一个表述或使用已收录地点');
+    }
+  };
+  if (!o || !d) {
+    let originRaw = rawOrigin, destRaw = rawDest;
+    if (text) {
+      /* 一句话模式：先提取未识别端点的原文子串（逐字照抄），再进开放解析 */
+      const ex = await callJson({ schema_prompt: llmExtractRawPrompt(), user: text, kind: 'anywhere' });
+      if (ex && typeof ex === 'object') {
+        if (!o && !originRaw && typeof ex.origin_raw === 'string' && ex.origin_raw.trim()) originRaw = ex.origin_raw.trim();
+        if (!d && !destRaw && typeof ex.destination_raw === 'string' && ex.destination_raw.trim()) destRaw = ex.destination_raw.trim();
+      }
+    }
+    if (!o && originRaw) await openResolve('origin', originRaw);
+    if (!d && destRaw) await openResolve('destination', destRaw);
+  }
+
+  const constraints = { ...extractConstraints(text), ...sanitizeConstraints(input.constraints) };
   const chips = constraintChips(constraints);
   const intent = {
     origin: o ? o.name : (rawOrigin || null),
@@ -377,23 +653,26 @@ export async function planAnywhere(input, deps = {}) {
     parse_engine
   };
 
-  if (!o) needs.push('出发地未识别：请用已收录的城市/机场/车站/景点名（或其常用别名）');
-  if (!d) needs.push('目的地未识别：请用已收录的城市/机场/车站/景点名（或其常用别名）');
+  if (!o && !place_candidates.origin.length && !needs.some((n) => n.startsWith('出发地'))) needs.push('出发地未识别');
+  if (!d && !place_candidates.destination.length && !needs.some((n) => n.startsWith('目的地'))) needs.push('目的地未识别');
   if (o && d && o.name === d.name) needs.push('出发地与目的地相同：跨城交通规划不适用（市内接驳不在当前范围）');
   if (!o || !d || o.name === d.name) {
     return {
       intent,
       route: null,
       needs_confirmation: needs,
+      place_candidates,
       candidates: [],
       constraint_notes: [],
       degradations,
-      next_steps: ['补全或修正地点后重新规划；未识别的地点可登记心愿，取证收录后即可规划'],
+      next_steps: place_candidates.origin.length || place_candidates.destination.length
+        ? ['在确认卡中选择正确地点（含重名消歧）后重新生成', '候选均来自 OpenStreetMap 核验，可点击来源核对']
+        : ['补全或修正地点后重新规划', '识别不了的地点待核验通道可用后再试，或使用已收录地点'],
       planner_version: ANYWHERE_VERSION
     };
   }
 
-  const route = resolveRoute(o.name, d.name);
+  const route = { route_type: routeTypeOf(o, d) };
 
   /* LLM 中转提名（geo 覆盖不到时才需要；一次调用覆盖两类骨架；清单校验在 buildCandidateSkeletons 消费点） */
   const llmHints = {};
@@ -412,27 +691,34 @@ export async function planAnywhere(input, deps = {}) {
   const built = buildCandidateSkeletons(o, d, constraints, llmHints);
   degradations.push(...built.degradations);
 
-  /* 逐段取证：只在 web_search 真实可用时进行，否则明确降级（评审流转决定） */
+  /* 逐段搜索线索：只在 web_search 已配置时进行；状态在取证后读取（如实反映本次调用结果，P1-4） */
   const wsReady = webSearchConfigured(env).configured;
-  let searchStat = { searched: 0 };
+  let leadStat = { leads: 0 };
   if (wsReady) {
-    searchStat = await verifyLegs(built.candidates, deps.searchWeb !== undefined ? deps.searchWeb : searchWebDefault);
-    if (!searchStat.searched) degradations.push('联网检索本次未取得任何来源线索：全部段保持探索态（未取证）');
+    leadStat = await verifyLegs(built.candidates, deps.searchWeb !== undefined ? deps.searchWeb : searchWebDefault);
+    if (!leadStat.leads) {
+      const wsStateNow = deps.webSearchStatus ? deps.webSearchStatus() : webSearchStatusDefault();
+      degradations.push('联网检索未取得相关线索（web_search 最近状态：' + (wsStateNow.status || 'unknown') +
+        '）：全部段保持探索态（未取证，不模拟证据）');
+    }
   } else {
-    degradations.push('web_search 未配置或不可用：全部候选段保持探索态（未取证），不模拟证据');
+    degradations.push('web_search 未配置：全部候选段保持探索态（未取证），不模拟证据');
   }
+  const wsState = deps.webSearchStatus ? deps.webSearchStatus() : webSearchStatusDefault();
 
   return {
     intent,
-    route: { route_type: route.route_type },
+    route,
     needs_confirmation: [],
+    place_candidates,
     candidates: built.candidates,
     constraint_notes: built.constraint_notes,
     degradations,
+    web_search: { configured: wsReady, status: wsState.status || 'unknown' },
     next_steps: [
       '所有候选均为待验证假设：请按每段的核对入口到原平台确认班期',
-      '取证到价格/时刻后，预算、中转时长与夜间到达约束才能逐项校验',
-      '把核验结果带回来（登记心愿或反馈），可帮助这条 OD 升级为已取证样本'
+      '段的「搜索线索」只说明找到相关来源，不是班期核验；取得班次/适用日期等结构化事实后才进入既有证据链',
+      '取证到价格/时刻后，预算、中转时长与夜间到达约束才能逐项校验'
     ],
     planner_version: ANYWHERE_VERSION
   };
