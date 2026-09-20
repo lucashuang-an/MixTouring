@@ -354,17 +354,18 @@
       awLast = { text: text, constraints: awCollectConstraints() };
       awRequest({ text: text, constraints: awLast.constraints });
     });
-    /* P0-1 确认卡：在已核验候选中选择（重名消歧），确认后才继续生成交通候选 */
+    /* P0-1 确认卡：在已核验候选中选择（重名消歧），只回传服务端签发的 candidate_id——
+     * 地点事实由服务端存证恢复，浏览器不回传任何自报数据 */
     function renderConfirmBox(data) {
       var html = '';
       ['origin', 'destination'].forEach(function (ep) {
         var list = (data.place_candidates && data.place_candidates[ep]) || [];
         if (!list.length) return;
         html += '<div style="margin-top:12px;padding:14px 16px;border-radius:14px;background:rgba(30,127,69,0.06);border:0.5px solid rgba(30,127,69,0.25);">';
-        html += '<div style="font-size:13px;">新地点待确认——' + (ep === 'origin' ? '出发地' : '目的地') + '（候选均经 OpenStreetMap 核验，重名请选对）</div>';
+        html += '<div style="font-size:13px;">新地点待确认——' + (ep === 'origin' ? '出发地' : '目的地') + '（候选均经 OpenStreetMap 核验，重名请选对；30 分钟内有效）</div>';
         list.forEach(function (c, i) {
           html += '<label style="display:flex;align-items:flex-start;gap:8px;margin-top:10px;cursor:pointer;">' +
-            '<input type="radio" name="awc-' + ep + '" value="' + i + '"' + (i === 0 ? ' checked' : '') + ' style="margin-top:3px;" />' +
+            '<input type="radio" name="awc-' + ep + '" value="' + MT.esc(c.candidate_id || '') + '"' + (i === 0 ? ' checked' : '') + ' style="margin-top:3px;" />' +
             '<span style="font-size:12.5px;line-height:1.6;">' + awPlaceLabel(c.name, c.kind) +
             ' <span style="color:var(--mixtouring-muted-foreground);">· ' + MT.esc(c.country || '') + (c.country_name ? '（' + MT.esc(c.country_name) + '）' : '') + '</span>' +
             (c.source_url && /^https:/.test(c.source_url) ? ' <a href="' + MT.esc(c.source_url) + '" target="_blank" rel="noopener" style="font-size:11.5px;color:#1E7F45;">来源 ›</a>' : '') +
@@ -445,8 +446,8 @@
           var list = (data.place_candidates && data.place_candidates[ep]) || [];
           if (!list.length) return;
           var sel = document.querySelector('input[name="awc-' + ep + '"]:checked');
-          var idx = sel ? Number(sel.value) : 0;
-          confirmed[ep] = list[idx];
+          if (!sel || !sel.value) { MT.toast('候选标识缺失，请重新规划'); return; }
+          confirmed[ep] = sel.value; /* 只回传服务端签发的 candidate_id */
         });
         if (!confirmed.origin && !confirmed.destination) { MT.toast('没有可确认的候选'); return; }
         awRequest({ text: awLast.text, constraints: awLast.constraints, confirmed_places: confirmed });

@@ -14,7 +14,8 @@
 import { callJson as callJsonDefault, searchWeb as searchWebDefault, webSearchStatus as webSearchStatusDefault } from './llm.mjs';
 import { assignFromTo } from './parse.mjs';
 import { loadPlaces, webSearchConfigured } from './trip-service.mjs';
-import { candidatesBetween } from '../../pipeline/lib/geo-skill.mjs';
+import { candidatesBetween, haversineKm } from '../../pipeline/lib/geo-skill.mjs';
+import { randomBytes } from 'node:crypto';
 import { ANYWHERE_PLANNER_VERSION } from './versions.mjs';
 
 export const ANYWHERE_VERSION = ANYWHERE_PLANNER_VERSION;
@@ -280,17 +281,19 @@ async function openResolvePlace(rawName, contextText, deps, degradations) {
   const seen = new Set();
   const candidates = [];
   const usedLlm = llmCands.length > 0;
+  const storeOpts = deps.candidateStore ? { store: deps.candidateStore } : {};
   for (const r of osmResults) {
     if (!r.url || seen.has(r.url)) continue;
     seen.add(r.url);
     const llmHit = usedLlm ? (llmCands.find((c) => c.country == null || c.country === r.country) || null) : null;
-    candidates.push({
+    const cand = {
       name: (llmHit && llmHit.name) || r.display_name.split(',')[0].trim() || raw,
       name_latin: (llmHit && llmHit.name_latin) || null,
       kind: (llmHit && PLACE_KINDS.includes(llmHit.kind) ? llmHit.kind : osmKind(r)),
       country: r.country || null,
       country_name: (llmHit && llmHit.country_name) || null,
       lat: r.lat, lon: r.lon,
+      no_direct_rail: false,
       source_url: r.url,
       source_name: r.source_name || 'OpenStreetMap',
       resolution_state: 'verified',
@@ -299,25 +302,60 @@ async function openResolvePlace(rawName, contextText, deps, degradations) {
           ? '由 OpenStreetMap 地理编码核验（国家/类型/坐标与稳定标识）'
           : '按原始表述直接核验（AI 候选不可用）：名称为字面匹配，请核对国家与类型后再确认'),
       resolved_at: new Date().toISOString()
-    });
+    };
+    cand.candidate_id = registerPlaceCandidate(cand, storeOpts); /* 事实只存服务端（P0-1） */
+    candidates.push(cand);
   }
   return { candidates };
 }
 
-/** 用户确认的候选 → 本次请求内动态 Place（服务端字段校验：仅接受已核验、https 来源、合法国家码）。 */
-export function confirmedPlaceToDynamic(cand) {
+/* ---------- 候选存证（v0.32.0 P0-1：确认信任边界闭合） ----------
+ * 服务端为每个已核验候选签发短时 candidate_id（随机不可猜），完整事实只存服务端；
+ * 确认请求只提交标识，服务端从存证恢复 name/kind/country/lat/lon/source——
+ * 浏览器回传的任何地点事实字段一律不采信（与 /api/trip/checklist 拒绝伪造策略同一原则）。
+ * 未知 / 过期（30 分钟 TTL）/ 篡改均取不到存证 → 诚实拒绝。进程重启即失效（宁拒绝不降信任）。 */
+
+const CANDIDATE_STORE = new Map(); /* id -> { cand, expires_at } */
+const CANDIDATE_TTL_MS = 30 * 60 * 1000;
+const CANDIDATE_STORE_MAX = 500;
+
+function pruneCandidateStore(store, now) {
+  for (const [id, v] of store) if (v.expires_at <= now) store.delete(id);
+  while (store.size >= CANDIDATE_STORE_MAX) store.delete(store.keys().next().value);
+}
+
+/** 登记一个已核验候选，返回签发的 candidate_id。store/ttlMs/now 可注入（测试用）。 */
+export function registerPlaceCandidate(cand, { store = CANDIDATE_STORE, ttlMs = CANDIDATE_TTL_MS, now = Date.now() } = {}) {
+  pruneCandidateStore(store, now);
+  const id = 'plc_' + randomBytes(9).toString('hex');
+  store.set(id, { cand: { ...cand }, expires_at: now + ttlMs });
+  return id;
+}
+
+/** 按 id 取存证候选（浅拷贝）；未知/过期返回 null。过期即删，不降级采信。 */
+export function takePlaceCandidate(id, { store = CANDIDATE_STORE, now = Date.now() } = {}) {
+  if (!id || typeof id !== 'string') return null;
+  const v = store.get(id);
+  if (!v) return null;
+  if (v.expires_at <= now) { store.delete(id); return null; }
+  return { ...v.cand, candidate_id: id };
+}
+
+/** 存证候选 → 本次请求内动态 Place（数据来自服务端存证，仅做形状兜底）。 */
+function candidateToDynamic(cand) {
   if (!cand || typeof cand !== 'object') return null;
   const name = typeof cand.name === 'string' && cand.name.trim() ? cand.name.trim() : null;
   const kind = PLACE_KINDS.includes(cand.kind) ? cand.kind : null;
   const country = typeof cand.country === 'string' && /^[A-Z]{2}$/.test(cand.country) ? cand.country : null;
   const source = typeof cand.source_url === 'string' && /^https:/.test(cand.source_url) ? cand.source_url : null;
-  if (!name || !kind || !country || !source || cand.resolution_state !== 'verified') return null;
+  if (!name || !kind || !country || !source) return null;
   return {
     name, kind, country,
     is_mainland: country === 'CN', /* 港澳台在 OSM/LLM 侧为独立国家/地区码，不会误落 CN */
     tz: null, city: null, aliases: [],
     lat: cand.lat != null ? String(cand.lat) : null,
     lon: cand.lon != null ? String(cand.lon) : null,
+    no_direct_rail: cand.no_direct_rail === true,
     resolution_state: 'user_confirmed',
     source_url: source, source_name: cand.source_name || 'OpenStreetMap',
     resolved_at: cand.resolved_at || new Date().toISOString(),
@@ -326,7 +364,39 @@ export function confirmedPlaceToDynamic(cand) {
   };
 }
 
+/** 从确认输入提取 candidate_id：只接受标识字符串或 {candidate_id}（其余字段无视）；
+ *  浏览器自报的完整地点对象一律不采信（P0-1）。 */
+function extractCandidateId(input) {
+  if (typeof input === 'string') return input.trim() || null;
+  if (input && typeof input === 'object' && typeof input.candidate_id === 'string') return input.candidate_id.trim() || null;
+  return null;
+}
+
 /* ---------- CandidateBuilder：三类纯交通骨架（candidate_hypothesis，无未取证数字） ---------- */
+
+/* ---------- P2：铁路核对入口按地区适配（中国大陆段 12306；其余指向当地运营方/官方渠道） ---------- */
+
+const RAIL_CHANNEL_HINTS = {
+  KZ: '到哈萨克斯坦国家铁路（KTZ）官方售票渠道核对该段车次',
+  HK: '到港铁（MTR）高速铁路官方渠道或 12306 跨境票务核对该段车次',
+  TW: '到台铁及台湾高速铁路官方渠道核对该段班次',
+  MN: '到蒙古铁路官方渠道核对该段车次',
+  RU: '到俄罗斯铁路（РЖД）官方渠道核对该段车次',
+  VN: '到越南铁路官方渠道核对该段车次',
+  DE: '到德国铁路（DB）官方渠道核对该段车次',
+  FR: '到法国国家铁路（SNCF）官方渠道核对该段车次',
+  CZ: '到捷克铁路（ČD）官方渠道核对该段车次',
+  PL: '到波兰国营铁路（PKP）官方渠道核对该段车次',
+  US: '到美国国家铁路（Amtrak）官方渠道核对该段班次',
+  JP: '到日本 JR 官方渠道核对该段班次',
+  KR: '到韩国铁道公社（KORAIL）官方渠道核对该段班次'
+};
+
+function railManualCheck(fromCountry, toCountry) {
+  if (fromCountry === 'CN' && toCountry === 'CN') return '到 12306 核对该段车次';
+  return RAIL_CHANNEL_HINTS[toCountry] || RAIL_CHANNEL_HINTS[fromCountry] ||
+    '到当地铁路运营方/官方售票渠道核对该段班次（12306 仅适用中国大陆区段）';
+}
 
 function newLeg(seq, fromPlace, toPlace, modeGuess) {
   return {
@@ -340,7 +410,7 @@ function newLeg(seq, fromPlace, toPlace, modeGuess) {
     evidence_note: null,
     lead_query: null,
     manual_check: modeGuess === 'rail'
-      ? '到 12306/铁路售票渠道核对该段车次'
+      ? railManualCheck(fromPlace.country, toPlace.country)
       : modeGuess === 'plane'
         ? '到航司官网/平台核对该段航班'
         : '到平台核对该段班期'
@@ -357,6 +427,29 @@ const HUB_SOURCE_LABEL = { 'rule:geo': '按地理顺路筛选（确定性估算�
 
 export const KIND_LABEL = { direct: '直达', one_transfer: '一次中转', mixed: '混合交通' };
 export const DIRECT_VARIANT_LABEL = { plane: '直达航班假设', rail: '直达铁路假设' };
+
+/* ---------- P1-2：直达铁路地理适用性预筛（确定性，不凑固定卡数） ----------
+ * 规则阈值是产品自身规则（如实标注），坐标是 places.json 参考坐标（仅用于判定，不作为展示事实）：
+ *  1) 任一端点带 no_direct_rail（岛屿/无铁路口岸地区）→ 不适用；
+ *  2) 两端大圆距离 > RAIL_DIRECT_MAX_KM（4500km：覆盖北京—阿拉木图约 3200km、北京—香港约 1900km
+ *     的陆路量级；排除北京—纽约等跨洋 OD）→ 不适用；
+ *  3) 坐标缺失 → 无法判定，不生成（宁缺勿凑）。
+ * 通过预筛的铁路卡带机器可读 basis（距离/阈值/规则名），供后续检索与淘汰使用。 */
+export const RAIL_DIRECT_MAX_KM = 4500;
+
+export function railDirectBasis(o, d) {
+  if (o.no_direct_rail === true || d.no_direct_rail === true) {
+    return { ok: false, rule: 'geo-coords', reason: '端点为无陆路铁路连接的地区（岛屿/无铁路口岸）' };
+  }
+  if ([o.lat, o.lon, d.lat, d.lon].some((x) => x == null || Number.isNaN(Number(x)))) {
+    return { ok: null, rule: 'geo-coords', reason: '端点坐标缺失，无法判定铁路地理适用性' };
+  }
+  const km = Math.round(haversineKm(Number(o.lat), Number(o.lon), Number(d.lat), Number(d.lon)));
+  if (km > RAIL_DIRECT_MAX_KM) {
+    return { ok: false, rule: 'geo-coords', reason: '两端大圆距离约 ' + km + 'km，超过 ' + RAIL_DIRECT_MAX_KM + 'km 陆路直达铁路适用门槛' };
+  }
+  return { ok: true, rule: 'geo-coords', within_km: km, threshold_km: RAIL_DIRECT_MAX_KM };
+}
 
 /**
  * 生成三类骨架。hub 来源两级：geo 顺路候选（两端城市都在 geo 库，确定性）→ LLM 提名（清单内）。
@@ -391,21 +484,30 @@ export function buildCandidateSkeletons(o, d, constraints, llmHints = {}) {
   if (!oneHub && llmHints.one_transfer_city) { oneHub = llmHintCity(llmHints.one_transfer_city); oneHubSrc = 'llm'; }
   if (!mixedHub && llmHints.mixed_rail_city) { mixedHub = llmHintCity(llmHints.mixed_rail_city); mixedHubSrc = 'llm'; }
 
-  /* ① 直达骨架：国内一张卡（方式未知待取证）；国际两张卡——直达航班假设 + 直达铁路假设并存（P1-3） */
+  /* ① 直达骨架：国内一张卡（方式未知待取证）；国际先出航班方向，铁路方向经地理适用性预筛
+   *    后才生成（P1-2：不凑固定卡数；卡带机器可读 basis） */
   if (intl) {
     candidates.push({
       id: 'cand-direct-plane', kind: 'direct', variant: 'plane', hypothesis: true, transfers: 0, builder: 'rule',
+      basis: { mode: 'plane', rule: 'intl-default', reason: '国际 OD 默认航班方向假设（是否成立待取证）' },
       legs: [newLeg(1, o, d, 'plane')],
       explanation: '假设存在直达航班：班期与价格待逐段取证，未取证前不做任何比较'
     });
-    candidates.push({
-      id: 'cand-direct-rail', kind: 'direct', variant: 'rail', hypothesis: true, transfers: 0, builder: 'rule',
-      legs: [newLeg(1, o, d, 'rail')],
-      explanation: '假设存在直达铁路/陆路方案（跨境铁路或高铁口岸线）：是否成立待取证，与航班假设并存供核验'
-    });
+    const rb = railDirectBasis(o, d);
+    if (rb.ok) {
+      candidates.push({
+        id: 'cand-direct-rail', kind: 'direct', variant: 'rail', hypothesis: true, transfers: 0, builder: 'rule',
+        basis: rb,
+        legs: [newLeg(1, o, d, 'rail')],
+        explanation: '假设存在直达铁路/陆路方案：两端距离与地形量级通过确定性地理预筛（详见 basis），是否真有班期待取证，与航班假设并存供核验'
+      });
+    } else {
+      degradations.push('直达铁路假设未生成（确定性地理预筛，不凑固定卡数）：' + rb.reason);
+    }
   } else {
     candidates.push({
       id: 'cand-direct', kind: 'direct', hypothesis: true, transfers: 0, builder: 'rule',
+      basis: { mode: 'unknown', rule: 'domestic-default', reason: '国内 OD 航空/铁路均可能，方式待取证确认' },
       legs: [newLeg(1, o, d, null)],
       explanation: '假设存在直达航班或直达列车：具体班期待逐段取证'
     });
@@ -600,17 +702,19 @@ export async function planAnywhere(input, deps = {}) {
       : (o || d ? 'llm' : 'none');
   }
 
-  /* 用户确认的动态 Place（优先于开放解析；字段校验失败即忽略，保持待确认） */
+  /* 用户确认（P0-1）：只接受服务端签发的 candidate_id，事实从存证恢复；
+   * 完整对象/伪造字段/未知/过期一律拒绝，不采信浏览器自报数据 */
+  const storeOpts = deps.candidateStore ? { store: deps.candidateStore } : {};
   const conf = input.confirmed_places || {};
-  if (!o && conf.origin) {
-    const dyn = confirmedPlaceToDynamic(conf.origin);
-    if (dyn) { o = dyn; confirmedUsed = true; }
-    else needs.push('出发地确认候选无效（须为已核验候选），请重新选择');
+  if (!o && conf.origin != null) {
+    const stored = takePlaceCandidate(extractCandidateId(conf.origin), storeOpts);
+    if (stored) { o = candidateToDynamic(stored); confirmedUsed = true; }
+    else needs.push('出发地确认候选无效或已过期（确认卡候选 30 分钟内有效）：请重新规划再选择；不接受自行拼装的地点数据');
   }
-  if (!d && conf.destination) {
-    const dyn = confirmedPlaceToDynamic(conf.destination);
-    if (dyn) { d = dyn; confirmedUsed = true; }
-    else needs.push('目的地确认候选无效（须为已核验候选），请重新选择');
+  if (!d && conf.destination != null) {
+    const stored = takePlaceCandidate(extractCandidateId(conf.destination), storeOpts);
+    if (stored) { d = candidateToDynamic(stored); confirmedUsed = true; }
+    else needs.push('目的地确认候选无效或已过期（确认卡候选 30 分钟内有效）：请重新规划再选择；不接受自行拼装的地点数据');
   }
   if (confirmedUsed) parse_engine = parse_engine === 'none' ? 'confirmed' : parse_engine + '+confirmed';
 
@@ -620,7 +724,7 @@ export async function planAnywhere(input, deps = {}) {
     place_candidates[endpoint] = res.candidates;
     if (res.candidates.length) {
       needs.push((endpoint === 'origin' ? '出发地' : '目的地') + '「' + rawLabel + '」为新地点，已生成 ' +
-        res.candidates.length + ' 个已核验候选：请在确认卡中选择后继续（未确认前不生成交通候选）');
+        res.candidates.length + ' 个已核验候选：请在确认卡中选择后继续（未确认前不生成交通候选；候选 30 分钟内有效）');
     } else if (res.blocked_reason === 'source_unavailable') {
       needs.push((endpoint === 'origin' ? '出发地' : '目的地') + '「' + rawLabel + '」外部核验通道不可用，暂不能确认新地点');
     } else {

@@ -258,23 +258,33 @@ async function main() {
     console.log('✓ /api/anywhere/plan 一句话模式：机场别名 + 景点 + 约束 chips 同句提取');
   } else { failed++; console.error('✗ /api/anywhere/plan 一句话模式异常：' + JSON.stringify(anyText).slice(0, 200)); }
 
-  /* P0-1：未收录地点（无 key 环境 OSM 直查，结果随通道可用性变化——两者均为诚实行为） */
+  /* P0-1：未收录地点（开放解析，结果随核验通道可用性变化——两者均为诚实行为）；
+   * 确认流只回传服务端签发的 candidate_id（P0-1 信任边界） */
   const anyUnknown = await (await fetch(BASE + '/api/anywhere/plan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ origin: '北京', destination: '塔什干' }) })).json();
   const au = anyUnknown.data || {};
+  const destCand = (au.place_candidates && au.place_candidates.destination || []).find((c) => c.candidate_id);
   if (anyUnknown.code === 0 && au.candidates.length === 0 && au.needs_confirmation.length >= 1 &&
-    ((au.place_candidates && au.place_candidates.destination.length >= 1) || au.needs_confirmation.some((n) => n.includes('核验') || n.includes('未识别')))) {
+    (destCand || au.needs_confirmation.some((n) => n.includes('核验') || n.includes('未识别')))) {
     console.log('✓ /api/anywhere/plan P0-1：未收录地点 → 已核验候选待确认或诚实阻断（候选数 ' +
       ((au.place_candidates && au.place_candidates.destination.length) || 0) + '，不预写词典）');
   } else { failed++; console.error('✗ /api/anywhere/plan 未收录地点行为异常：' + JSON.stringify(anyUnknown).slice(0, 200)); }
 
-  /* P0-1：确认后的动态 Place 参与规划（确定性：合成已核验候选，无外部依赖） */
-  const anyConfirmed = await (await fetch(BASE + '/api/anywhere/plan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ origin: '北京', destination: '塔什干', confirmed_places: { destination: { name: '塔什干', kind: 'city', country: 'UZ', source_url: 'https://www.openstreetmap.org/relation/2369842', resolution_state: 'verified', lat: '41.31', lon: '69.28' } } }) })).json();
-  const ac = anyConfirmed.data || {};
-  if (anyConfirmed.code === 0 && ac.route && ac.route.route_type === 'international' &&
-    ac.intent && ac.intent.destination_place && ac.intent.destination_place.dynamic === true &&
-    ac.candidates.filter((c) => c.kind === 'direct').length === 2) {
-    console.log('✓ /api/anywhere/plan P0-1：确认后动态 Place 生效（international + 双直达假设，本次请求内）');
-  } else { failed++; console.error('✗ /api/anywhere/plan 确认流异常：' + JSON.stringify(anyConfirmed).slice(0, 200)); }
+  if (destCand) {
+    const anyConfirmed = await (await fetch(BASE + '/api/anywhere/plan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ origin: '北京', destination: '塔什干', confirmed_places: { destination: destCand.candidate_id } }) })).json();
+    const ac = anyConfirmed.data || {};
+    if (anyConfirmed.code === 0 && ac.route && ac.route.route_type === 'international' &&
+      ac.intent && ac.intent.destination_place && ac.intent.destination_place.dynamic === true &&
+      ac.intent.destination_place.country === destCand.country &&
+      ac.intent.destination_place.source_url === destCand.source_url) {
+      console.log('✓ /api/anywhere/plan P0-1：candidate_id 确认 → 服务端存证恢复动态 Place（事实与首轮核验一致）');
+    } else { failed++; console.error('✗ /api/anywhere/plan 确认流异常：' + JSON.stringify(anyConfirmed).slice(0, 200)); }
+  }
+
+  const anyForged = await (await fetch(BASE + '/api/anywhere/plan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ origin: '北京', destination: '塔什干', confirmed_places: { destination: { name: '伪造地', kind: 'city', country: 'US', source_url: 'https://evil.example/x', resolution_state: 'verified', lat: '1', lon: '1' } } }) })).json();
+  if (anyForged.code === 0 && (anyForged.data.candidates || []).length === 0 && anyForged.data.route === null &&
+    anyForged.data.needs_confirmation.some((n) => n.includes('不接受自行拼装的地点数据'))) {
+    console.log('✓ /api/anywhere/plan P0-1：浏览器自报完整地点对象被拒（不接受自行拼装数据）');
+  } else { failed++; console.error('✗ /api/anywhere/plan 伪造对象未被拒：' + JSON.stringify(anyForged).slice(0, 200)); }
 
   const anyEmpty = await (await fetch(BASE + '/api/anywhere/plan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({}) })).json();
   if (anyEmpty.code === 1) {
@@ -285,7 +295,7 @@ async function main() {
   const caps = await (await fetch(BASE + '/api/capabilities')).json();
   if (caps.code === 0 && typeof caps.data.web_search_configured === 'boolean' &&
     ['available', 'quota_exhausted', 'timeout', 'error', 'unknown'].includes(caps.data.web_search_status) &&
-    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.31.0') {
+    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.32.0') {
     console.log('✓ /api/capabilities P1-4：configured 与最近真实状态分开（web_search_configured=' +
       caps.data.web_search_configured + ', status=' + caps.data.web_search_status + '），版本拆分对齐');
   } else { failed++; console.error('✗ /api/capabilities 形状异常：' + JSON.stringify(caps).slice(0, 200)); }
