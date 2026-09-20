@@ -52,7 +52,7 @@ MIXTOURING/
 │   ├── lib/ llm.mjs(parse/ask/copy 唯一LLM出口+用量日志) parse.mjs(触点①) qa.mjs(触点③) wishlist.mjs(队列) trip.mjs(行程契约) trip-service.mjs(G1/G2 行程服务) anywhere.mjs(G2.5 任意地点规划)
 │   └── verify.mjs                ← 全接口与 mock 派生逐字节比对
 ├── pipeline/                     ← 数据生产管道（业务规则的代码权威实现）
-│   ├── data/ plans.json(存储层唯一数据源) wishlist.json(心愿队列) cities-geo.json(179城地理事实)
+│   ├── data/ plans.json(存储层唯一数据源) wishlist.json(心愿队列) cities-geo.json(179城地理事实) rail-corridors.json(已知客运铁路直达走廊：直达铁路卡的正向依据)
 │   ├── lib/ derive.mjs(判级引擎+服务层派生,勿重写) validate-plan.mjs validate-ai-copy.mjs geo-skill.mjs(地理候选技能)
 │   ├── build-mock.mjs / generate-plan.mjs(三重守门写回) / generate-ai-copy.mjs / process-wishlist.mjs
 │   └── check-pages.mjs / check-geo.mjs

@@ -7,7 +7,7 @@
 import {
   resolvePlace, scanPlaceMentions, extractConstraints, constraintChips,
   buildCandidateSkeletons, verifyLegs, planAnywhere, resultRelevance,
-  registerPlaceCandidate, takePlaceCandidate, railDirectBasis, RAIL_DIRECT_MAX_KM,
+  registerPlaceCandidate, takePlaceCandidate, railDirectEligibility, RAIL_DIRECT_MAX_KM,
   osmKind, KIND_LABEL
 } from './lib/anywhere.mjs';
 
@@ -82,57 +82,81 @@ const NO_DIGIT_RE = /\d/;
   ok(f.candidates.length === 1 && f.candidates[0].kind === 'direct' &&
     f.constraint_notes.some((n) => n.includes('一次中转、混合交通')), '约束：换乘 ≤ 0 次过滤掉两类中转骨架并如实备注');
 
-  /* P1-2：直达铁路地理适用性预筛 */
+  /* P1-2（八轮）：直达铁路 = 负向粗筛 + 正向依据（已知走廊） */
   const hkg = buildCandidateSkeletons(resolvePlace('北京'), resolvePlace('香港'), {}, {});
   const hkgDirects = hkg.candidates.filter((c) => c.kind === 'direct');
   ok(hkgDirects.length === 2 && hkgDirects.some((c) => c.variant === 'plane') && hkgDirects.some((c) => c.variant === 'rail'),
-    'P1-2：北京→香港（约 1900km，有高铁口岸）保留航班+铁路双直达候选');
+    'P1-2：北京→香港保留航班+铁路双直达（走廊依据：京港高铁）');
+  ok(hkgDirects.find((c) => c.variant === 'rail').basis.rule === 'known-corridor' &&
+    hkgDirects.find((c) => c.variant === 'rail').basis.within_km <= RAIL_DIRECT_MAX_KM,
+    'P1-2：铁路卡 basis=known-corridor 且记录距离阈值（机器可读依据）');
   ok(hkgDirects.every((c) => c.basis && typeof c.basis === 'object' && c.basis.rule),
-    'P1-2：直达卡带机器可读 basis（为什么生成这个方式候选）');
-  ok(hkgDirects.find((c) => c.variant === 'rail').basis.within_km <= RAIL_DIRECT_MAX_KM,
-    'P1-2：铁路 basis 记录距离与阈值');
+    'P1-2：直达卡全部带机器可读 basis');
 
-  /* P2：铁路核对入口按地区适配 */
-  const intlRailLeg = buildCandidateSkeletons(resolvePlace('北京'), resolvePlace('阿拉木图'), {}, {})
-    .candidates.find((c) => c.variant === 'rail').legs[0];
-  ok(intlRailLeg.manual_check.includes('哈萨克斯坦国家铁路（KTZ）') && !intlRailLeg.manual_check.includes('12306 核对'),
-    'P2：北京→阿拉木图铁路核对入口指向 KTZ（不再统一 12306）');
+  /* 旗标误伤修复：台北—高雄同区内部铁路（台湾高铁走廊）不受 no_direct_rail 影响 */
+  const twRoute = buildCandidateSkeletons(resolvePlace('台北'), resolvePlace('高雄'), {}, {});
+  const twRail = twRoute.candidates.find((c) => c.variant === 'rail');
+  ok(!!twRail && twRail.basis.rule === 'known-corridor',
+    'P1-2 修复：台北—高雄生成直达铁路卡（走廊依据台湾高铁；旗标仅约束跨境场景）');
+
+  const nyc = { name: '纽约', kind: 'city', country: 'US', is_mainland: false, lat: '40.71', lon: '-74.01' };
+  const nycR = railDirectEligibility(resolvePlace('北京'), nyc);
+  const nycBuilt = buildCandidateSkeletons(resolvePlace('北京'), nyc, {}, {});
+  ok(nycR.eligible === false && nycR.explore_hint === false &&
+    nycBuilt.candidates.every((c) => c.variant !== 'rail') && nycBuilt.explorations.length === 0 &&
+    nycBuilt.degradations.some((x) => x.includes('直达铁路假设未生成')),
+    'P1-2 反例：北京→纽约（跨洋）负向粗筛 veto，无铁路卡也无探索提示');
+
+  const tpe = buildCandidateSkeletons(resolvePlace('北京'), resolvePlace('台北'), {}, {});
+  ok(tpe.candidates.every((c) => c.variant !== 'rail') && tpe.explorations.length === 0 &&
+    tpe.degradations.some((x) => x.includes('无跨境陆路铁路连接')),
+    'P1-2 反例：北京→台北（跨境 + 岛域旗标）不生成铁路卡');
+
+  /* 八轮核心反例：北京→阿拉木图距离可过，但无直达铁路依据 → 不出卡，转铁路/陆路方向探索 */
+  const alm = buildCandidateSkeletons(resolvePlace('北京'), resolvePlace('阿拉木图'), {}, {});
+  ok(alm.candidates.every((c) => c.variant !== 'rail') && alm.candidates.some((c) => c.variant === 'plane'),
+    'P1-2 反例：北京→阿拉木图仅凭距离不生成直达铁路卡');
+  ok(alm.explorations.length === 1 && alm.explorations[0].type === 'land_rail' &&
+    alm.explorations[0].basis.rule === 'geo-plausible-only',
+    'P1-2：北京→阿拉木图降为「铁路/陆路方向探索」（地理可能但无服务依据，不出假设卡）');
+
+  const urumqiAlma = buildCandidateSkeletons(resolvePlace('乌鲁木齐'), resolvePlace('阿拉木图'), {}, {});
+  ok(urumqiAlma.candidates.some((c) => c.variant === 'rail' &&
+    c.basis.evidence === '项目结构化班期证据'),
+    'P1-2：乌鲁木齐→阿拉木图凭项目结构化班期证据（走廊）生成直达铁路卡');
+
+  const noCoord = railDirectEligibility(resolvePlace('北京'), { name: 'X', kind: 'city', country: 'US' });
+  ok(noCoord.eligible === false && noCoord.explore_hint === false && noCoord.basis.reason.includes('坐标缺失'),
+    'P1-2：坐标缺失 → veto 不生成（宁缺勿凑）');
+
+  /* P2：铁路核对入口按地区适配（经走廊 OD 验证国际段） */
+  const ktzRailLeg = urumqiAlma.candidates.find((c) => c.variant === 'rail').legs[0];
+  ok(ktzRailLeg.manual_check.includes('哈萨克斯坦国家铁路（KTZ）') && !ktzRailLeg.manual_check.startsWith('到 12306'),
+    'P2：乌鲁木齐→阿拉木图铁路核对入口指向 KTZ（不再统一 12306）');
   const domRailLeg = buildCandidateSkeletons(resolvePlace('北京'), resolvePlace('喀什'), {}, {})
     .candidates.find((c) => c.kind === 'mixed').legs[0];
   ok(domRailLeg.manual_check.includes('12306'), 'P2：国内铁路段（混合骨架北京→大同）仍指向 12306');
 
-  const nyc = { name: '纽约', kind: 'city', country: 'US', is_mainland: false, lat: '40.71', lon: '-74.01' };
-  const nycR = railDirectBasis(resolvePlace('北京'), nyc);
-  const nycBuilt = buildCandidateSkeletons(resolvePlace('北京'), nyc, {}, {});
-  ok(nycR.ok === false && nycBuilt.candidates.every((c) => c.variant !== 'rail') &&
-    nycBuilt.degradations.some((x) => x.includes('直达铁路假设未生成')),
-    'P1-2 反例：北京→纽约（跨洋）不生成直达铁路卡并说明预筛原因');
-
-  const tpe = buildCandidateSkeletons(resolvePlace('北京'), resolvePlace('台北'), {}, {});
-  ok(tpe.candidates.every((c) => c.variant !== 'rail') &&
-    tpe.degradations.some((x) => x.includes('无陆路铁路连接')),
-    'P1-2 反例：北京→台北（no_direct_rail 岛域旗标）不生成直达铁路卡');
-
-  const noCoord = railDirectBasis(resolvePlace('北京'), { name: 'X', kind: 'city', country: 'US' });
-  ok(noCoord.ok === null && noCoord.reason.includes('坐标缺失'), 'P1-2：坐标缺失 → 无法判定不生成（宁缺勿凑）');
-
-  /* 国际 OD 无 LLM：北京→阿拉木图（约 3200km，K9795 量级陆路可达）双直达 + 两骨架降级说明 */
+  /* 国际 OD 无 LLM：北京→阿拉木图仅航班直达卡 + 两骨架降级说明 + 一个陆路探索 */
   const intl = buildCandidateSkeletons(resolvePlace('北京'), resolvePlace('阿拉木图'), {}, {});
-  ok(intl.candidates.length === 2 && intl.candidates.every((c) => c.kind === 'direct'),
-    '骨架：国际 OD 无提名时仅两张直达卡（航班+铁路，阿拉木图过地理预筛）');
+  ok(intl.candidates.length === 1 && intl.candidates[0].variant === 'plane',
+    '骨架：国际 OD 无提名且无铁路依据时仅一张航班直达卡');
   ok(intl.degradations.filter((x) => x.includes('中转城市来源')).length === 2, '骨架：无 LLM 时两类中转骨架明确降级（不静默消失）');
 
-  /* LLM 提名：清单内生效、清单外丢弃 */
+  /* LLM 提名：清单内生效、清单外丢弃（北京→阿拉木图：航班直达 + 两类中转，无铁路直达） */
   const hint = buildCandidateSkeletons(resolvePlace('北京'), resolvePlace('阿拉木图'), {}, { one_transfer_city: '乌鲁木齐', mixed_rail_city: '乌鲁木齐' });
-  ok(hint.candidates.length === 4 && hint.candidates.filter((c) => c.builder === 'llm').length === 2,
+  ok(hint.candidates.length === 3 && hint.candidates.filter((c) => c.builder === 'llm').length === 2,
     '骨架：LLM 清单内提名生效并标注 builder=llm');
   const bad = buildCandidateSkeletons(resolvePlace('北京'), resolvePlace('阿拉木图'), {}, { one_transfer_city: '火星', mixed_rail_city: '伊斯坦布尔' });
-  ok(bad.candidates.length === 2 && bad.degradations.length === 2, '骨架：LLM 清单外提名被丢弃（不造地名）');
+  ok(bad.candidates.length === 1 && bad.degradations.filter((x) => x.includes('中转城市来源')).length === 2,
+    '骨架：LLM 清单外提名被丢弃（不造地名）');
 
-  /* 出发地非大陆：混合骨架不生成（铁路起段假设不成立） */
+  /* 出发地非大陆：混合骨架不生成（铁路起段假设不成立）；香港→阿拉木图无铁路走廊依据 */
   const hk = buildCandidateSkeletons(resolvePlace('香港'), resolvePlace('阿拉木图'), {}, { one_transfer_city: '北京', mixed_rail_city: '北京' });
-  ok(hk.candidates.map((c) => c.id).join(',') === 'cand-direct-plane,cand-direct-rail,cand-one-transfer' &&
-    hk.degradations.some((x) => x.includes('大陆铁路起段')), '骨架：非大陆出发地不出混合骨架并说明');
+  ok(hk.candidates.map((c) => c.id).join(',') === 'cand-direct-plane,cand-one-transfer' &&
+    hk.degradations.some((x) => x.includes('大陆铁路起段')) &&
+    hk.explorations.length === 1,
+    '骨架：非大陆出发地不出混合骨架并说明；无走廊依据只有陆路探索');
 }
 
 /* ---------- 搜索线索分层（P0-2：相关性门槛 + source_lead ≠ 取证） ---------- */
@@ -207,8 +231,9 @@ const NO_DIGIT_RE = /\d/;
   ok(r1c.route.route_type === 'international' && r1c.intent.parse_engine.includes('confirmed') &&
     r1c.intent.destination_place.dynamic === true && r1c.intent.destination_place.resolution_state === 'user_confirmed' &&
     r1c.intent.destination_place.country === 'UZ' && r1c.intent.destination_place.source_url === cand1.source_url &&
-    r1c.candidates.filter((c) => c.kind === 'direct').length === 2,
-    'P0-1 场景1 续：确认后服务端存证恢复动态 Place（international + 双直达假设）');
+    r1c.candidates.filter((c) => c.kind === 'direct').length === 1 &&
+    r1c.explorations.some((e) => e.type === 'land_rail'),
+    'P0-1 场景1 续：确认后存证恢复动态 Place（international；塔什干无铁路走廊依据 → 仅航班直达 + 陆路探索）');
 
   /* 场景2：CDG→布拉格中央车站——两端都未收录，各自开放解析并确认 */
   const osmByQuery = async (q) => {
@@ -347,7 +372,7 @@ const NO_DIGIT_RE = /\d/;
     '编排：web_search 已配置时逐段挂相关线索（source_lead）');
   ok(r6.web_search && r6.web_search.configured === true && r6.web_search.status === 'quota_exhausted',
     'P1-4：规划响应如实带 web_search 配置与最近真实状态（configured ≠ available）');
-  ok(r6.planner_version === 'v0.32.0', '编排：anywhere 版本号对齐 v0.32.0');
+  ok(r6.planner_version === 'v0.33.0', '编排：anywhere 版本号对齐 v0.33.0');
 
   const r7 = await planAnywhere({ text: '想去新疆最西边那座古城玩' },
     { callJson: async () => ({ origin: '北京', destination: '喀什' }), env: {}, osmSearch: async () => [] });

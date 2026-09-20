@@ -16,7 +16,12 @@ import { assignFromTo } from './parse.mjs';
 import { loadPlaces, webSearchConfigured } from './trip-service.mjs';
 import { candidatesBetween, haversineKm } from '../../pipeline/lib/geo-skill.mjs';
 import { randomBytes } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { ANYWHERE_PLANNER_VERSION } from './versions.mjs';
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 export const ANYWHERE_VERSION = ANYWHERE_PLANNER_VERSION;
 
@@ -428,27 +433,64 @@ const HUB_SOURCE_LABEL = { 'rule:geo': '按地理顺路筛选（确定性估算�
 export const KIND_LABEL = { direct: '直达', one_transfer: '一次中转', mixed: '混合交通' };
 export const DIRECT_VARIANT_LABEL = { plane: '直达航班假设', rail: '直达铁路假设' };
 
-/* ---------- P1-2：直达铁路地理适用性预筛（确定性，不凑固定卡数） ----------
- * 规则阈值是产品自身规则（如实标注），坐标是 places.json 参考坐标（仅用于判定，不作为展示事实）：
- *  1) 任一端点带 no_direct_rail（岛屿/无铁路口岸地区）→ 不适用；
- *  2) 两端大圆距离 > RAIL_DIRECT_MAX_KM（4500km：覆盖北京—阿拉木图约 3200km、北京—香港约 1900km
- *     的陆路量级；排除北京—纽约等跨洋 OD）→ 不适用；
- *  3) 坐标缺失 → 无法判定，不生成（宁缺勿凑）。
- * 通过预筛的铁路卡带机器可读 basis（距离/阈值/规则名），供后续检索与淘汰使用。 */
+/* ---------- v0.33.0（八轮评审）：直达铁路判定 = 负向粗筛 + 正向依据 ----------
+ * 距离/旗标只做负向粗筛（veto），不构成生成依据；「直达铁路假设」必须有正向依据：
+ * 已知线路走廊（rail-corridors.json：公开常识线路或项目结构化班期证据）。
+ * 只有地理可能性（距离在量级内、无旗标拦截、无走廊依据）时不出卡，
+ * 降为 explorations 的「铁路/陆路方向探索」提示。旗标仅约束跨境/跨区场景——
+ * 区域内部线路（如台北—高雄）由走廊数据判定，不受旗标误伤（八轮评审反例）。 */
 export const RAIL_DIRECT_MAX_KM = 4500;
 
-export function railDirectBasis(o, d) {
-  if (o.no_direct_rail === true || d.no_direct_rail === true) {
-    return { ok: false, rule: 'geo-coords', reason: '端点为无陆路铁路连接的地区（岛屿/无铁路口岸）' };
+let CORRIDORS = null;
+function loadRailCorridors() {
+  if (!CORRIDORS) {
+    try { CORRIDORS = JSON.parse(readFileSync(join(ROOT, 'pipeline/data/rail-corridors.json'), 'utf8')).corridors || []; }
+    catch { CORRIDORS = []; }
   }
+  return CORRIDORS;
+}
+
+/** 铁路侧城市名（机场/车站/景点取就近已收录城市近似；无归属 → null） */
+function railSideName(place) {
+  if (place.kind === 'city') return place.name;
+  return place.city || null;
+}
+
+function findCorridor(oa, da) {
+  if (!oa || !da) return null;
+  return loadRailCorridors().find((c) => (c.a === oa && c.b === da) || (c.a === da && c.b === oa)) || null;
+}
+
+/**
+ * @returns {{eligible, explore_hint, basis, reason?}}
+ *   eligible=true  有正向依据（known-corridor），可生成直达铁路卡
+ *   explore_hint=true  仅地理可能，无服务依据 → 铁路/陆路方向探索（不出卡）
+ *   两者皆 false  负向粗筛 veto（距离/旗标跨境/坐标缺失），连探索提示也不给
+ */
+export function railDirectEligibility(o, d) {
+  const veto = (reason) => ({ eligible: false, explore_hint: false, basis: { rule: 'geo-veto', reason } });
+  /* 旗标只在两端属不同国家/地区（跨境/跨海场景）时拦截；同区域内线路交给走廊数据判定 */
+  if (o.no_direct_rail === true && o.country !== d.country) return veto('出发地为无跨境陆路铁路连接的地区（岛屿/无铁路口岸）');
+  if (d.no_direct_rail === true && o.country !== d.country) return veto('目的地为无跨境陆路铁路连接的地区（岛屿/无铁路口岸）');
   if ([o.lat, o.lon, d.lat, d.lon].some((x) => x == null || Number.isNaN(Number(x)))) {
-    return { ok: null, rule: 'geo-coords', reason: '端点坐标缺失，无法判定铁路地理适用性' };
+    return veto('端点坐标缺失，无法做距离负向粗筛（宁缺勿凑）');
   }
   const km = Math.round(haversineKm(Number(o.lat), Number(o.lon), Number(d.lat), Number(d.lon)));
   if (km > RAIL_DIRECT_MAX_KM) {
-    return { ok: false, rule: 'geo-coords', reason: '两端大圆距离约 ' + km + 'km，超过 ' + RAIL_DIRECT_MAX_KM + 'km 陆路直达铁路适用门槛' };
+    return veto('两端大圆距离约 ' + km + 'km，超过 ' + RAIL_DIRECT_MAX_KM + 'km 陆路负向粗筛门槛');
   }
-  return { ok: true, rule: 'geo-coords', within_km: km, threshold_km: RAIL_DIRECT_MAX_KM };
+  const corridor = findCorridor(railSideName(o), railSideName(d));
+  if (corridor) {
+    return {
+      eligible: true, explore_hint: false,
+      basis: { rule: 'known-corridor', corridor: corridor.note, evidence: corridor.evidence, within_km: km, threshold_km: RAIL_DIRECT_MAX_KM }
+    };
+  }
+  return {
+    eligible: false, explore_hint: true,
+    basis: { rule: 'geo-plausible-only', within_km: km, threshold_km: RAIL_DIRECT_MAX_KM },
+    reason: '距离在陆路量级但无已知直达铁路线路/班期依据：不生成直达铁路假设，转为铁路/陆路方向探索'
+  };
 }
 
 /**
@@ -460,6 +502,7 @@ export function railDirectBasis(o, d) {
 export function buildCandidateSkeletons(o, d, constraints, llmHints = {}) {
   const degradations = [];
   const constraint_notes = [];
+  const explorations = [];
   const intl = !isDomesticPair(o, d);
   const fromCity = geoCityName(o);
   const toCity = geoCityName(d);
@@ -484,8 +527,8 @@ export function buildCandidateSkeletons(o, d, constraints, llmHints = {}) {
   if (!oneHub && llmHints.one_transfer_city) { oneHub = llmHintCity(llmHints.one_transfer_city); oneHubSrc = 'llm'; }
   if (!mixedHub && llmHints.mixed_rail_city) { mixedHub = llmHintCity(llmHints.mixed_rail_city); mixedHubSrc = 'llm'; }
 
-  /* ① 直达骨架：国内一张卡（方式未知待取证）；国际先出航班方向，铁路方向经地理适用性预筛
-   *    后才生成（P1-2：不凑固定卡数；卡带机器可读 basis） */
+  /* ① 直达骨架：国内一张卡（方式未知待取证）；国际航班方向默认，铁路方向需正向依据
+   *    （v0.33.0：负向粗筛 + 已知走廊；仅地理可能 → 铁路/陆路方向探索，不凑卡） */
   if (intl) {
     candidates.push({
       id: 'cand-direct-plane', kind: 'direct', variant: 'plane', hypothesis: true, transfers: 0, builder: 'rule',
@@ -493,16 +536,23 @@ export function buildCandidateSkeletons(o, d, constraints, llmHints = {}) {
       legs: [newLeg(1, o, d, 'plane')],
       explanation: '假设存在直达航班：班期与价格待逐段取证，未取证前不做任何比较'
     });
-    const rb = railDirectBasis(o, d);
-    if (rb.ok) {
+    const rb = railDirectEligibility(o, d);
+    if (rb.eligible) {
       candidates.push({
         id: 'cand-direct-rail', kind: 'direct', variant: 'rail', hypothesis: true, transfers: 0, builder: 'rule',
-        basis: rb,
+        basis: rb.basis,
         legs: [newLeg(1, o, d, 'rail')],
-        explanation: '假设存在直达铁路/陆路方案：两端距离与地形量级通过确定性地理预筛（详见 basis），是否真有班期待取证，与航班假设并存供核验'
+        explanation: '假设存在直达铁路方案：已有已知线路依据（详见 basis），班期、口岸衔接与是否直达待逐段取证，与航班假设并存供核验'
+      });
+    } else if (rb.explore_hint) {
+      explorations.push({
+        type: 'land_rail',
+        from: o.name, to: d.name,
+        note: '地理距离在陆路可达量级，但无已知直达铁路线路或班期依据：可按「铁路/陆路方向」分段探索（例如先到铁路枢纽，再经陆路口岸或航班接驳）；取证到线路或班期后再生成直达假设',
+        basis: rb.basis
       });
     } else {
-      degradations.push('直达铁路假设未生成（确定性地理预筛，不凑固定卡数）：' + rb.reason);
+      degradations.push('直达铁路假设未生成（负向粗筛，不凑固定卡数）：' + rb.basis.reason);
     }
   } else {
     candidates.push({
@@ -563,7 +613,7 @@ export function buildCandidateSkeletons(o, d, constraints, llmHints = {}) {
   if (constraints.max_layover_hours != null) constraint_notes.push('最长中转时长约束需取证到两段班期后才能校验衔接余量');
   if (constraints.night_arrival) constraint_notes.push('夜间到达约束需取证到段到达时刻后才能校验（骨架阶段无时刻）');
 
-  return { candidates, degradations, constraint_notes };
+  return { candidates, degradations, constraint_notes, explorations };
 }
 
 function candidateTitle(c) {
@@ -769,6 +819,7 @@ export async function planAnywhere(input, deps = {}) {
       candidates: [],
       constraint_notes: [],
       degradations,
+      explorations: [],
       next_steps: place_candidates.origin.length || place_candidates.destination.length
         ? ['在确认卡中选择正确地点（含重名消歧）后重新生成', '候选均来自 OpenStreetMap 核验，可点击来源核对']
         : ['补全或修正地点后重新规划', '识别不了的地点待核验通道可用后再试，或使用已收录地点'],
@@ -818,6 +869,7 @@ export async function planAnywhere(input, deps = {}) {
     candidates: built.candidates,
     constraint_notes: built.constraint_notes,
     degradations,
+    explorations: built.explorations,
     web_search: { configured: wsReady, status: wsState.status || 'unknown' },
     next_steps: [
       '所有候选均为待验证假设：请按每段的核对入口到原平台确认班期',
