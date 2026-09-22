@@ -229,6 +229,77 @@ async function main() {
     console.log('✓ /api/trip/checklist 不接受客户端伪造策略');
   } else { failed++; console.error('✗ /api/trip/checklist 接受了伪造策略：' + JSON.stringify(forgedCl).slice(0, 200)); }
 
+  /* ---------- G2.5 任意地点规划（v0.31.0；规则路径断言，LLM/OSM/搜索路径由 check-anywhere 注入桩覆盖） ---------- */
+  const anyPlan = await (await fetch(BASE + '/api/anywhere/plan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ origin: '北京', destination: '喀什' }) })).json();
+  const apOk = anyPlan.code === 0 && anyPlan.data.route.route_type === 'domestic' &&
+    anyPlan.data.candidates.length >= 1 && anyPlan.data.candidates.every((c) => c.hypothesis === true) &&
+    anyPlan.data.candidates.every((c) => c.legs.every((l) => l.evidence_state === 'explore')) &&
+    !JSON.stringify(anyPlan.data.candidates).includes('"price"');
+  if (apOk) {
+    console.log('✓ /api/anywhere/plan 北京→喀什：假设骨架（' + anyPlan.data.candidates.length + ' 类）全探索态零价格字段');
+  } else { failed++; console.error('✗ /api/anywhere/plan 异常：' + JSON.stringify(anyPlan).slice(0, 200)); }
+
+  const anyHkg = await (await fetch(BASE + '/api/anywhere/plan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ origin: '北京', destination: '香港' }) })).json();
+  const hkgDirects = (anyHkg.data && anyHkg.data.candidates || []).filter((c) => c.kind === 'direct');
+  if (anyHkg.code === 0 && anyHkg.data.route.route_type === 'international' &&
+    hkgDirects.length === 2 && hkgDirects.some((c) => c.variant === 'plane') && hkgDirects.some((c) => c.variant === 'rail')) {
+    console.log('✓ /api/anywhere/plan P1-3：北京→香港 直达航班假设与直达铁路假设并存');
+  } else { failed++; console.error('✗ /api/anywhere/plan 国际直达未出双方式：' + JSON.stringify(anyHkg).slice(0, 200)); }
+
+  const anyAlias = await (await fetch(BASE + '/api/anywhere/plan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ origin: 'PEK', destination: 'ALA' }) })).json();
+  if (anyAlias.code === 0 && anyAlias.data.intent.origin === '北京首都国际机场' && anyAlias.data.intent.destination === '阿拉木图国际机场' && anyAlias.data.route.route_type === 'international') {
+    console.log('✓ /api/anywhere/plan 别名解析：PEK/ALA → 规范机场名 + 国际路由');
+  } else { failed++; console.error('✗ /api/anywhere/plan 别名解析异常：' + JSON.stringify(anyAlias).slice(0, 200)); }
+
+  const anyText = await (await fetch(BASE + '/api/anywhere/plan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: '从北京首都机场去喀纳斯，预算5000元，不接受夜间到达' }) })).json();
+  if (anyText.code === 0 && anyText.data.intent.origin === '北京首都国际机场' && anyText.data.intent.destination === '喀纳斯' &&
+    anyText.data.intent.constraints.budget_max_cny === 5000 && anyText.data.intent.constraints.night_arrival === 'avoid' &&
+    anyText.data.intent.constraint_chips.length === 2) {
+    console.log('✓ /api/anywhere/plan 一句话模式：机场别名 + 景点 + 约束 chips 同句提取');
+  } else { failed++; console.error('✗ /api/anywhere/plan 一句话模式异常：' + JSON.stringify(anyText).slice(0, 200)); }
+
+  /* P0-1：未收录地点（开放解析，结果随核验通道可用性变化——两者均为诚实行为）；
+   * 确认流只回传服务端签发的 candidate_id（P0-1 信任边界） */
+  const anyUnknown = await (await fetch(BASE + '/api/anywhere/plan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ origin: '北京', destination: '塔什干' }) })).json();
+  const au = anyUnknown.data || {};
+  const destCand = (au.place_candidates && au.place_candidates.destination || []).find((c) => c.candidate_id);
+  if (anyUnknown.code === 0 && au.candidates.length === 0 && au.needs_confirmation.length >= 1 &&
+    (destCand || au.needs_confirmation.some((n) => n.includes('核验') || n.includes('未识别')))) {
+    console.log('✓ /api/anywhere/plan P0-1：未收录地点 → 已核验候选待确认或诚实阻断（候选数 ' +
+      ((au.place_candidates && au.place_candidates.destination.length) || 0) + '，不预写词典）');
+  } else { failed++; console.error('✗ /api/anywhere/plan 未收录地点行为异常：' + JSON.stringify(anyUnknown).slice(0, 200)); }
+
+  if (destCand) {
+    const anyConfirmed = await (await fetch(BASE + '/api/anywhere/plan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ origin: '北京', destination: '塔什干', confirmed_places: { destination: destCand.candidate_id } }) })).json();
+    const ac = anyConfirmed.data || {};
+    if (anyConfirmed.code === 0 && ac.route && ac.route.route_type === 'international' &&
+      ac.intent && ac.intent.destination_place && ac.intent.destination_place.dynamic === true &&
+      ac.intent.destination_place.country === destCand.country &&
+      ac.intent.destination_place.source_url === destCand.source_url) {
+      console.log('✓ /api/anywhere/plan P0-1：candidate_id 确认 → 服务端存证恢复动态 Place（事实与首轮核验一致）');
+    } else { failed++; console.error('✗ /api/anywhere/plan 确认流异常：' + JSON.stringify(anyConfirmed).slice(0, 200)); }
+  }
+
+  const anyForged = await (await fetch(BASE + '/api/anywhere/plan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ origin: '北京', destination: '塔什干', confirmed_places: { destination: { name: '伪造地', kind: 'city', country: 'US', source_url: 'https://evil.example/x', resolution_state: 'verified', lat: '1', lon: '1' } } }) })).json();
+  if (anyForged.code === 0 && (anyForged.data.candidates || []).length === 0 && anyForged.data.route === null &&
+    anyForged.data.needs_confirmation.some((n) => n.includes('不接受自行拼装的地点数据'))) {
+    console.log('✓ /api/anywhere/plan P0-1：浏览器自报完整地点对象被拒（不接受自行拼装数据）');
+  } else { failed++; console.error('✗ /api/anywhere/plan 伪造对象未被拒：' + JSON.stringify(anyForged).slice(0, 200)); }
+
+  const anyEmpty = await (await fetch(BASE + '/api/anywhere/plan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({}) })).json();
+  if (anyEmpty.code === 1) {
+    console.log('✓ /api/anywhere/plan 空请求被拒');
+  } else { failed++; console.error('✗ /api/anywhere/plan 空请求未拒：' + JSON.stringify(anyEmpty).slice(0, 200)); }
+
+  /* P1-4：capabilities 配置与真实状态分开、版本拆分 */
+  const caps = await (await fetch(BASE + '/api/capabilities')).json();
+  if (caps.code === 0 && typeof caps.data.web_search_configured === 'boolean' &&
+    ['available', 'quota_exhausted', 'timeout', 'error', 'unknown'].includes(caps.data.web_search_status) &&
+    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.33.0') {
+    console.log('✓ /api/capabilities P1-4：configured 与最近真实状态分开（web_search_configured=' +
+      caps.data.web_search_configured + ', status=' + caps.data.web_search_status + '），版本拆分对齐');
+  } else { failed++; console.error('✗ /api/capabilities 形状异常：' + JSON.stringify(caps).slice(0, 200)); }
+
   console.log(failed ? `\n✗ ${failed} 项不一致` : '\n✓ 全部接口与 mock.js 派生结果一致');
   process.exit(failed ? 1 : 0);
 }

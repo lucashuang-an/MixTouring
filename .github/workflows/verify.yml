@@ -29,3 +29,5 @@ jobs:
         run: node pipeline/check-geo.mjs
       - name: 行程契约确定性测试（check-trip.mjs，G1 底座回归）
         run: node server/check-trip.mjs
+      - name: G2.5 任意地点规划确定性测试（check-anywhere.mjs）
+        run: node server/check-anywhere.mjs

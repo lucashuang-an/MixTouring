@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { parseTrip, parseTripRule } from './parse.mjs';
 import { validateTripQuery, evidenceState, decorateLeg, buildCostBreakdown, detectReversal, checkConnections } from './trip.mjs';
+import { TRIP_PLANNER_VERSION, ANYWHERE_PLANNER_VERSION } from './versions.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -22,7 +23,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
  * 未收录/缺国家信息 → needs_confirmation（不静默选链路）。 */
 
 let PLACES = null;
-function loadPlaces() {
+export function loadPlaces() {
   if (!PLACES) {
     try { PLACES = JSON.parse(readFileSync(join(root, 'pipeline/data/places.json'), 'utf8')).places || []; }
     catch { PLACES = []; }
@@ -56,9 +57,16 @@ export function webSearchConfigured(env = process.env) {
   return { configured: key && zhipuBase, basis: zhipuBase ? 'zhipu-endpoint' : 'non-zhipu-base' };
 }
 
-/** 能力声明（决策⑤）：仅返回布尔与版本，不泄露任何凭据 */
-export function capabilities(llmReady, webSearchReady) {
-  return { llm: !!llmReady, web_search: !!webSearchReady, planner_version: 'v0.29.1' };
+/** 能力声明（决策⑤ + v0.31.0 评审 P1-4）：配置与可用分开、版本拆分，不泄露任何凭据。
+ * @param {string|null} searchStatus 最近一次 searchWeb 真实调用状态（available/quota_exhausted/timeout/error/unknown） */
+export function capabilities(llmReady, webSearchReady, searchStatus = 'unknown') {
+  return {
+    llm: !!llmReady,
+    web_search_configured: !!webSearchReady,
+    web_search_status: searchStatus,
+    trip_planner_version: TRIP_PLANNER_VERSION,
+    anywhere_planner_version: ANYWHERE_PLANNER_VERSION
+  };
 }
 
 /* ---------- 意图提取（纯规则，确定性可测） ---------- */

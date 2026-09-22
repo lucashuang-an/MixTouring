@@ -16,9 +16,11 @@
 | 重建前端数据 | `node pipeline/build-mock.mjs` | `mock.js` 是生成文件，**勿手改** |
 | AI 文案生成（离线） | `node pipeline/generate-ai-copy.mjs --generate` | 需 `LLM_API_KEY`；产出过防幻觉守门才写盘 |
 | 心愿自动采集 | `node --env-file-if-exists=server/.env pipeline/collect-wish.mjs --all --limit 2` | 联网采样→守门写回→心愿回流；失败自动计数转人工 |
-| CI | push 自动触发 | GitHub Actions 跑 verify + check-pages + check-geo；collect 定时任务需配 Secrets 并设 `LLM_COLLECT=1` |
+| 行程契约确定性测试 | `node server/check-trip.mjs` | G1 底座回归，无需起服务 |
+| G2.5 任意地点规划测试 | `node server/check-anywhere.mjs` | 确定性（注入桩，无网络无 key），v0.30.0 起 |
+| CI | push 自动触发 | GitHub Actions 跑 verify + check-pages + check-geo + check-trip + check-anywhere；collect 定时任务需配 Secrets 并设 `LLM_COLLECT=1` |
 
-**提交前三件套（必跑，全绿才提交）**：`check-pages` + `check-geo` + `verify`。
+**提交前必跑（全绿才提交）**：`check-pages` + `check-geo` + `verify` + `check-trip` + `check-anywhere`。
 
 ## 1. 协作工作流（硬性流程）
 
@@ -27,7 +29,7 @@
 - 每次产品决策/改动在 `工作记录.md` **倒序**追加版本记录（v0.x.y + 日期 + 背景/改动/影响范围），不删除历史。
 - **ZCode 与产品评审交接（v0.26.2 修订：手动触发制）**：ZCode 每次开工前，除本文件和最新版工作记录，还要读取 [产品评审记录 Issue #5](https://github.com/lucashuang-an/MixTouring/issues/5) 的最新评审/决策评论。评审由用户在本对话主动发起（转述 ZCode 提交/PR/变更），Codex 只读评审后在本 Issue 追加以 `Codex 产品评审｜被审 SHA <完整 SHA>` 开头的结论；`需修复`／`阻断` 先处理，再做下一开发卡；修复后由用户转述新的 SHA 触发下一轮。产品/技术方案类决策（如双链路路由、任意地点规划）也以 Issue #5 评论为基准。不使用定时任务、自动工作流或 API 自动唤醒评审。不得在公开 Issue 发布凭据、个人数据或安全敏感复现细节。
 - 不主动创建额外说明性 `.md`；新上下文优先沉淀进本文件或工作记录。经用户确认的新产品方案与开发流程以 `产品方案_SoloTrip_v1.2.md`、`开发流程_SoloTrip_v1.2.md` 两份基准文档承载，勿再并行新建零散说明。
-- 当前无 LLM key 的环境一切功能照常（规则版闭环）；key 走 `server/.env`（gitignored）：`LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL`（OpenAI 兼容端点即可）。
+- 当前无 LLM key 的环境一切功能照常（规则版闭环）；key 走 `server/.env`（gitignored）：`LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL`（OpenAI 兼容端点即可）。G2.5 开放地点核验通道：OSM Nominatim（`OSM_NOMINATIM_BASE` 可覆盖自建镜像）→ Photon（photon.komoot.io）自动兜底，均无需 key；两者都不可达时按「核验通道不可用」诚实阻断。
 - LLM 用量逐任务记录在 `server/logs/llm-usage.jsonl`（gitignored），供算法优化分析。
 
 ## 2. 项目概览
@@ -36,7 +38,7 @@
 - **核心价值**：AI 解释可核验的直达、多程航班、铁路与混搭取舍；假期按一个人的完整总成本判断，直达占优时如实说明。
 - **定位**：纯内容与方案产品，**不做买票/交易服务**。
 - **首批目标用户**：已有目的地、希望独自安排旅程的 Solo Trip 旅行者；独处、交流、同行分别由用户自愿选择。Web 先行（桌面侧边栏 + 移动端底栏响应式）。
-- **当前阶段**：旧产品 Phase 1–3 已完成；v1.2 的 G1 行程规则和探索／核验服务接口已实现，G2 页面尚未接入。**指定日期可执行往返比较、城市停留完整旅程与社区试点尚未实现**。北京 ⇄ 阿拉木图、2026 国庆附近为第一验证 case；外部证据缺口仍按探索／部分核验处理。
+- **当前阶段（2026-09-20）**：旧产品 Phase 1–3 已完成；v1.2 的 G1 行程契约、G2 统一入口与只读探索结果页（trip.html）已交付并收口；G2.5 任意地点规划首卡已交付（候选一律待验证假设，防幻觉契约见 §4.2）。**指定日期可执行往返比较、城市停留完整旅程与社区试点尚未实现**。北京 ⇄ 阿拉木图、2026 国庆附近为第一验证 case；外部证据缺口仍按探索／部分核验处理。
 - 开发阶段路线与交接细节见 §6。
 
 ## 3. 目录结构
@@ -47,10 +49,10 @@ MIXTOURING/
 ├── render.yaml + Dockerfile      ← 部署产物（封存备用，国内优先港服）
 ├── server/                       ← Koa 后端 + 静态服务（data 在 ../pipeline/data）
 │   ├── index.mjs                 ← 装载+双校验+geo增强+热重载；全部 API 路由
-│   ├── lib/ llm.mjs(parse/ask/copy 唯一LLM出口+用量日志) parse.mjs(触点①) qa.mjs(触点③) wishlist.mjs(队列)
+│   ├── lib/ llm.mjs(parse/ask/copy 唯一LLM出口+用量日志) parse.mjs(触点①) qa.mjs(触点③) wishlist.mjs(队列) trip.mjs(行程契约) trip-service.mjs(G1/G2 行程服务) anywhere.mjs(G2.5 任意地点规划)
 │   └── verify.mjs                ← 全接口与 mock 派生逐字节比对
 ├── pipeline/                     ← 数据生产管道（业务规则的代码权威实现）
-│   ├── data/ plans.json(存储层唯一数据源) wishlist.json(心愿队列) cities-geo.json(179城地理事实)
+│   ├── data/ plans.json(存储层唯一数据源) wishlist.json(心愿队列) cities-geo.json(179城地理事实) rail-corridors.json(已知客运铁路直达走廊：直达铁路卡的正向依据)
 │   ├── lib/ derive.mjs(判级引擎+服务层派生,勿重写) validate-plan.mjs validate-ai-copy.mjs geo-skill.mjs(地理候选技能)
 │   ├── build-mock.mjs / generate-plan.mjs(三重守门写回) / generate-ai-copy.mjs / process-wishlist.mjs
 │   └── check-pages.mjs / check-geo.mjs
@@ -139,3 +141,4 @@ MIXTOURING/
 - **淡季混搭未必省钱**：如实展示，AI 文案转向体验价值，勿美化数字。
 - **CSS 覆盖三坑**（desktop.css 实战）：页面 body 有内联样式只能 `!important` 覆盖；Tailwind v4 的 `-translate-x-*` 走独立 `translate` 属性；body 内 critical-layout 样式块晚于 head 里的 link，覆盖需提特异性而非靠级联顺序。
 - **智谱 glm-4-flash 约束遵循偏弱**：文案生成曾手写数字被守门拦截（拦截即浪费整次调用）；优化方向见工作记录 v0.11.1。
+- **fetch 自定义 header 禁止非 ASCII**（v0.31.0 实测）：User-Agent 含中文会抛 `ByteString` TypeError，把 Nominatim/Photon 两通道瞬间全断且难定位——自定义头一律纯英文。

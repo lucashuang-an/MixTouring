@@ -274,11 +274,15 @@ const [F_OUT, F_IN] = FIXTURE.dated_legs.map((l) => ({ ...l, baggage_terms: { ca
   ok(resolveRoute('阿拉木图', '北京').route_type === 'international', '反向国际 OD 同样走国际链路（仍不做反转构造返程）');
   ok(findPlace('阿拉木图').tz === 'Asia/Almaty' && findPlace('北京').tz === 'Asia/Shanghai', '地点词典含国家与时区（PlaceResolver 底座）');
   ok(findPlace('香港').is_mainland === false && findPlace('北京').is_mainland === true, 'is_mainland 口径：港澳台非大陆');
-  /* 评审二轮 P1-5：capabilities 四组合（web_search 独立于 LLM 判定） */
-  ok(capabilities(false, false).llm === false && capabilities(false, false).web_search === false, 'P1-5 组合1：均关');
-  ok(capabilities(true, false).llm === true && capabilities(true, false).web_search === false, 'P1-5 组合2：仅 LLM → web_search=false');
-  ok(capabilities(false, true).web_search === true && capabilities(false, true).llm === false, 'P1-5 组合3：仅 web_search');
-  ok(capabilities(true, true).llm === true && capabilities(true, true).web_search === true, 'P1-5 组合4：均开');
+  /* 评审二轮 P1-5 + v0.31.0 P1-4：capabilities 配置与最近真实状态分开、版本拆分 */
+  ok(capabilities(false, false).llm === false && capabilities(false, false).web_search_configured === false, 'P1-5 组合1：均关');
+  ok(capabilities(true, false).llm === true && capabilities(true, false).web_search_configured === false, 'P1-5 组合2：仅 LLM → web_search_configured=false');
+  ok(capabilities(false, true).web_search_configured === true && capabilities(false, true).llm === false, 'P1-5 组合3：仅 web_search 配置');
+  ok(capabilities(true, true).llm === true && capabilities(true, true).web_search_configured === true, 'P1-5 组合4：均开');
+  ok(capabilities(true, true, 'quota_exhausted').web_search_status === 'quota_exhausted' &&
+    capabilities(true, true, 'quota_exhausted').web_search_configured === true, 'P1-4：配置成功但状态如实为 quota_exhausted');
+  ok(capabilities(true, true).trip_planner_version === 'v0.29.1' &&
+    capabilities(true, true).anywhere_planner_version === 'v0.33.0', 'P1-4：版本拆分（trip/anywhere 各自对齐）');
 }
 
 /* ---------- v0.26.0 服务动作：策略检索（fixture 驱动 + 反向不反转） ---------- */

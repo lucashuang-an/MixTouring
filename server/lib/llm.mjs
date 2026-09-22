@@ -47,7 +47,15 @@ function logUsage(kind, usage, model) {
 
 /* ---------- 专用联网搜索（智谱 web_search API，独立于 chat） ----------
  * 采集执行器的可靠检索通道：不等模型「自觉触发」工具，按查询词直接拿公开搜索结果。
+ * v0.31.0 评审 P1-4：记录最近一次真实调用结果（available/quota_exhausted/timeout/error），
+ * capabilities 据此如实报告——配置成功不等于可用（智谱 429 余额不足期间 configured=true 但不可用）。
  * @returns {Promise<Array|null>} [{ title, link, content, media, date }]；失败 null */
+let SEARCH_STATE = { status: 'unknown', at: null };
+function markSearch(status) { SEARCH_STATE = { status, at: new Date().toISOString() }; }
+
+/** 最近一次 searchWeb 真实调用的状态（浅拷贝，不泄露凭据）；从未调用过为 unknown */
+export function webSearchStatus() { return { ...SEARCH_STATE }; }
+
 export async function searchWeb(query, { limit = 5, timeoutMs = 30000 } = {}) {
   if (!llmConfigured()) return null;
   try {
@@ -60,8 +68,12 @@ export async function searchWeb(query, { limit = 5, timeoutMs = 30000 } = {}) {
       }),
       signal: AbortSignal.timeout(timeoutMs)
     });
-    if (!res.ok) throw new Error('search HTTP ' + res.status);
+    if (!res.ok) {
+      markSearch(res.status === 429 ? 'quota_exhausted' : 'error');
+      throw new Error('search HTTP ' + res.status);
+    }
     const body = await res.json();
+    markSearch('available');
     return (body.search_result || []).slice(0, limit).map((r) => ({
       title: r.title || '',
       link: r.link || '',
@@ -70,6 +82,9 @@ export async function searchWeb(query, { limit = 5, timeoutMs = 30000 } = {}) {
       date: r.publish_date || null
     }));
   } catch (err) {
+    if (!(err && err.message && err.message.startsWith('search HTTP'))) {
+      markSearch(err && (err.name === 'TimeoutError' || err.name === 'AbortError') ? 'timeout' : 'error');
+    }
     console.error('✗ 联网检索失败（' + query + '）：' + err.message);
     return null;
   }
