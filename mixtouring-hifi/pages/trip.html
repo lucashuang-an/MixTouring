@@ -203,7 +203,23 @@
         c.kind === 'direct' ? '直达假设' : c.kind === 'one_transfer' ? '一次中转假设' : '混合交通假设';
     }
 
+    /* 十一轮 P1：解析意图回填到仍为空的行程信息控件（已有用户显式输入不覆盖）——
+     * 消除「结果摘要显示往返、表单显示待确认」的双状态；后续确认/重新规划读当前表单值 */
+    function backfillForm(data) {
+      var it = data.intent || {};
+      var fills = [
+        ['tvType', it.trip_type && it.trip_type !== 'pending' ? it.trip_type : ''],
+        ['tvOut', it.outbound_window || ''],
+        ['tvRet', it.return_window || ''],
+        ['tvCount', it.traveler_count != null ? String(it.traveler_count) : '']
+      ];
+      fills.forEach(function (p) {
+        var el = document.getElementById(p[0]);
+        if (el && el.value === '') el.value = p[1];
+      });
+    }
     function renderUnified(data) {
+      backfillForm(data);
       var html = '<div class="detail-card" style="background:var(--mixtouring-card);border-radius:20px;padding:20px;box-shadow:var(--shadow-card-soft);">';
       var routeLabel = data.route ? (data.route.route_type === 'domestic' ? '国内路线' : '国际路线') : '路线待确认';
       html += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">' +

@@ -7,7 +7,7 @@
 import {
   resolvePlace, scanPlaceMentions, extractConstraints, constraintChips,
   buildCandidateSkeletons, verifyLegs, planAnywhere, resultRelevance,
-  registerPlaceCandidate, takePlaceCandidate, railDirectEligibility, corridorEffectiveStatus, RAIL_DIRECT_MAX_KM,
+  registerPlaceCandidate, takePlaceCandidate, railDirectEligibility, corridorEffectiveStatus, isValidWindow, buildTravelIntent, RAIL_DIRECT_MAX_KM,
   osmKind, KIND_LABEL
 } from './lib/anywhere.mjs';
 import { readFileSync } from 'node:fs';
@@ -426,6 +426,48 @@ const NO_DIGIT_RE = /\d/;
     'P1：重名候选带 detail 与稳定标识（同 display_name 也能经 node/relation 区分，页面逐候选展示）');
 }
 
+/* ---------- 十一轮：意图合并顺序 / 无效窗口 / 时序（评审定向反例） ---------- */
+{
+  /* P0-1：buildTravelIntent 直接以 null explicit 调用不抛（原 TypeError 反例） */
+  let btOk = false, btNeeds = 0;
+  try {
+    const bt = buildTravelIntent('从北京去阿拉木图往返', null);
+    btOk = bt.intent.trip_type === 'round_trip';
+    btNeeds = bt.needs.filter((n) => n.includes('日期')).length;
+  } catch { btOk = false; }
+  ok(btOk && btNeeds === 2, 'P0-1：buildTravelIntent(…, null) 不抛错，round_trip + 去返两条补全提示');
+
+  const p0a = await planAnywhere({ text: '从北京去阿拉木图往返' }, NO_LLM);
+  ok(p0a.intent.trip_type === 'round_trip' &&
+    p0a.needs_confirmation.filter((n) => n.includes('日期')).length === 2,
+    'P0-1：真实 API 路径无 travel → round_trip + 补去返日期两条提示（不 500）');
+
+  const p0b = await planAnywhere({ text: '从北京去喀什', travel: { trip_type: 'round_trip' } }, NO_LLM);
+  ok(p0b.intent.trip_type === 'round_trip' &&
+    p0b.needs_confirmation.filter((n) => n.includes('日期')).length === 2,
+    'P0-2：文本无行程类型 + 显式 round_trip 日期空 → 两条日期补全提示');
+
+  const p0c = await planAnywhere({ text: '从北京去阿拉木图往返', travel: { trip_type: 'one_way' } }, NO_LLM);
+  ok(p0c.intent.trip_type === 'one_way' &&
+    p0c.needs_confirmation.every((n) => !n.includes('往返行程请补')),
+    'P0-3：文本往返 + 显式 one_way → 最终单程，不残留往返日期提示');
+
+  /* P1：无效窗口丢弃（2月31日溢出 / 月份99），丢后进补全提示 */
+  const badWin = await planAnywhere({ text: '从北京去阿拉木图往返', travel: { outbound_window: '2026-02-31 ~ 2026-02-31', return_window: '2026-99-99 ~ 2026-99-99' } }, NO_LLM);
+  ok(badWin.intent.outbound_window == null && badWin.intent.return_window == null &&
+    badWin.needs_confirmation.filter((n) => n.includes('日期')).length === 2,
+    'P1：2026-02-31 / 2026-99-99 窗口被真实日历校验丢弃 → 进补全提示（不当已确认事实）');
+  ok(isValidWindow('2026-02-31 ~ 2026-02-31') === false && isValidWindow('2026-99-99 ~ 2026-99-99') === false &&
+    isValidWindow('2026-12-30 ~ 2027-01-03') === true && isValidWindow('2026-10-05 ~ 2026-10-03') === false,
+    'P1：isValidWindow——溢出/越界/倒序拒，合法跨年窗过');
+
+  /* 时序：返程早于去程 → 丢弃返程窗口并提示 */
+  const seq = await planAnywhere({ text: '从北京去阿拉木图往返', travel: { outbound_window: '2026-10-03 ~ 2026-10-05', return_window: '2026-10-01 ~ 2026-10-01' } }, NO_LLM);
+  ok(seq.intent.return_window == null && seq.intent.outbound_window === '2026-10-03 ~ 2026-10-05' &&
+    seq.needs_confirmation.some((n) => n.includes('返程窗口早于去程')),
+    'P1：返程早于去程 → 忽略返程窗口并如实提示');
+}
+
 /* ---------- planAnywhere 编排（注入桩，无网络无 key） ---------- */
 {
   const r1 = await planAnywhere({ text: '从北京去喀什' }, NO_LLM);
@@ -455,7 +497,7 @@ const NO_DIGIT_RE = /\d/;
     '编排：web_search 已配置时逐段挂相关线索（source_lead）');
   ok(r6.web_search && r6.web_search.configured === true && r6.web_search.status === 'quota_exhausted',
     'P1-4：规划响应如实带 web_search 配置与最近真实状态（configured ≠ available）');
-  ok(r6.planner_version === 'v0.35.0', '编排：anywhere 版本号对齐 v0.35.0');
+  ok(r6.planner_version === 'v0.35.1', '编排：anywhere 版本号对齐 v0.35.1');
 
   const r7 = await planAnywhere({ text: '想去新疆最西边那座古城玩' },
     { callJson: async () => ({ origin: '北京', destination: '喀什' }), env: {}, osmSearch: async () => [] });

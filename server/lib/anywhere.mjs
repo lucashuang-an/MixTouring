@@ -152,7 +152,19 @@ function sanitizeConstraints(raw) {
  * 新增返程日期提取（「10月7日回来」→ 单日窗，年份代码计算禁心算）；
  * UI 显式字段（trip_type/窗口/人数）白名单化后优先于文本提取。 */
 
-const WIN_RE = /^\d{4}-\d{2}-\d{2} ~ \d{4}-\d{2}-\d{2}$/;
+const WIN_SHAPE_RE = /^\d{4}-\d{2}-\d{2} ~ \d{4}-\d{2}-\d{2}$/;
+
+/** 真实日历窗口校验（十一轮 P1）：外形 + 两日期真实存在（2026-02-31 溢出即拒）+ 起止顺序。 */
+export function isValidWindow(s) {
+  if (typeof s !== 'string' || !WIN_SHAPE_RE.test(s)) return false;
+  const [a, b] = s.split(' ~ ');
+  const pa = new Date(a + 'T00:00:00Z');
+  const pb = new Date(b + 'T00:00:00Z');
+  if (Number.isNaN(pa.getTime()) || Number.isNaN(pb.getTime())) return false;
+  /* 溢出校验：Date 会把 2026-02-31 卷到 03-03，toISOString 回读不一致即非法 */
+  if (pa.toISOString().slice(0, 10) !== a || pb.toISOString().slice(0, 10) !== b) return false;
+  return pa <= pb;
+}
 
 /** 从一句话提取返程日期（M月D日 / M-D / M/D 紧跟或前接「回来/返回/回程/返程」），代码计算年份。 */
 export function extractReturnDate(text, nowMs = Date.now()) {
@@ -172,19 +184,20 @@ export function extractReturnDate(text, nowMs = Date.now()) {
   return `${iso} ~ ${iso}`;
 }
 
-/** 显式行程意图字段（UI）白名单化：枚举/格式/范围不对的丢弃，不猜。 */
+/** 显式行程意图字段（UI）白名单化：枚举/真实日历/范围不对的丢弃，不猜（十一轮 P1：无效日期不得当已确认事实）。 */
 function sanitizeIntentFields(raw) {
   const out = {};
   if (!raw || typeof raw !== 'object') return out;
   if (['pending', 'round_trip', 'one_way'].includes(raw.trip_type)) out.trip_type = raw.trip_type;
-  if (typeof raw.outbound_window === 'string' && WIN_RE.test(raw.outbound_window)) out.outbound_window = raw.outbound_window;
-  if (typeof raw.return_window === 'string' && WIN_RE.test(raw.return_window)) out.return_window = raw.return_window;
+  if (isValidWindow(raw.outbound_window)) out.outbound_window = raw.outbound_window;
+  if (isValidWindow(raw.return_window)) out.return_window = raw.return_window;
   const n = Number(raw.traveler_count);
   if (Number.isInteger(n) && n >= 1 && n <= 9) out.traveler_count = n;
   return out;
 }
 
-/** 行程意图组装：文本提取（确定性）+ 显式字段覆盖 + 往返完整性 needs。 */
+/** 行程意图组装（十一轮 P0 重构）：先白名单化显式字段 → 合并出唯一 finalIntent → 只按 finalIntent 生成 needs。
+ *  不再读取未白名单化的 explicit（null 安全）；显式覆盖文本（如往返改单程）后不残留旧状态的补充提示。 */
 export function buildTravelIntent(text, explicit, nowMs = Date.now()) {
   const fields = extractIntentFields(text, nowMs);
   const retFromText = extractReturnDate(text, nowMs);
@@ -194,24 +207,28 @@ export function buildTravelIntent(text, explicit, nowMs = Date.now()) {
     const m = String(text || '').match(/([1-9])\s*个?\s*人/);
     if (m) traveler = +m[1];
   }
-  const intent = {
-    trip_type: fields.trip_type || 'pending',
-    outbound_window: fields.outbound_window || null, /* 假期宽窗等 */
-    return_window: retFromText,
-    traveler_count: traveler ?? 1
-  };
-  const needs = [];
-  if (intent.trip_type === 'pending') needs.push('行程类型未识别（单程/往返）：可先用往返做方向探索，或补充说明');
-  if (intent.trip_type === 'round_trip' && !intent.outbound_window && !explicit.outbound_window) needs.push('往返行程建议补去程日期或大致窗口');
-  if (intent.trip_type === 'round_trip' && !intent.return_window && !explicit.return_window) needs.push('往返行程请补返程日期（未补前不展示返程样本）');
   const exp = sanitizeIntentFields(explicit);
-  return { intent: { ...intent, ...exp }, needs: needs.filter((n) => {
-    /* 显式字段已补齐的 needs 移除 */
-    if (n.includes('去程日期') && exp.outbound_window) return false;
-    if (n.includes('返程日期') && exp.return_window) return false;
-    if (n.includes('行程类型') && exp.trip_type && exp.trip_type !== 'pending') return false;
-    return true;
-  }) };
+  const finalIntent = {
+    trip_type: exp.trip_type || fields.trip_type || 'pending',
+    outbound_window: exp.outbound_window || fields.outbound_window || null,
+    return_window: exp.return_window || retFromText,
+    traveler_count: exp.traveler_count ?? traveler ?? 1
+  };
+  /* 时序：返程早于去程 → 丢弃返程窗口（降级为待补全），不做任何「倒叙往返」断言 */
+  let returnDropped = false;
+  if (finalIntent.return_window && finalIntent.outbound_window &&
+    finalIntent.return_window.slice(0, 10) < finalIntent.outbound_window.slice(0, 10)) {
+    finalIntent.return_window = null;
+    returnDropped = true;
+  }
+  const needs = [];
+  if (finalIntent.trip_type === 'pending') needs.push('行程类型未识别（单程/往返）：可先用单程做方向探索，或补充说明');
+  if (finalIntent.trip_type === 'round_trip') {
+    if (!finalIntent.outbound_window) needs.push('往返行程请补去程日期或大致窗口');
+    if (!finalIntent.return_window) needs.push('往返行程请补返程日期（未补前不展示返程样本）');
+  }
+  if (returnDropped) needs.push('返程窗口早于去程：已忽略该返程窗口，请修正后重试');
+  return { intent: finalIntent, needs };
 }
 
 /* ---------- 路由判定（词典与动态地点对象共用同一规则，与 trip-service.resolveRoute 口径一致） ---------- */

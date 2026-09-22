@@ -295,10 +295,35 @@ async function main() {
   const caps = await (await fetch(BASE + '/api/capabilities')).json();
   if (caps.code === 0 && typeof caps.data.web_search_configured === 'boolean' &&
     ['available', 'quota_exhausted', 'timeout', 'error', 'unknown'].includes(caps.data.web_search_status) &&
-    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.35.0') {
+    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.35.1') {
     console.log('✓ /api/capabilities P1-4：configured 与最近真实状态分开（web_search_configured=' +
       caps.data.web_search_configured + ', status=' + caps.data.web_search_status + '），版本拆分对齐');
   } else { failed++; console.error('✗ /api/capabilities 形状异常：' + JSON.stringify(caps).slice(0, 200)); }
+
+  /* ---------- 十一轮：意图合并顺序 / 无效窗口（真实 API 定向反例） ---------- */
+  const ivA = await (await fetch(BASE + '/api/anywhere/plan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: '从北京去阿拉木图往返' }) })).json();
+  if (ivA.code === 0 && ivA.data.intent.trip_type === 'round_trip' &&
+    ivA.data.needs_confirmation.filter((n) => n.includes('日期')).length === 2) {
+    console.log('✓ /api/anywhere/plan 无 travel 往返请求不 500：round_trip + 补去返日期两条提示');
+  } else { failed++; console.error('✗ /api/anywhere/plan 无 travel 往返异常：' + JSON.stringify(ivA).slice(0, 200)); }
+
+  const ivB = await (await fetch(BASE + '/api/anywhere/plan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: '从北京去喀什', travel: { trip_type: 'round_trip' } }) })).json();
+  if (ivB.code === 0 && ivB.data.intent.trip_type === 'round_trip' &&
+    ivB.data.needs_confirmation.filter((n) => n.includes('日期')).length === 2) {
+    console.log('✓ /api/anywhere/plan 显式 round_trip 日期空 → 两条日期补全提示');
+  } else { failed++; console.error('✗ /api/anywhere/plan 显式往返缺日期异常：' + JSON.stringify(ivB).slice(0, 200)); }
+
+  const ivC = await (await fetch(BASE + '/api/anywhere/plan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: '从北京去阿拉木图往返', travel: { trip_type: 'one_way' } }) })).json();
+  if (ivC.code === 0 && ivC.data.intent.trip_type === 'one_way' &&
+    ivC.data.needs_confirmation.every((n) => !n.includes('往返行程请补'))) {
+    console.log('✓ /api/anywhere/plan 文本往返 + 显式 one_way → 单程且无残留往返提示');
+  } else { failed++; console.error('✗ /api/anywhere/plan 显式覆盖异常：' + JSON.stringify(ivC).slice(0, 200)); }
+
+  const ivD = await (await fetch(BASE + '/api/anywhere/plan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: '从北京去阿拉木图往返', travel: { outbound_window: '2026-02-31 ~ 2026-02-31', return_window: '2026-99-99 ~ 2026-99-99' } }) })).json();
+  if (ivD.code === 0 && ivD.data.intent.outbound_window == null && ivD.data.intent.return_window == null &&
+    ivD.data.needs_confirmation.filter((n) => n.includes('日期')).length === 2) {
+    console.log('✓ /api/anywhere/plan 无效日期窗口（02-31/99-99）被日历校验丢弃 → 补全提示');
+  } else { failed++; console.error('✗ /api/anywhere/plan 无效窗口未拒：' + JSON.stringify(ivD).slice(0, 200)); }
 
   console.log(failed ? `\n✗ ${failed} 项不一致` : '\n✓ 全部接口与 mock.js 派生结果一致');
   process.exit(failed ? 1 : 0);
