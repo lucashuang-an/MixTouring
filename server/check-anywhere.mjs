@@ -7,9 +7,12 @@
 import {
   resolvePlace, scanPlaceMentions, extractConstraints, constraintChips,
   buildCandidateSkeletons, verifyLegs, planAnywhere, resultRelevance,
-  registerPlaceCandidate, takePlaceCandidate, railDirectEligibility, RAIL_DIRECT_MAX_KM,
+  registerPlaceCandidate, takePlaceCandidate, railDirectEligibility, corridorEffectiveStatus, RAIL_DIRECT_MAX_KM,
   osmKind, KIND_LABEL
 } from './lib/anywhere.mjs';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 
 let fail = 0;
 let total = 0;
@@ -124,6 +127,34 @@ const NO_DIGIT_RE = /\d/;
   ok(urumqiAlma.candidates.some((c) => c.variant === 'rail' &&
     c.basis.evidence === '项目结构化班期证据'),
     'P1-2：乌鲁木齐→阿拉木图凭项目结构化班期证据（走廊）生成直达铁路卡');
+
+  /* P2（九轮）：走廊种子结构化来源治理——字段齐备 + 分级 + 过期降级 */
+  const corridors = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'pipeline/data/rail-corridors.json'), 'utf8')).corridors;
+  ok(corridors.length >= 3 && corridors.every((c) =>
+    c.a && c.b && c.note && c.evidence &&
+    ['public_line_knowledge', 'structured_schedule_sample'].includes(c.evidence_grade) &&
+    typeof c.source_url === 'string' && /^https:/.test(c.source_url) &&
+    /^\d{4}-\d{2}-\d{2}$/.test(c.sampled_at || '') &&
+    c.status === 'verified_knowledge' &&
+    /^\d{4}-\d{2}-\d{2}$/.test(c.valid_for || '') && c.valid_for >= c.sampled_at),
+    'P2：走廊种子四字段齐备（source_url https / sampled_at / status / valid_for≥sampled_at）且证据分级不混用');
+  const railCard = urumqiAlma.candidates.find((c) => c.variant === 'rail');
+  ok(railCard.basis.source_url && /^https:/.test(railCard.basis.source_url) && railCard.basis.sampled_at && railCard.basis.valid_for && railCard.basis.evidence_grade === 'structured_schedule_sample',
+    'P2：铁路卡 basis 带结构化来源字段（可点开核对；仍是假设依据，非当期班期）');
+  const exp = { a: '北京', b: '香港', note: '测试走廊', evidence: '公开线路常识', evidence_grade: 'public_line_knowledge', source_url: 'https://example.com/rail', sampled_at: '2026-09-22', status: 'verified_knowledge', valid_for: '2026-10-01' };
+  ok(corridorEffectiveStatus(exp, Date.parse('2026-09-25')) === 'verified_knowledge' &&
+    corridorEffectiveStatus(exp, Date.parse('2026-10-02')) === 'expired',
+    'P2：corridorEffectiveStatus 按日界判定过期（10-01 有效、10-02 过期）');
+  const expR = railDirectEligibility(resolvePlace('北京'), resolvePlace('香港'), { nowMs: Date.parse('2026-10-02T00:00:00Z'), corridors: [exp] });
+  ok(expR.eligible === false && expR.explore_hint === true && expR.basis.rule === 'corridor-expired' && expR.reason.includes('过期'),
+    'P2 反例：走廊过期 → 只降为铁路/陆路方向探索（railDirectEligibility 层；真实走廊未过期不受影响）');
+  ok(buildCandidateSkeletons(resolvePlace('北京'), resolvePlace('香港'), {}, {})
+    .candidates.some((c) => c.variant === 'rail'),
+    'P2：真实数据走廊（valid_for 未过）铁路卡正常生成');
+  const badStatus = { ...exp, status: 'disputed' };
+  ok(corridorEffectiveStatus(badStatus) === 'disputed' &&
+    railDirectEligibility(resolvePlace('北京'), resolvePlace('香港'), { corridors: [badStatus] }).explore_hint === true,
+    'P2 反例：走廊状态异常（非 verified_knowledge）→ 降为探索');
 
   const noCoord = railDirectEligibility(resolvePlace('北京'), { name: 'X', kind: 'city', country: 'US' });
   ok(noCoord.eligible === false && noCoord.explore_hint === false && noCoord.basis.reason.includes('坐标缺失'),
@@ -372,7 +403,7 @@ const NO_DIGIT_RE = /\d/;
     '编排：web_search 已配置时逐段挂相关线索（source_lead）');
   ok(r6.web_search && r6.web_search.configured === true && r6.web_search.status === 'quota_exhausted',
     'P1-4：规划响应如实带 web_search 配置与最近真实状态（configured ≠ available）');
-  ok(r6.planner_version === 'v0.33.0', '编排：anywhere 版本号对齐 v0.33.0');
+  ok(r6.planner_version === 'v0.34.0', '编排：anywhere 版本号对齐 v0.34.0');
 
   const r7 = await planAnywhere({ text: '想去新疆最西边那座古城玩' },
     { callJson: async () => ({ origin: '北京', destination: '喀什' }), env: {}, osmSearch: async () => [] });

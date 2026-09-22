@@ -456,18 +456,28 @@ function railSideName(place) {
   return place.city || null;
 }
 
-function findCorridor(oa, da) {
+function findCorridor(oa, da, list) {
   if (!oa || !da) return null;
-  return loadRailCorridors().find((c) => (c.a === oa && c.b === da) || (c.a === da && c.b === oa)) || null;
+  return (list || loadRailCorridors()).find((c) => (c.a === oa && c.b === da) || (c.a === da && c.b === oa)) || null;
+}
+
+/** 走廊有效性：status≠verified_knowledge 或 valid_for 已过 → 过期/异常（只降为探索，不出直达卡）。 */
+export function corridorEffectiveStatus(c, nowMs = Date.now()) {
+  if (c.status && c.status !== 'verified_knowledge') return String(c.status);
+  const today = new Date(nowMs).toISOString().slice(0, 10);
+  if (c.valid_for && c.valid_for < today) return 'expired';
+  return 'verified_knowledge';
 }
 
 /**
+ * @param {object} opts { nowMs, corridors }（测试注入时钟与走廊清单）
  * @returns {{eligible, explore_hint, basis, reason?}}
- *   eligible=true  有正向依据（known-corridor），可生成直达铁路卡
- *   explore_hint=true  仅地理可能，无服务依据 → 铁路/陆路方向探索（不出卡）
+ *   eligible=true  命中有效走廊（known-corridor，含结构化来源字段），可生成直达铁路卡（仍只是假设）
+ *   explore_hint=true  仅地理可能或走廊过期 → 铁路/陆路方向探索（不出卡）
  *   两者皆 false  负向粗筛 veto（距离/旗标跨境/坐标缺失），连探索提示也不给
  */
-export function railDirectEligibility(o, d) {
+export function railDirectEligibility(o, d, opts = {}) {
+  const nowMs = opts.nowMs != null ? opts.nowMs : Date.now();
   const veto = (reason) => ({ eligible: false, explore_hint: false, basis: { rule: 'geo-veto', reason } });
   /* 旗标只在两端属不同国家/地区（跨境/跨海场景）时拦截；同区域内线路交给走廊数据判定 */
   if (o.no_direct_rail === true && o.country !== d.country) return veto('出发地为无跨境陆路铁路连接的地区（岛屿/无铁路口岸）');
@@ -479,11 +489,25 @@ export function railDirectEligibility(o, d) {
   if (km > RAIL_DIRECT_MAX_KM) {
     return veto('两端大圆距离约 ' + km + 'km，超过 ' + RAIL_DIRECT_MAX_KM + 'km 陆路负向粗筛门槛');
   }
-  const corridor = findCorridor(railSideName(o), railSideName(d));
+  const corridor = findCorridor(railSideName(o), railSideName(d), opts.corridors);
   if (corridor) {
+    const st = corridorEffectiveStatus(corridor, nowMs);
+    if (st === 'verified_knowledge') {
+      return {
+        eligible: true, explore_hint: false,
+        basis: {
+          rule: 'known-corridor', corridor: corridor.note,
+          evidence: corridor.evidence, evidence_grade: corridor.evidence_grade || null,
+          source_url: typeof corridor.source_url === 'string' && /^https:/.test(corridor.source_url) ? corridor.source_url : null,
+          sampled_at: corridor.sampled_at || null, valid_for: corridor.valid_for || null,
+          corridor_status: st, within_km: km, threshold_km: RAIL_DIRECT_MAX_KM
+        }
+      };
+    }
     return {
-      eligible: true, explore_hint: false,
-      basis: { rule: 'known-corridor', corridor: corridor.note, evidence: corridor.evidence, within_km: km, threshold_km: RAIL_DIRECT_MAX_KM }
+      eligible: false, explore_hint: true,
+      basis: { rule: 'corridor-expired', corridor_status: st, valid_for: corridor.valid_for || null },
+      reason: '走廊证据已过期或状态异常（' + st + '）：只降为铁路/陆路方向探索，待重新核对来源后恢复'
     };
   }
   return {
