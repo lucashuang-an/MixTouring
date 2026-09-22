@@ -125,26 +125,28 @@ const NO_DIGIT_RE = /\d/;
 
   const urumqiAlma = buildCandidateSkeletons(resolvePlace('乌鲁木齐'), resolvePlace('阿拉木图'), {}, {});
   ok(urumqiAlma.candidates.some((c) => c.variant === 'rail' &&
-    c.basis.evidence === '项目结构化班期证据'),
-    'P1-2：乌鲁木齐→阿拉木图凭项目结构化班期证据（走廊）生成直达铁路卡');
+    c.basis.evidence_grade === 'historical_schedule_sample'),
+    'P1（十轮）：乌鲁木齐→阿拉木图走廊降为历史班期样例分级（K9795 属历史参考，不再标结构化班期证据），铁路卡仍生成');
 
-  /* P2（九轮）：走廊种子结构化来源治理——字段齐备 + 分级 + 过期降级 */
+  /* P2（九轮+十轮）：走廊种子结构化来源治理——字段齐备 + 分级 + 复核期限语义 + 过期降级 */
   const corridors = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'pipeline/data/rail-corridors.json'), 'utf8')).corridors;
   ok(corridors.length >= 3 && corridors.every((c) =>
     c.a && c.b && c.note && c.evidence &&
-    ['public_line_knowledge', 'structured_schedule_sample'].includes(c.evidence_grade) &&
+    ['public_line_knowledge', 'historical_schedule_sample'].includes(c.evidence_grade) &&
     typeof c.source_url === 'string' && /^https:/.test(c.source_url) &&
     /^\d{4}-\d{2}-\d{2}$/.test(c.sampled_at || '') &&
     c.status === 'verified_knowledge' &&
-    /^\d{4}-\d{2}-\d{2}$/.test(c.valid_for || '') && c.valid_for >= c.sampled_at),
-    'P2：走廊种子四字段齐备（source_url https / sampled_at / status / valid_for≥sampled_at）且证据分级不混用');
+    /^\d{4}-\d{2}-\d{2}$/.test(c.review_by || '') && c.review_by >= c.sampled_at &&
+    c.valid_for === undefined),
+    'P2（十轮）：走廊字段齐备且语义准确——review_by 复核期限（valid_for 已移除）、K9795 为历史班期样例分级');
   const railCard = urumqiAlma.candidates.find((c) => c.variant === 'rail');
-  ok(railCard.basis.source_url && /^https:/.test(railCard.basis.source_url) && railCard.basis.sampled_at && railCard.basis.valid_for && railCard.basis.evidence_grade === 'structured_schedule_sample',
-    'P2：铁路卡 basis 带结构化来源字段（可点开核对；仍是假设依据，非当期班期）');
-  const exp = { a: '北京', b: '香港', note: '测试走廊', evidence: '公开线路常识', evidence_grade: 'public_line_knowledge', source_url: 'https://example.com/rail', sampled_at: '2026-09-22', status: 'verified_knowledge', valid_for: '2026-10-01' };
+  ok(railCard.basis.source_url && /^https:/.test(railCard.basis.source_url) && railCard.basis.sampled_at &&
+    railCard.basis.review_by && railCard.basis.evidence_grade === 'historical_schedule_sample',
+    'P2：铁路卡 basis 带来源字段与复核期限（页面明示复核期限非运营有效期；仍是假设依据）');
+  const exp = { a: '北京', b: '香港', note: '测试走廊', evidence: '公开线路常识', evidence_grade: 'public_line_knowledge', source_url: 'https://example.com/rail', sampled_at: '2026-09-22', status: 'verified_knowledge', review_by: '2026-10-01' };
   ok(corridorEffectiveStatus(exp, Date.parse('2026-09-25')) === 'verified_knowledge' &&
     corridorEffectiveStatus(exp, Date.parse('2026-10-02')) === 'expired',
-    'P2：corridorEffectiveStatus 按日界判定过期（10-01 有效、10-02 过期）');
+    'P2：corridorEffectiveStatus 按 review_by 日界判定（10-01 有效、10-02 过期）');
   const expR = railDirectEligibility(resolvePlace('北京'), resolvePlace('香港'), { nowMs: Date.parse('2026-10-02T00:00:00Z'), corridors: [exp] });
   ok(expR.eligible === false && expR.explore_hint === true && expR.basis.rule === 'corridor-expired' && expR.reason.includes('过期'),
     'P2 反例：走廊过期 → 只降为铁路/陆路方向探索（railDirectEligibility 层；真实走廊未过期不受影响）');
@@ -374,6 +376,56 @@ const NO_DIGIT_RE = /\d/;
     'P0-1：一句话模式与两字段共用开放解析流程');
 }
 
+/* ---------- 十轮 P0/P2：往返意图不回退（提取/覆盖/消歧与重新规划后保留） ---------- */
+{
+  /* P0 核心：评审原句「国庆从北京去阿拉木图，10 月 7 日回来」 */
+  const rt = await planAnywhere({ text: '国庆附近从北京去阿拉木图，10月7日回来' }, NO_LLM);
+  ok(rt.intent.trip_type === 'round_trip' && rt.intent.traveler_count === 1,
+    'P0：往返意图与人数提取（round_trip / 1 人）');
+  ok(rt.intent.outbound_window && /^2026-09-27 ~ 2026-10-07$/.test(rt.intent.outbound_window),
+    'P0：国庆假期宽窗提取（' + rt.intent.outbound_window + '）');
+  ok(rt.intent.return_window === '2026-10-07 ~ 2026-10-07',
+    'P0：返程日期提取「10月7日回来」→ 2026-10-07 单日窗（代码计算年份）');
+  /* 塔什干确认流（有候选路径）：消歧与重新规划后意图字段保留 */
+  const osmT = [{ display_name: 'Tashkent, 乌兹别克斯坦', country: 'UZ', lat: '41.31', lon: '69.28', type: 'city', category: 'place', osm_type: 'relation', osm_id: '2369842', url: 'https://www.openstreetmap.org/relation/2369842' }];
+  const p1 = await planAnywhere({ text: '国庆附近从北京去塔什干，10月7日回来，2个人' }, {
+    callJson: async (o2) => {
+      const sp = String(o2.schema_prompt || '');
+      if (sp.includes('origin_raw')) return { origin_raw: '北京', destination_raw: '塔什干' };
+      if (sp.includes('地点候选')) return { candidates: [{ name: '塔什干', name_latin: 'Tashkent', kind: 'city', country: 'UZ' }] };
+      return null;
+    },
+    osmSearch: async () => osmT,
+    env: {}
+  });
+  const p2c = await planAnywhere({ text: '国庆附近从北京去塔什干，10月7日回来，2个人', confirmed_places: { destination: p1.place_candidates.destination[0].candidate_id } }, {
+    callJson: async () => null, osmSearch: async () => osmT, env: {}
+  });
+  ok(p2c.intent.trip_type === 'round_trip' && p2c.intent.traveler_count === 2 &&
+    p2c.intent.return_window === '2026-10-07 ~ 2026-10-07' && p2c.intent.outbound_window,
+    'P2：往返/日期/人数经消歧确认后保留（round_trip/2人/10-07 返程/假期宽窗）');
+  /* 显式字段覆盖文本提取（UI 字段优先） */
+  const ov = await planAnywhere({ text: '国庆附近从北京去喀什', travel: { trip_type: 'one_way', traveler_count: 3 } }, NO_LLM);
+  ok(ov.intent.trip_type === 'one_way' && ov.intent.traveler_count === 3,
+    'P0：显式行程字段覆盖文本提取（one_way/3 人）');
+  const badTravel = await planAnywhere({ text: '从北京去喀什', travel: { trip_type: 'hack', outbound_window: '明天', traveler_count: 99 } }, NO_LLM);
+  ok(badTravel.intent.trip_type !== 'hack' && badTravel.intent.outbound_window == null && badTravel.intent.traveler_count === 1,
+    'P0：非法行程字段被白名单丢弃（不猜）');
+  /* 重名候选区分（P1）：detail 携带完整行政层级 */
+  const cam = await planAnywhere({ origin: '北京', destination: '剑桥' }, {
+    callJson: async () => ({ candidates: [{ name: '剑桥', name_latin: 'Cambridge', kind: 'city', country: 'GB' }] }),
+    osmSearch: async () => [
+      { display_name: '剑桥市, 剑桥郡, 英格兰, 英国', country: 'GB', lat: '52.2', lon: '0.12', type: 'city', category: 'place', osm_type: 'node', osm_id: '20971094', url: 'https://www.openstreetmap.org/node/20971094' },
+      { display_name: '剑桥市, 剑桥郡, 英格兰, 英国', country: 'GB', lat: '52.21', lon: '0.13', type: 'city', category: 'place', osm_type: 'relation', osm_id: '295355', url: 'https://www.openstreetmap.org/relation/295355' }
+    ],
+    env: {}
+  });
+  const gb = cam.place_candidates.destination;
+  ok(gb.length === 2 && gb.every((c) => c.detail) &&
+    gb[0].detail === gb[1].detail && (gb[0].osm_type !== gb[1].osm_type || gb[0].osm_id !== gb[1].osm_id),
+    'P1：重名候选带 detail 与稳定标识（同 display_name 也能经 node/relation 区分，页面逐候选展示）');
+}
+
 /* ---------- planAnywhere 编排（注入桩，无网络无 key） ---------- */
 {
   const r1 = await planAnywhere({ text: '从北京去喀什' }, NO_LLM);
@@ -403,7 +455,7 @@ const NO_DIGIT_RE = /\d/;
     '编排：web_search 已配置时逐段挂相关线索（source_lead）');
   ok(r6.web_search && r6.web_search.configured === true && r6.web_search.status === 'quota_exhausted',
     'P1-4：规划响应如实带 web_search 配置与最近真实状态（configured ≠ available）');
-  ok(r6.planner_version === 'v0.34.0', '编排：anywhere 版本号对齐 v0.34.0');
+  ok(r6.planner_version === 'v0.35.0', '编排：anywhere 版本号对齐 v0.35.0');
 
   const r7 = await planAnywhere({ text: '想去新疆最西边那座古城玩' },
     { callJson: async () => ({ origin: '北京', destination: '喀什' }), env: {}, osmSearch: async () => [] });

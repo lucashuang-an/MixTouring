@@ -13,7 +13,7 @@
 
 import { callJson as callJsonDefault, searchWeb as searchWebDefault, webSearchStatus as webSearchStatusDefault } from './llm.mjs';
 import { assignFromTo } from './parse.mjs';
-import { loadPlaces, webSearchConfigured } from './trip-service.mjs';
+import { loadPlaces, webSearchConfigured, extractIntentFields } from './trip-service.mjs';
 import { candidatesBetween, haversineKm } from '../../pipeline/lib/geo-skill.mjs';
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -145,6 +145,73 @@ function sanitizeConstraints(raw) {
   const tr = Number(raw.max_transfers);
   if (Number.isInteger(tr) && tr >= 0 && tr <= 2) c.max_transfers = tr;
   return c;
+}
+
+/* ---------- 行程意图（v0.35.0 十轮 P0：往返/日期/人数不回退） ----------
+ * 复用 trip-service.extractIntentFields（往返/人数/假期宽窗，确定性）；
+ * 新增返程日期提取（「10月7日回来」→ 单日窗，年份代码计算禁心算）；
+ * UI 显式字段（trip_type/窗口/人数）白名单化后优先于文本提取。 */
+
+const WIN_RE = /^\d{4}-\d{2}-\d{2} ~ \d{4}-\d{2}-\d{2}$/;
+
+/** 从一句话提取返程日期（M月D日 / M-D / M/D 紧跟或前接「回来/返回/回程/返程」），代码计算年份。 */
+export function extractReturnDate(text, nowMs = Date.now()) {
+  const t = String(text || '');
+  const m = t.match(/(\d{1,2})\s*月\s*(\d{1,2})\s*日?[^。！？，,]{0,8}?(?:回来|返回|回程|返程|回)/) ||
+    t.match(/(?:回来|返回|回程|返程)[^。！？，,]{0,4}(\d{1,2})\s*月\s*(\d{1,2})\s*日?/) ||
+    t.match(/(\d{1,2})\s*[\/\-]\s*(\d{1,2})[^。！？，,]{0,8}?(?:回来|返回|回程|返程)/);
+  if (!m) return null;
+  const month = +m[1], day = +m[2];
+  if (!(month >= 1 && month <= 12 && day >= 1 && day <= 31)) return null;
+  /* 年份代码推算：目标日已过（当年口径）则次年（禁心算） */
+  const now = new Date(nowMs);
+  let year = now.getFullYear();
+  const build = (y) => new Date(Date.UTC(y, month - 1, day));
+  if (build(year) < new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()))) year += 1;
+  const iso = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  return `${iso} ~ ${iso}`;
+}
+
+/** 显式行程意图字段（UI）白名单化：枚举/格式/范围不对的丢弃，不猜。 */
+function sanitizeIntentFields(raw) {
+  const out = {};
+  if (!raw || typeof raw !== 'object') return out;
+  if (['pending', 'round_trip', 'one_way'].includes(raw.trip_type)) out.trip_type = raw.trip_type;
+  if (typeof raw.outbound_window === 'string' && WIN_RE.test(raw.outbound_window)) out.outbound_window = raw.outbound_window;
+  if (typeof raw.return_window === 'string' && WIN_RE.test(raw.return_window)) out.return_window = raw.return_window;
+  const n = Number(raw.traveler_count);
+  if (Number.isInteger(n) && n >= 1 && n <= 9) out.traveler_count = n;
+  return out;
+}
+
+/** 行程意图组装：文本提取（确定性）+ 显式字段覆盖 + 往返完整性 needs。 */
+export function buildTravelIntent(text, explicit, nowMs = Date.now()) {
+  const fields = extractIntentFields(text, nowMs);
+  const retFromText = extractReturnDate(text, nowMs);
+  /* 数字人数（「2个人」）——extractIntentFields 只覆盖中文数词，这里补数字形式 */
+  let traveler = fields.traveler_count;
+  if (traveler == null) {
+    const m = String(text || '').match(/([1-9])\s*个?\s*人/);
+    if (m) traveler = +m[1];
+  }
+  const intent = {
+    trip_type: fields.trip_type || 'pending',
+    outbound_window: fields.outbound_window || null, /* 假期宽窗等 */
+    return_window: retFromText,
+    traveler_count: traveler ?? 1
+  };
+  const needs = [];
+  if (intent.trip_type === 'pending') needs.push('行程类型未识别（单程/往返）：可先用往返做方向探索，或补充说明');
+  if (intent.trip_type === 'round_trip' && !intent.outbound_window && !explicit.outbound_window) needs.push('往返行程建议补去程日期或大致窗口');
+  if (intent.trip_type === 'round_trip' && !intent.return_window && !explicit.return_window) needs.push('往返行程请补返程日期（未补前不展示返程样本）');
+  const exp = sanitizeIntentFields(explicit);
+  return { intent: { ...intent, ...exp }, needs: needs.filter((n) => {
+    /* 显式字段已补齐的 needs 移除 */
+    if (n.includes('去程日期') && exp.outbound_window) return false;
+    if (n.includes('返程日期') && exp.return_window) return false;
+    if (n.includes('行程类型') && exp.trip_type && exp.trip_type !== 'pending') return false;
+    return true;
+  }) };
 }
 
 /* ---------- 路由判定（词典与动态地点对象共用同一规则，与 trip-service.resolveRoute 口径一致） ---------- */
@@ -298,6 +365,9 @@ async function openResolvePlace(rawName, contextText, deps, degradations) {
       country: r.country || null,
       country_name: (llmHit && llmHit.country_name) || null,
       lat: r.lat, lon: r.lon,
+      /* P1（十轮）：重名候选区分——完整行政层级描述 + 稳定标识，页面逐候选展示 */
+      detail: r.display_name || null,
+      osm_type: r.osm_type || null, osm_id: r.osm_id || null,
       no_direct_rail: false,
       source_url: r.url,
       source_name: r.source_name || 'OpenStreetMap',
@@ -360,6 +430,8 @@ function candidateToDynamic(cand) {
     tz: null, city: null, aliases: [],
     lat: cand.lat != null ? String(cand.lat) : null,
     lon: cand.lon != null ? String(cand.lon) : null,
+    detail: cand.detail || null,
+    osm_type: cand.osm_type || null, osm_id: cand.osm_id || null,
     no_direct_rail: cand.no_direct_rail === true,
     resolution_state: 'user_confirmed',
     source_url: source, source_name: cand.source_name || 'OpenStreetMap',
@@ -461,11 +533,11 @@ function findCorridor(oa, da, list) {
   return (list || loadRailCorridors()).find((c) => (c.a === oa && c.b === da) || (c.a === da && c.b === oa)) || null;
 }
 
-/** 走廊有效性：status≠verified_knowledge 或 valid_for 已过 → 过期/异常（只降为探索，不出直达卡）。 */
+/** 走廊有效性：status≠verified_knowledge 或 review_by（项目来源复核期限）已过 → 过期/异常（只降为探索，不出直达卡）。 */
 export function corridorEffectiveStatus(c, nowMs = Date.now()) {
   if (c.status && c.status !== 'verified_knowledge') return String(c.status);
   const today = new Date(nowMs).toISOString().slice(0, 10);
-  if (c.valid_for && c.valid_for < today) return 'expired';
+  if (c.review_by && c.review_by < today) return 'expired';
   return 'verified_knowledge';
 }
 
@@ -499,14 +571,14 @@ export function railDirectEligibility(o, d, opts = {}) {
           rule: 'known-corridor', corridor: corridor.note,
           evidence: corridor.evidence, evidence_grade: corridor.evidence_grade || null,
           source_url: typeof corridor.source_url === 'string' && /^https:/.test(corridor.source_url) ? corridor.source_url : null,
-          sampled_at: corridor.sampled_at || null, valid_for: corridor.valid_for || null,
+          sampled_at: corridor.sampled_at || null, review_by: corridor.review_by || null,
           corridor_status: st, within_km: km, threshold_km: RAIL_DIRECT_MAX_KM
         }
       };
     }
     return {
       eligible: false, explore_hint: true,
-      basis: { rule: 'corridor-expired', corridor_status: st, valid_for: corridor.valid_for || null },
+      basis: { rule: 'corridor-expired', corridor_status: st, review_by: corridor.review_by || null },
       reason: '走廊证据已过期或状态异常（' + st + '）：只降为铁路/陆路方向探索，待重新核对来源后恢复'
     };
   }
@@ -821,6 +893,8 @@ export async function planAnywhere(input, deps = {}) {
 
   const constraints = { ...extractConstraints(text), ...sanitizeConstraints(input.constraints) };
   const chips = constraintChips(constraints);
+  /* P0（十轮）：往返/日期/人数意图——文本确定性提取 + UI 显式字段覆盖，经消歧/重新规划不回退 */
+  const travel = buildTravelIntent(text || '', input.travel || null);
   const intent = {
     origin: o ? o.name : (rawOrigin || null),
     destination: d ? d.name : (rawDest || null),
@@ -828,11 +902,16 @@ export async function planAnywhere(input, deps = {}) {
     destination_place: d,
     constraints,
     constraint_chips: chips,
-    parse_engine
+    parse_engine,
+    trip_type: travel.intent.trip_type,
+    outbound_window: travel.intent.outbound_window,
+    return_window: travel.intent.return_window,
+    traveler_count: travel.intent.traveler_count
   };
 
   if (!o && !place_candidates.origin.length && !needs.some((n) => n.startsWith('出发地'))) needs.push('出发地未识别');
   if (!d && !place_candidates.destination.length && !needs.some((n) => n.startsWith('目的地'))) needs.push('目的地未识别');
+  needs.push(...travel.needs);
   if (o && d && o.name === d.name) needs.push('出发地与目的地相同：跨城交通规划不适用（市内接驳不在当前范围）');
   if (!o || !d || o.name === d.name) {
     return {
@@ -888,7 +967,7 @@ export async function planAnywhere(input, deps = {}) {
   return {
     intent,
     route,
-    needs_confirmation: [],
+    needs_confirmation: travel.needs,
     place_candidates,
     candidates: built.candidates,
     constraint_notes: built.constraint_notes,
