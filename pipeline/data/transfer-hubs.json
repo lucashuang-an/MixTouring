@@ -1,0 +1,117 @@
+{
+  "_meta": {
+    "说明": "中转枢纽种子（v0.37.0 G2.6 首卡）：地理顺路之外的枢纽作用与已知连接依据，用于候选生成的可解释推荐理由（candidate_hypothesis 层），不构成任何班期或当期运营事实。",
+    "字段口径": "name=places.json 已收录城市名；roles=intl_gateway（国际方向门户）/rail_hub（铁路枢纽）/rail_gateway（铁路方向门户）；gateway_for=服务方向（ISO 国家码或中文方向描述）；connection_notes=可解释依据文案（不含数字）；枢纽扩充经取证后增补。",
+    "防反向": "枢纽命中仍须通过绕行比校验（枢纽与两端大圆距离和/两端直线距离 ≤ 1.6，与 geo-skill 同阈值），明显反向绕行不生成。"
+  },
+  "hubs": [
+    {
+      "name": "乌鲁木齐",
+      "roles": [
+        "intl_gateway",
+        "rail_hub",
+        "air_hub"
+      ],
+      "gateway_for": [
+        "KZ",
+        "中亚"
+      ],
+      "connection_notes": [
+        "面向中亚的国际门户：对哈萨克斯坦方向有国际列车班期锚点（走廊证据，历史样例口径）",
+        "国内西北空铁枢纽，承接进疆干线铁路与国内航线"
+      ]
+    },
+    {
+      "name": "西安",
+      "roles": [
+        "rail_hub",
+        "air_hub"
+      ],
+      "gateway_for": [
+        "西北方向"
+      ],
+      "connection_notes": [
+        "全国高铁网络中心枢纽，东西向干线交汇"
+      ]
+    },
+    {
+      "name": "西宁",
+      "roles": [
+        "rail_gateway"
+      ],
+      "gateway_for": [
+        "西藏方向"
+      ],
+      "connection_notes": [
+        "青藏铁路门户：进藏铁路方向需经此衔接"
+      ]
+    },
+    {
+      "name": "成都",
+      "roles": [
+        "air_hub",
+        "rail_hub"
+      ],
+      "gateway_for": [
+        "西南方向"
+      ],
+      "connection_notes": [
+        "西南航空枢纽，承接高原与西南干线"
+      ]
+    },
+    {
+      "name": "昆明",
+      "roles": [
+        "air_hub"
+      ],
+      "gateway_for": [
+        "东南亚方向"
+      ],
+      "connection_notes": [
+        "面向东南亚的航空门户"
+      ]
+    },
+    {
+      "name": "北京",
+      "roles": [
+        "air_hub",
+        "rail_hub"
+      ],
+      "gateway_for": [
+        "国内全域"
+      ],
+      "connection_notes": [
+        "首都综合枢纽"
+      ]
+    },
+    {
+      "name": "上海",
+      "roles": [
+        "air_hub",
+        "rail_hub"
+      ],
+      "gateway_for": [
+        "国内全域"
+      ],
+      "connection_notes": [
+        "华东综合枢纽"
+      ]
+    },
+    {
+      "name": "广州",
+      "roles": [
+        "air_hub",
+        "rail_hub"
+      ],
+      "gateway_for": [
+        "国内全域",
+        "东南亚方向",
+        "HK"
+      ],
+      "connection_notes": [
+        "华南综合枢纽，东南亚航线密集",
+        "广深港高铁衔接香港，华南赴港方向门户"
+      ]
+    }
+  ]
+}

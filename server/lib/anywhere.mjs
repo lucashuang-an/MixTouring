@@ -625,6 +625,112 @@ export function railDirectEligibility(o, d, opts = {}) {
  * @param {object} llmHints {one_transfer_city, mixed_rail_city}（城市清单校验在本函数消费点执行，清单外丢弃）
  * @returns {{candidates, degradations, constraint_notes}}
  */
+/* ---------- G2.6（十四轮流转）：枢纽作用与已知连接 + 推荐三件套 + 直达合适判定 ---------- */
+
+const HUB_DETOUR_MAX = 1.6; /* 与 geo-skill MAX_DETOUR_RATIO 同口径 */
+export const DIRECT_OK_KM = 1300; /* 国内短距：直达航空/高铁通常已合适，不生成中转方向（不凑候选） */
+
+let HUBS = null;
+function loadTransferHubs() {
+  if (!HUBS) {
+    try { HUBS = JSON.parse(readFileSync(join(ROOT, 'pipeline/data/transfer-hubs.json'), 'utf8')).hubs || []; }
+    catch { HUBS = []; }
+  }
+  return HUBS;
+}
+
+function hubInfo(name) {
+  return loadTransferHubs().find((h) => h.name === name) || null;
+}
+
+/** 枢纽绕行比（防明显反向绕行）：(o→hub + hub→d) / o→d；任一坐标缺失 → null（无法校验）。 */
+function hubDetourRatio(o, d, hubName) {
+  const h = loadPlaces().find((p) => p.name === hubName && p.kind === 'city');
+  if (!h || [o.lat, o.lon, d.lat, d.lon, h.lat, h.lon].some((x) => x == null || Number.isNaN(Number(x)))) return null;
+  const direct = haversineKm(Number(o.lat), Number(o.lon), Number(d.lat), Number(d.lon));
+  if (!direct) return null;
+  const via = haversineKm(Number(o.lat), Number(o.lon), Number(h.lat), Number(h.lon)) +
+    haversineKm(Number(h.lat), Number(h.lon), Number(d.lat), Number(d.lon));
+  return Math.round((via / direct) * 100) / 100;
+}
+
+/**
+ * 中转点选择（G2.6）：①国内双端在 geo 库 → 顺路候选（首位命中枢纽表时附枢纽依据）；
+ * ②国际 OD → 枢纽表 gateway_for 匹配目的地方向 + 绕行比校验；③LLM 提名兜底（同样过绕行比）。
+ * 返回 { one, mixed, degradations }——one/mixed 形如 { name, source, whys[] }。
+ */
+function pickTransferHubs(o, d, llmHints, degradations) {
+  const one = { name: null, source: null, whys: [] };
+  const mixed = { name: null, source: null, whys: [] };
+  const fromCity = geoCityName(o);
+  const toCity = geoCityName(d);
+  const domesticGeo = isDomesticPair(o, d) && fromCity && toCity;
+
+  if (domesticGeo) {
+    const airHubs = candidatesBetween(fromCity, toCity, { mode: 'plane' });
+    if (airHubs.length) {
+      one.name = airHubs[0].name; one.source = 'rule:geo';
+      one.whys.push('地理顺路窗口内绕行比最低的航空可达城市（确定性估算）');
+      const hi = hubInfo(one.name);
+      if (hi) one.whys.push(...hi.connection_notes.slice(0, 1));
+    }
+    const railHubs = candidatesBetween(fromCity, toCity, { mode: 'train' }).filter((h) => h.has_airport);
+    if (railHubs.length) {
+      mixed.name = railHubs[0].name; mixed.source = 'rule:geo';
+      mixed.whys.push('铁路可达且具备机场的顺路城市，支撑「铁路+航空」组合（确定性估算）');
+      const hi2 = hubInfo(mixed.name);
+      if (hi2) mixed.whys.push(...hi2.connection_notes.slice(0, 1));
+    }
+  }
+
+  /* 国际：枢纽表按目的地方向匹配（服务 dest 国家或方向），绕行比防反向 */
+  if (!one.name || !mixed.name) {
+    const destKey = d.country || '';
+    const cands = loadTransferHubs()
+      .filter((h) => h.gateway_for.some((g) => g === destKey || (d.country_name && d.country_name.includes(g))))
+      .map((h) => ({ h, ratio: hubDetourRatio(o, d, h.name) }))
+      .filter((x) => x.ratio != null && x.ratio <= HUB_DETOUR_MAX)
+      .sort((a, b) => a.ratio - b.ratio);
+    if (cands.length) {
+      const best = cands[0];
+      if (!one.name) {
+        one.name = best.h.name; one.source = 'rule:hub';
+        one.whys.push(...best.h.connection_notes);
+      }
+      /* mixed 需要 hub 在中国大陆（铁路起段假设），且出发地大陆 */
+      const railEligible = o.country === 'CN' && o.is_mainland === true &&
+        loadPlaces().some((p) => p.name === best.h.name && p.country === 'CN' && p.is_mainland === true);
+      if (!mixed.name && railEligible) {
+        mixed.name = best.h.name; mixed.source = 'rule:hub';
+        mixed.whys.push(...best.h.connection_notes);
+        mixed.whys.push('枢纽在中国大陆铁路网内，支撑铁路起段组合');
+      }
+    }
+  }
+
+  /* LLM 提名兜底（清单校验 + 绕行比校验在消费点） */
+  const citySet = new Set(loadPlaces().filter((p) => p.kind === 'city').map((p) => p.name));
+  const llmOk = (n) => n && citySet.has(n) && n !== o.name && n !== d.name;
+  if (!one.name && llmOk(llmHints.one_transfer_city)) { one.name = llmHints.one_transfer_city; one.source = 'llm'; one.whys.push('由 AI 从已收录城市中提名（待验证假设）'); }
+  if (!mixed.name && llmOk(llmHints.mixed_rail_city)) { mixed.name = llmHints.mixed_rail_city; mixed.source = 'llm'; mixed.whys.push('由 AI 从已收录城市中提名（待验证假设）'); }
+
+  /* 防反向：任何来源的枢纽都过绕行比（能算则算） */
+  for (const slot of [one, mixed]) {
+    if (!slot.name) continue;
+    const ratio = hubDetourRatio(o, d, slot.name);
+    if (ratio != null && ratio > HUB_DETOUR_MAX) {
+      degradations.push('中转城市「' + slot.name + '」绕行比 ' + ratio + ' 超过 ' + HUB_DETOUR_MAX + '（明显反向绕行）：该骨架未生成');
+      slot.name = null; slot.source = null; slot.whys = [];
+    }
+  }
+  return { one, mixed };
+}
+
+function legUncertain(fromName, toName, crossBorder) {
+  if (crossBorder) return fromName + ' → ' + toName + ' 段：跨境班期、口岸/签证衔接未核验，是最不确定的一段';
+  return fromName + ' → ' + toName + ' 段：具体班期与当日衔接未核验';
+}
+
 export function buildCandidateSkeletons(o, d, constraints, llmHints = {}) {
   const degradations = [];
   const constraint_notes = [];
@@ -634,33 +740,25 @@ export function buildCandidateSkeletons(o, d, constraints, llmHints = {}) {
   const toCity = geoCityName(d);
 
   const placeByName = (n) => loadPlaces().find((p) => p.name === n && p.kind === 'city');
-  /* LLM 提名的防幻觉守门在消费点：必须已在城市词典内且不等于端点，清单外一律丢弃（不造地名）。
-   * geo 顺路候选来自 cities-geo（国内 179 城地理事实库），可能不在 31 城词典内：
-   * 词典外的中转城市只作为骨架节点（name/kind），不虚构词典收录 */
-  const citySet = new Set(loadPlaces().filter((p) => p.kind === 'city').map((p) => p.name));
-  const llmHintCity = (n) => (n && citySet.has(n) && n !== o.name && n !== d.name) ? n : null;
-  const hubNode = (n) => placeByName(n) || { name: n, kind: 'city' };
+  /* cities-geo 词典外顺路城市均为国内城市（geo-skill 为国内 179 城库）——骨架节点补国内属性，防误判跨境段 */
+  const hubNode = (n) => placeByName(n) || { name: n, kind: 'city', country: 'CN', is_mainland: true };
   const candidates = [];
 
-  /* hub 解析：geo 优先，LLM 提名兜底 */
-  let oneHub = null, oneHubSrc = null, mixedHub = null, mixedHubSrc = null;
-  if (fromCity && toCity) {
-    const airHubs = candidatesBetween(fromCity, toCity, { mode: 'plane' });
-    if (airHubs.length) { oneHub = airHubs[0].name; oneHubSrc = 'rule:geo'; }
-    const railHubs = candidatesBetween(fromCity, toCity, { mode: 'train' }).filter((h) => h.has_airport);
-    if (railHubs.length) { mixedHub = railHubs[0].name; mixedHubSrc = 'rule:geo'; }
-  }
-  if (!oneHub && llmHints.one_transfer_city) { oneHub = llmHintCity(llmHints.one_transfer_city); oneHubSrc = 'llm'; }
-  if (!mixedHub && llmHints.mixed_rail_city) { mixedHub = llmHintCity(llmHints.mixed_rail_city); mixedHubSrc = 'llm'; }
+  /* 直达合适判定（G2.6）：国内短距直达航空/高铁通常已最优 → 只出直达，不生成中转方向（不凑候选） */
+  const oDist = [o.lat, o.lon, d.lat, d.lon].every((x) => x != null && !Number.isNaN(Number(x)))
+    ? haversineKm(Number(o.lat), Number(o.lon), Number(d.lat), Number(d.lon)) : null;
+  const directSufficient = !intl && oDist != null && oDist <= DIRECT_OK_KM;
 
-  /* ① 直达骨架：国内一张卡（方式未知待取证）；国际航班方向默认，铁路方向需正向依据
-   *    （v0.33.0：负向粗筛 + 已知走廊；仅地理可能 → 铁路/陆路方向探索，不凑卡） */
+  /* ① 直达骨架：国内一张卡（方式未知待取证）；国际航班方向默认，铁路方向需正向依据（负向粗筛+走廊） */
   if (intl) {
     candidates.push({
       id: 'cand-direct-plane', kind: 'direct', variant: 'plane', hypothesis: true, transfers: 0, builder: 'rule',
       basis: { mode: 'plane', rule: 'intl-default', reason: '国际 OD 默认航班方向假设（是否成立待取证）' },
       legs: [newLeg(1, o, d, 'plane')],
-      explanation: '假设存在直达航班：班期与价格待逐段取证，未取证前不做任何比较'
+      explanation: '假设存在直达航班：班期与价格待逐段取证，未取证前不做任何比较',
+      why_explore: '直达航班是国际出行最直接的参照方案，先确认有无与大致价位，再判断中转是否值得',
+      uncertain_leg: legUncertain(o.name, d.name, true),
+      next_checks: ['查航司官网/平台该方向直达航班与当期价位', '若直达价位可接受，中转方案只在其明显更优时才值得继续查']
     });
     const rb = railDirectEligibility(o, d);
     if (rb.eligible) {
@@ -668,7 +766,10 @@ export function buildCandidateSkeletons(o, d, constraints, llmHints = {}) {
         id: 'cand-direct-rail', kind: 'direct', variant: 'rail', hypothesis: true, transfers: 0, builder: 'rule',
         basis: rb.basis,
         legs: [newLeg(1, o, d, 'rail')],
-        explanation: '假设存在直达铁路方案：已有已知线路依据（详见 basis），班期、口岸衔接与是否直达待逐段取证，与航班假设并存供核验'
+        explanation: '假设存在直达铁路方案：已有已知线路依据（详见 basis），班期、口岸衔接与是否直达待逐段取证，与航班假设并存供核验',
+        why_explore: '该方向有已知铁路线路依据（见卡面来源），直达铁路在时间充裕时可能更省或体验不同',
+        uncertain_leg: legUncertain(o.name, d.name, true),
+        next_checks: ['核对该线路当期班期与购票渠道（见下方分地区入口）', '确认口岸/签证衔接要求']
       });
     } else if (rb.explore_hint) {
       explorations.push({
@@ -685,43 +786,73 @@ export function buildCandidateSkeletons(o, d, constraints, llmHints = {}) {
       id: 'cand-direct', kind: 'direct', hypothesis: true, transfers: 0, builder: 'rule',
       basis: { mode: 'unknown', rule: 'domestic-default', reason: '国内 OD 航空/铁路均可能，方式待取证确认' },
       legs: [newLeg(1, o, d, null)],
-      explanation: '假设存在直达航班或直达列车：具体班期待逐段取证'
+      explanation: '假设存在直达航班或直达列车：具体班期待逐段取证',
+      why_explore: directSufficient
+        ? '该距离直达航空/高铁通常已是最优选择，先按直达查证；中转方向一般不带来本质收益'
+        : '直达是最直接的参照方案，先确认直达供给与价位，再判断中转/混合是否值得',
+      uncertain_leg: legUncertain(o.name, d.name, false),
+      next_checks: ['查直达航班与高铁班次供给', '记录直达价位作为比较基准']
     });
   }
 
-  /* ② 一次中转骨架 */
-  if (oneHub) {
-    const hubPlace = hubNode(oneHub);
-    candidates.push({
-      id: 'cand-one-transfer',
-      kind: 'one_transfer',
-      hypothesis: true,
-      transfers: 1,
-      builder: oneHubSrc,
-      legs: [newLeg(1, o, hubPlace, null), newLeg(2, hubPlace, d, 'plane')],
-      explanation: '假设经「' + oneHub + '」一次中转：中转城市' + HUB_SOURCE_LABEL[oneHubSrc] + '，衔接余量与两段班期待逐段取证'
-    });
+  /* ②③ 中转/混合骨架：直达足够合适（国内短距）时不生成（不凑候选）；枢纽经 pickTransferHubs（顺路/枢纽/LLM 三级，防反向） */
+  if (directSufficient) {
+    constraint_notes.push('该国内 OD 距离在直达优势区间：未生成中转/混合方向（直达通常已合适，不凑候选数）');
   } else {
-    degradations.push('一次中转骨架需要中转城市来源（地理顺路候选或 AI 提名），当前不可用：该骨架未生成');
-  }
-
-  /* ③ 混合交通骨架（铁路段 + 航空段；出发地须为中国大陆——铁路起段假设才成立） */
-  const railEligible = o.country === 'CN' && o.is_mainland === true;
-  if (mixedHub && railEligible) {
-    const hubPlace = hubNode(mixedHub);
-    candidates.push({
-      id: 'cand-mixed',
-      kind: 'mixed',
-      hypothesis: true,
-      transfers: 1,
-      builder: mixedHubSrc,
-      legs: [newLeg(1, o, hubPlace, 'rail'), newLeg(2, hubPlace, d, 'plane')],
-      explanation: '假设先乘铁路到「' + mixedHub + '」再飞往目的地的混合走法：中转城市' + HUB_SOURCE_LABEL[mixedHubSrc] + '，两段班期与衔接待逐段取证'
-    });
-  } else if (!railEligible) {
-    degradations.push('混合交通骨架假设大陆铁路起段，当前出发地不适用：该骨架未生成');
-  } else {
-    degradations.push('混合交通骨架需要铁路中转城市来源（地理顺路候选或 AI 提名），当前不可用：该骨架未生成');
+    const picked = pickTransferHubs(o, d, llmHints, degradations);
+    if (picked.one.name) {
+      const hubPlace = hubNode(picked.one.name);
+      const crossBorder = o.country !== hubPlace.country || hubPlace.country !== d.country;
+      candidates.push({
+        id: 'cand-one-transfer',
+        kind: 'one_transfer',
+        hypothesis: true,
+        transfers: 1,
+        builder: picked.one.source,
+        basis: { rule: picked.one.source === 'rule:hub' ? 'hub-network' : picked.one.source, whys: picked.one.whys },
+        legs: [newLeg(1, o, hubPlace, null), newLeg(2, hubPlace, d, 'plane')],
+        explanation: '假设经「' + picked.one.name + '」一次中转：' + (picked.one.source === 'rule:geo'
+          ? '中转城市按地理顺路筛选（确定性估算，非班期事实）'
+          : picked.one.source === 'rule:hub'
+            ? '中转城市按枢纽作用与已知连接筛选（依据见下）'
+            : '中转城市由 AI 从已收录城市中提名（待验证假设）') + '，衔接余量与两段班期待逐段取证',
+        why_explore: picked.one.whys.join('；'),
+        uncertain_leg: legUncertain(crossBorder ? hubPlace.name : o.name, crossBorder ? d.name : hubPlace.name, crossBorder),
+        next_checks: crossBorder
+          ? ['先核「' + hubPlace.name + ' → ' + d.name + '」段当期班期（最不确定段）', '再核起段班期与两段衔接余量', '跨境段另查口岸/签证要求']
+          : ['核两段班期与衔接余量', '与直达价位对比后再决定是否值得']
+      });
+    } else {
+      degradations.push('一次中转骨架需要中转城市来源（地理顺路/枢纽匹配/AI 提名），当前不可用：该骨架未生成');
+    }
+    const railEligible = o.country === 'CN' && o.is_mainland === true;
+    if (picked.mixed.name && railEligible) {
+      const hubPlace = hubNode(picked.mixed.name);
+      const crossBorder = hubPlace.country !== d.country;
+      candidates.push({
+        id: 'cand-mixed',
+        kind: 'mixed',
+        hypothesis: true,
+        transfers: 1,
+        builder: picked.mixed.source,
+        basis: { rule: picked.mixed.source === 'rule:hub' ? 'hub-network' : picked.mixed.source, whys: picked.mixed.whys },
+        legs: [newLeg(1, o, hubPlace, 'rail'), newLeg(2, hubPlace, d, 'plane')],
+        explanation: '假设先乘铁路到「' + picked.mixed.name + '」再飞往目的地的混合走法：' + (picked.mixed.source === 'rule:hub'
+          ? '枢纽兼具铁路可达与航空衔接（依据见下）'
+          : picked.mixed.source === 'rule:geo'
+            ? '中转城市铁路与航空双可达（确定性估算）'
+            : '由 AI 从已收录城市中提名（待验证假设）') + '，两段班期与衔接待逐段取证',
+        why_explore: picked.mixed.whys.join('；'),
+        uncertain_leg: legUncertain(hubPlace.name, d.name, crossBorder),
+        next_checks: crossBorder
+          ? ['核「' + hubPlace.name + ' → ' + d.name + '」航班/班期（最不确定段）', '铁路段到「' + hubPlace.name + '」的班次与耗时', '两段衔接预留时间']
+          : ['铁路段班次与耗时', '航空段班期', '两段衔接预留时间']
+      });
+    } else if (!railEligible) {
+      degradations.push('混合交通骨架假设大陆铁路起段，当前出发地不适用：该骨架未生成');
+    } else {
+      degradations.push('混合交通骨架需要铁路+航空双可达的中转城市来源，当前不可用：该骨架未生成');
+    }
   }
 
   /* 约束应用：换乘次数可直接校验（结构事实）；预算/中转时长/夜间到达需取证到数字或时刻才能评估——如实说明 */

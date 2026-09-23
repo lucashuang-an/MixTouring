@@ -1,0 +1,144 @@
+{
+  "generated_at": "2026-09-23T15:14:33.026Z",
+  "note": "小规模分层抽样校准（确定性，无 LLM/搜索）：路线合理性、失败类型与分母。内部质量参考，非对外准确率承诺。",
+  "denominator": 11,
+  "passed": 11,
+  "fail_types": {},
+  "layers": [
+    {
+      "layer": "L1 国内短距（直达合适应只直达）",
+      "results": [
+        {
+          "sample": "北京→上海",
+          "kinds": [
+            "direct"
+          ],
+          "pass": true,
+          "failures": []
+        },
+        {
+          "sample": "北京→西安",
+          "kinds": [
+            "direct"
+          ],
+          "pass": true,
+          "failures": []
+        }
+      ]
+    },
+    {
+      "layer": "L2 国内长距（中转/混合方向应出）",
+      "results": [
+        {
+          "sample": "北京→喀什",
+          "kinds": [
+            "direct",
+            "one_transfer",
+            "mixed"
+          ],
+          "pass": true,
+          "failures": []
+        },
+        {
+          "sample": "北京→拉萨",
+          "kinds": [
+            "direct",
+            "one_transfer",
+            "mixed"
+          ],
+          "pass": true,
+          "failures": []
+        }
+      ]
+    },
+    {
+      "layer": "L3 国际走廊（直达铁路可出，走廊依据）",
+      "results": [
+        {
+          "sample": "北京→香港",
+          "kinds": [
+            "direct:plane",
+            "direct:rail",
+            "one_transfer",
+            "mixed"
+          ],
+          "pass": true,
+          "failures": []
+        },
+        {
+          "sample": "乌鲁木齐→阿拉木图",
+          "kinds": [
+            "direct:plane",
+            "direct:rail",
+            "one_transfer",
+            "mixed"
+          ],
+          "pass": true,
+          "failures": []
+        }
+      ]
+    },
+    {
+      "layer": "L4 国际枢纽（无模型应出可解释中转）",
+      "results": [
+        {
+          "sample": "北京→阿拉木图",
+          "kinds": [
+            "direct:plane",
+            "one_transfer",
+            "mixed"
+          ],
+          "pass": true,
+          "failures": []
+        },
+        {
+          "sample": "北京→阿斯塔纳",
+          "kinds": [
+            "direct:plane",
+            "one_transfer",
+            "mixed"
+          ],
+          "pass": true,
+          "failures": []
+        }
+      ]
+    },
+    {
+      "layer": "L5 反例-跨洋/岛域（无铁路直达，跨境旗标/距离 veto）",
+      "results": [
+        {
+          "sample": "北京→台北",
+          "kinds": [
+            "direct:plane"
+          ],
+          "pass": true,
+          "failures": []
+        },
+        {
+          "sample": "北京→纽约（动态）",
+          "kinds": [
+            "direct:plane"
+          ],
+          "pass": true,
+          "failures": []
+        }
+      ]
+    },
+    {
+      "layer": "L6 反例-缺依据（无走廊无枢纽：LLM 不可用时仅直达+陆路探索）",
+      "results": [
+        {
+          "sample": "北京→塔什干（动态）",
+          "kinds": [
+            "direct:plane"
+          ],
+          "pass": true,
+          "failures": []
+        }
+      ]
+    }
+  ],
+  "config": {
+    "direct_ok_km": 1300
+  }
+}
