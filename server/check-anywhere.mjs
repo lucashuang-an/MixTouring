@@ -7,9 +7,12 @@
 import {
   resolvePlace, scanPlaceMentions, extractConstraints, constraintChips,
   buildCandidateSkeletons, verifyLegs, planAnywhere, resultRelevance,
-  registerPlaceCandidate, takePlaceCandidate, railDirectEligibility, RAIL_DIRECT_MAX_KM,
+  registerPlaceCandidate, takePlaceCandidate, railDirectEligibility, corridorEffectiveStatus, isValidWindow, buildTravelIntent, RAIL_DIRECT_MAX_KM,
   osmKind, KIND_LABEL
 } from './lib/anywhere.mjs';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 
 let fail = 0;
 let total = 0;
@@ -122,8 +125,38 @@ const NO_DIGIT_RE = /\d/;
 
   const urumqiAlma = buildCandidateSkeletons(resolvePlace('乌鲁木齐'), resolvePlace('阿拉木图'), {}, {});
   ok(urumqiAlma.candidates.some((c) => c.variant === 'rail' &&
-    c.basis.evidence === '项目结构化班期证据'),
-    'P1-2：乌鲁木齐→阿拉木图凭项目结构化班期证据（走廊）生成直达铁路卡');
+    c.basis.evidence_grade === 'historical_schedule_sample'),
+    'P1（十轮）：乌鲁木齐→阿拉木图走廊降为历史班期样例分级（K9795 属历史参考，不再标结构化班期证据），铁路卡仍生成');
+
+  /* P2（九轮+十轮）：走廊种子结构化来源治理——字段齐备 + 分级 + 复核期限语义 + 过期降级 */
+  const corridors = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'pipeline/data/rail-corridors.json'), 'utf8')).corridors;
+  ok(corridors.length >= 3 && corridors.every((c) =>
+    c.a && c.b && c.note && c.evidence &&
+    ['public_line_knowledge', 'historical_schedule_sample'].includes(c.evidence_grade) &&
+    typeof c.source_url === 'string' && /^https:/.test(c.source_url) &&
+    /^\d{4}-\d{2}-\d{2}$/.test(c.sampled_at || '') &&
+    c.status === 'verified_knowledge' &&
+    /^\d{4}-\d{2}-\d{2}$/.test(c.review_by || '') && c.review_by >= c.sampled_at &&
+    c.valid_for === undefined),
+    'P2（十轮）：走廊字段齐备且语义准确——review_by 复核期限（valid_for 已移除）、K9795 为历史班期样例分级');
+  const railCard = urumqiAlma.candidates.find((c) => c.variant === 'rail');
+  ok(railCard.basis.source_url && /^https:/.test(railCard.basis.source_url) && railCard.basis.sampled_at &&
+    railCard.basis.review_by && railCard.basis.evidence_grade === 'historical_schedule_sample',
+    'P2：铁路卡 basis 带来源字段与复核期限（页面明示复核期限非运营有效期；仍是假设依据）');
+  const exp = { a: '北京', b: '香港', note: '测试走廊', evidence: '公开线路常识', evidence_grade: 'public_line_knowledge', source_url: 'https://example.com/rail', sampled_at: '2026-09-22', status: 'verified_knowledge', review_by: '2026-10-01' };
+  ok(corridorEffectiveStatus(exp, Date.parse('2026-09-25')) === 'verified_knowledge' &&
+    corridorEffectiveStatus(exp, Date.parse('2026-10-02')) === 'expired',
+    'P2：corridorEffectiveStatus 按 review_by 日界判定（10-01 有效、10-02 过期）');
+  const expR = railDirectEligibility(resolvePlace('北京'), resolvePlace('香港'), { nowMs: Date.parse('2026-10-02T00:00:00Z'), corridors: [exp] });
+  ok(expR.eligible === false && expR.explore_hint === true && expR.basis.rule === 'corridor-expired' && expR.reason.includes('过期'),
+    'P2 反例：走廊过期 → 只降为铁路/陆路方向探索（railDirectEligibility 层；真实走廊未过期不受影响）');
+  ok(buildCandidateSkeletons(resolvePlace('北京'), resolvePlace('香港'), {}, {})
+    .candidates.some((c) => c.variant === 'rail'),
+    'P2：真实数据走廊（valid_for 未过）铁路卡正常生成');
+  const badStatus = { ...exp, status: 'disputed' };
+  ok(corridorEffectiveStatus(badStatus) === 'disputed' &&
+    railDirectEligibility(resolvePlace('北京'), resolvePlace('香港'), { corridors: [badStatus] }).explore_hint === true,
+    'P2 反例：走廊状态异常（非 verified_knowledge）→ 降为探索');
 
   const noCoord = railDirectEligibility(resolvePlace('北京'), { name: 'X', kind: 'city', country: 'US' });
   ok(noCoord.eligible === false && noCoord.explore_hint === false && noCoord.basis.reason.includes('坐标缺失'),
@@ -343,6 +376,153 @@ const NO_DIGIT_RE = /\d/;
     'P0-1：一句话模式与两字段共用开放解析流程');
 }
 
+/* ---------- 十轮 P0/P2：往返意图不回退（提取/覆盖/消歧与重新规划后保留） ---------- */
+{
+  /* P0 核心：评审原句「国庆从北京去阿拉木图，10 月 7 日回来」 */
+  const rt = await planAnywhere({ text: '国庆附近从北京去阿拉木图，10月7日回来' }, NO_LLM);
+  ok(rt.intent.trip_type === 'round_trip' && rt.intent.traveler_count === 1,
+    'P0：往返意图与人数提取（round_trip / 1 人）');
+  ok(rt.intent.outbound_window && /^2026-09-27 ~ 2026-10-07$/.test(rt.intent.outbound_window),
+    'P0：国庆假期宽窗提取（' + rt.intent.outbound_window + '）');
+  ok(rt.intent.return_window === '2026-10-07 ~ 2026-10-07',
+    'P0：返程日期提取「10月7日回来」→ 2026-10-07 单日窗（代码计算年份）');
+  /* 塔什干确认流（有候选路径）：消歧与重新规划后意图字段保留 */
+  const osmT = [{ display_name: 'Tashkent, 乌兹别克斯坦', country: 'UZ', lat: '41.31', lon: '69.28', type: 'city', category: 'place', osm_type: 'relation', osm_id: '2369842', url: 'https://www.openstreetmap.org/relation/2369842' }];
+  const p1 = await planAnywhere({ text: '国庆附近从北京去塔什干，10月7日回来，2个人' }, {
+    callJson: async (o2) => {
+      const sp = String(o2.schema_prompt || '');
+      if (sp.includes('origin_raw')) return { origin_raw: '北京', destination_raw: '塔什干' };
+      if (sp.includes('地点候选')) return { candidates: [{ name: '塔什干', name_latin: 'Tashkent', kind: 'city', country: 'UZ' }] };
+      return null;
+    },
+    osmSearch: async () => osmT,
+    env: {}
+  });
+  const p2c = await planAnywhere({ text: '国庆附近从北京去塔什干，10月7日回来，2个人', confirmed_places: { destination: p1.place_candidates.destination[0].candidate_id } }, {
+    callJson: async () => null, osmSearch: async () => osmT, env: {}
+  });
+  ok(p2c.intent.trip_type === 'round_trip' && p2c.intent.traveler_count === 2 &&
+    p2c.intent.return_window === '2026-10-07 ~ 2026-10-07' && p2c.intent.outbound_window,
+    'P2：往返/日期/人数经消歧确认后保留（round_trip/2人/10-07 返程/假期宽窗）');
+  /* 显式字段覆盖文本提取（UI 字段优先） */
+  const ov = await planAnywhere({ text: '国庆附近从北京去喀什', travel: { trip_type: 'one_way', traveler_count: 3 } }, NO_LLM);
+  ok(ov.intent.trip_type === 'one_way' && ov.intent.traveler_count === 3,
+    'P0：显式行程字段覆盖文本提取（one_way/3 人）');
+  const badTravel = await planAnywhere({ text: '从北京去喀什', travel: { trip_type: 'hack', outbound_window: '明天', traveler_count: 99 } }, NO_LLM);
+  ok(badTravel.intent.trip_type !== 'hack' && badTravel.intent.outbound_window == null && badTravel.intent.traveler_count === 1,
+    'P0：非法行程字段被白名单丢弃（不猜）');
+  /* 重名候选区分（P1）：detail 携带完整行政层级 */
+  const cam = await planAnywhere({ origin: '北京', destination: '剑桥' }, {
+    callJson: async () => ({ candidates: [{ name: '剑桥', name_latin: 'Cambridge', kind: 'city', country: 'GB' }] }),
+    osmSearch: async () => [
+      { display_name: '剑桥市, 剑桥郡, 英格兰, 英国', country: 'GB', lat: '52.2', lon: '0.12', type: 'city', category: 'place', osm_type: 'node', osm_id: '20971094', url: 'https://www.openstreetmap.org/node/20971094' },
+      { display_name: '剑桥市, 剑桥郡, 英格兰, 英国', country: 'GB', lat: '52.21', lon: '0.13', type: 'city', category: 'place', osm_type: 'relation', osm_id: '295355', url: 'https://www.openstreetmap.org/relation/295355' }
+    ],
+    env: {}
+  });
+  const gb = cam.place_candidates.destination;
+  ok(gb.length === 2 && gb.every((c) => c.detail) &&
+    gb[0].detail === gb[1].detail && (gb[0].osm_type !== gb[1].osm_type || gb[0].osm_id !== gb[1].osm_id),
+    'P1：重名候选带 detail 与稳定标识（同 display_name 也能经 node/relation 区分，页面逐候选展示）');
+}
+
+/* ---------- 十一轮：意图合并顺序 / 无效窗口 / 时序（评审定向反例） ---------- */
+{
+  /* P0-1：buildTravelIntent 直接以 null explicit 调用不抛（原 TypeError 反例） */
+  let btOk = false, btNeeds = 0;
+  try {
+    const bt = buildTravelIntent('从北京去阿拉木图往返', null);
+    btOk = bt.intent.trip_type === 'round_trip';
+    btNeeds = bt.needs.filter((n) => n.includes('日期')).length;
+  } catch { btOk = false; }
+  ok(btOk && btNeeds === 2, 'P0-1：buildTravelIntent(…, null) 不抛错，round_trip + 去返两条补全提示');
+
+  const p0a = await planAnywhere({ text: '从北京去阿拉木图往返' }, NO_LLM);
+  ok(p0a.intent.trip_type === 'round_trip' &&
+    p0a.needs_confirmation.filter((n) => n.includes('日期')).length === 2,
+    'P0-1：真实 API 路径无 travel → round_trip + 补去返日期两条提示（不 500）');
+
+  const p0b = await planAnywhere({ text: '从北京去喀什', travel: { trip_type: 'round_trip' } }, NO_LLM);
+  ok(p0b.intent.trip_type === 'round_trip' &&
+    p0b.needs_confirmation.filter((n) => n.includes('日期')).length === 2,
+    'P0-2：文本无行程类型 + 显式 round_trip 日期空 → 两条日期补全提示');
+
+  const p0c = await planAnywhere({ text: '从北京去阿拉木图往返', travel: { trip_type: 'one_way' } }, NO_LLM);
+  ok(p0c.intent.trip_type === 'one_way' &&
+    p0c.needs_confirmation.every((n) => !n.includes('往返行程请补')),
+    'P0-3：文本往返 + 显式 one_way → 最终单程，不残留往返日期提示');
+
+  /* P1：无效窗口丢弃（2月31日溢出 / 月份99），丢后进补全提示 */
+  const badWin = await planAnywhere({ text: '从北京去阿拉木图往返', travel: { outbound_window: '2026-02-31 ~ 2026-02-31', return_window: '2026-99-99 ~ 2026-99-99' } }, NO_LLM);
+  ok(badWin.intent.outbound_window == null && badWin.intent.return_window == null &&
+    badWin.needs_confirmation.filter((n) => n.includes('日期')).length === 2,
+    'P1：2026-02-31 / 2026-99-99 窗口被真实日历校验丢弃 → 进补全提示（不当已确认事实）');
+  ok(isValidWindow('2026-02-31 ~ 2026-02-31') === false && isValidWindow('2026-99-99 ~ 2026-99-99') === false &&
+    isValidWindow('2026-12-30 ~ 2027-01-03') === true && isValidWindow('2026-10-05 ~ 2026-10-03') === false,
+    'P1：isValidWindow——溢出/越界/倒序拒，合法跨年窗过');
+
+  /* 时序：返程早于去程 → 丢弃返程窗口并提示 */
+  const seq = await planAnywhere({ text: '从北京去阿拉木图往返', travel: { outbound_window: '2026-10-03 ~ 2026-10-05', return_window: '2026-10-01 ~ 2026-10-01' } }, NO_LLM);
+  ok(seq.intent.return_window == null && seq.intent.outbound_window === '2026-10-03 ~ 2026-10-05' &&
+    seq.needs_confirmation.some((n) => n.includes('返程窗口早于去程')),
+    'P1：返程早于去程 → 忽略返程窗口并如实提示');
+}
+
+/* ---------- 十二轮：文本非法返程日期 + 时序完全倒序才拒（评审定向反例） ---------- */
+{
+  /* P1：文本非法返程日期过同一日历校验 */
+  const badFeb = await planAnywhere({ text: '国庆附近从北京去阿拉木图，2月31日回来' }, NO_LLM);
+  ok(badFeb.intent.return_window == null &&
+    badFeb.needs_confirmation.some((n) => n.includes('返程日期')),
+    'P1（十二轮）：「2月31日回来」非法日期 → return_window=null + 返程补全提示（不当已解析事实）');
+  const badApr = await planAnywhere({ text: '国庆附近从北京去阿拉木图，4月31日回来' }, NO_LLM);
+  ok(badApr.intent.return_window == null && badApr.needs_confirmation.some((n) => n.includes('返程日期')),
+    'P1（十二轮）：「4月31日回来」同样拒绝');
+  ok(isValidWindow('2028-02-29 ~ 2028-02-29') === true && isValidWindow('2027-02-29 ~ 2027-02-29') === false,
+    'P1：闰年 2028-02-29 合法、平年 2027-02-29 拒（真实日历）');
+
+  /* P1：时序只在完全倒序（返程结束早于去程开始）时拒绝 */
+  const overlap = await planAnywhere({ text: '从北京去阿拉木图往返', travel: { outbound_window: '2026-10-03 ~ 2026-10-05', return_window: '2026-10-01 ~ 2026-10-07' } }, NO_LLM);
+  ok(overlap.intent.outbound_window === '2026-10-03 ~ 2026-10-05' && overlap.intent.return_window === '2026-10-01 ~ 2026-10-07' &&
+    !overlap.needs_confirmation.some((n) => n.includes('早于去程')),
+    'P1（十二轮）：重叠窗口（去 10-03~05 / 返 10-01~07）保留——仍存在去≤返组合，不预检拒绝');
+  const fullRev = await planAnywhere({ text: '从北京去阿拉木图往返', travel: { outbound_window: '2026-10-03 ~ 2026-10-05', return_window: '2026-10-01 ~ 2026-10-02' } }, NO_LLM);
+  ok(fullRev.intent.return_window == null && fullRev.needs_confirmation.some((n) => n.includes('返程窗口早于去程')),
+    'P1（十二轮）：完全倒序（返程结束 10-02 早于去程开始 10-03）拒绝并提示');
+  const sameDay = await planAnywhere({ text: '从北京去阿拉木图往返', travel: { outbound_window: '2026-10-07 ~ 2026-10-07', return_window: '2026-10-07 ~ 2026-10-07' } }, NO_LLM);
+  ok(sameDay.intent.outbound_window && sameDay.intent.return_window === '2026-10-07 ~ 2026-10-07' &&
+    !sameDay.needs_confirmation.some((n) => n.includes('早于去程')),
+    'P1（十二轮）：同日去返窗口保留');
+  const crossYear = await planAnywhere({ text: '从北京去阿拉木图往返', travel: { outbound_window: '2026-12-30 ~ 2027-01-02', return_window: '2027-01-05 ~ 2027-01-08' } }, NO_LLM);
+  ok(crossYear.intent.outbound_window && crossYear.intent.return_window === '2027-01-05 ~ 2027-01-08',
+    'P1（十二轮）：跨年合法窗口保留');
+}
+
+/* ---------- 十三轮：最终行程类型统一约束返程字段（评审定向反例） ---------- */
+{
+  /* P1 评审原载荷：文本往返 + 显式 one_way + 两窗有效 → one_way 且无返程窗，带纠正提示 */
+  const ow = await planAnywhere({ text: '从北京去阿拉木图往返', travel: { trip_type: 'one_way', outbound_window: '2026-10-03 ~ 2026-10-03', return_window: '2026-10-07 ~ 2026-10-07' } }, NO_LLM);
+  ok(ow.intent.trip_type === 'one_way' && ow.intent.return_window == null &&
+    ow.intent.outbound_window === '2026-10-03 ~ 2026-10-03' &&
+    ow.needs_confirmation.some((n) => n.includes('已忽略返程日期')),
+    'P1（十三轮）：one_way + 有效返程窗 → 返程清空 + 纠正提示（去程保留，不静默「单程＋返程」）');
+  /* 文本提取返程日期（10月7日回来）+ 显式 one_way → 同样清空 */
+  const owText = await planAnywhere({ text: '国庆附近从北京去阿拉木图，10月7日回来', travel: { trip_type: 'one_way' } }, NO_LLM);
+  ok(owText.intent.trip_type === 'one_way' && owText.intent.return_window == null &&
+    owText.needs_confirmation.some((n) => n.includes('已忽略返程日期')),
+    'P1（十三轮）：文本返程日期 + 显式 one_way → 返程同样清空并提示');
+  /* pending（待确认，按单程探索）也不保留返程窗 */
+  const pd = await planAnywhere({ text: '从北京去阿拉木图', travel: { return_window: '2026-10-07 ~ 2026-10-07' } }, NO_LLM);
+  ok(pd.intent.trip_type === 'pending' && pd.intent.return_window == null &&
+    pd.needs_confirmation.some((n) => n.includes('已忽略返程日期')),
+    'P1（十三轮）：pending + 显式返程窗 → 返程清空并提示');
+  /* 回归：round_trip 正常保留返程窗（评审原句） */
+  const rt = await planAnywhere({ text: '国庆附近从北京去阿拉木图，10月7日回来' }, NO_LLM);
+  ok(rt.intent.trip_type === 'round_trip' && rt.intent.return_window === '2026-10-07 ~ 2026-10-07' &&
+    !rt.needs_confirmation.some((n) => n.includes('已忽略返程日期')),
+    'P1（十三轮）回归：round_trip 保留返程窗，无清理提示');
+}
+
 /* ---------- planAnywhere 编排（注入桩，无网络无 key） ---------- */
 {
   const r1 = await planAnywhere({ text: '从北京去喀什' }, NO_LLM);
@@ -372,7 +552,7 @@ const NO_DIGIT_RE = /\d/;
     '编排：web_search 已配置时逐段挂相关线索（source_lead）');
   ok(r6.web_search && r6.web_search.configured === true && r6.web_search.status === 'quota_exhausted',
     'P1-4：规划响应如实带 web_search 配置与最近真实状态（configured ≠ available）');
-  ok(r6.planner_version === 'v0.33.0', '编排：anywhere 版本号对齐 v0.33.0');
+  ok(r6.planner_version === 'v0.36.2', '编排：anywhere 版本号对齐 v0.36.2');
 
   const r7 = await planAnywhere({ text: '想去新疆最西边那座古城玩' },
     { callJson: async () => ({ origin: '北京', destination: '喀什' }), env: {}, osmSearch: async () => [] });

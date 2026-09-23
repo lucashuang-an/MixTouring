@@ -1,11 +1,42 @@
 {
   "_meta": {
-    "说明": "已知客运铁路直达走廊种子（v0.33.0 八轮评审：距离只是负向粗筛，直达铁路卡必须有正向依据——已知线路/站点对来源/结构化班期证据；只有地理可能性时降为「铁路/陆路方向探索」不出卡）。走廊按两端铁路侧城市名匹配（机场/景点取其就近城市近似）；区域内部线路（如台北—高雄）不受跨境旗标影响。新走廊经取证后增补。",
-    "字段": "a/b=铁路侧城市名；note=线路说明（不含数字）；evidence=依据类型（公开线路常识/项目结构化班期证据）"
+    "说明": "已知客运铁路直达走廊种子（v0.33.0 引入；v0.34.0 九轮评审 P2 补结构化来源治理）。直达铁路卡的唯一正向依据；命中只支撑 candidate_hypothesis，不构成当期班期或可执行路线证据——没有结构化来源与时效前不得升级为 dated_* 证据。",
+    "字段口径": "a/b=铁路侧城市名（机场/景点取就近已收录城市近似）；note=线路说明（不含数字）；evidence=依据文案；evidence_grade 分级：public_line_knowledge=公开线路常识 / historical_schedule_sample=历史班期样例（项目样本口径，历史参考非当期运营证明）——事实强度不同不得混用；source_url/sampled_at/status/review_by=来源治理字段；status≠verified_knowledge 或 review_by 已过 → 走廊只降为铁路/陆路方向探索（不出直达卡）；新走廊扩充须字段齐备。",
+    "时效口径": "review_by 是项目自身的来源复核期限（到期降级为探索，重新核对来源后顺延），不代表线路实际运营有效期——命中走廊只支撑 candidate_hypothesis，不构成当期班期证据。"
   },
   "corridors": [
-    { "a": "北京", "b": "香港", "note": "京港高速铁路（经深圳口岸跨境）", "evidence": "公开线路常识" },
-    { "a": "台北", "b": "高雄", "note": "台湾高速铁路", "evidence": "公开线路常识" },
-    { "a": "乌鲁木齐", "b": "阿拉木图", "note": "国际列车班期锚点（项目 G0 取证样例）", "evidence": "项目结构化班期证据" }
+    {
+      "a": "北京",
+      "b": "香港",
+      "note": "京港高速铁路（经深圳口岸跨境）",
+      "evidence": "公开线路常识",
+      "evidence_grade": "public_line_knowledge",
+      "source_url": "https://zh.wikipedia.org/wiki/%E4%BA%AC%E6%B8%AF%E9%AB%98%E9%80%9F%E9%93%81%E8%B7%AF",
+      "sampled_at": "2026-09-22",
+      "status": "verified_knowledge",
+      "review_by": "2027-03-22"
+    },
+    {
+      "a": "台北",
+      "b": "高雄",
+      "note": "台湾高速铁路",
+      "evidence": "公开线路常识",
+      "evidence_grade": "public_line_knowledge",
+      "source_url": "https://zh.wikipedia.org/wiki/%E5%8F%B0%E7%81%A3%E9%AB%98%E9%80%9F%E9%90%B5%E8%B7%AF",
+      "sampled_at": "2026-09-22",
+      "status": "verified_knowledge",
+      "review_by": "2027-03-22"
+    },
+    {
+      "a": "乌鲁木齐",
+      "b": "阿拉木图",
+      "note": "国际列车班期锚点（项目 G0 取证样例）",
+      "evidence": "项目历史班期样例（G0 取样，历史参考口径）",
+      "evidence_grade": "historical_schedule_sample",
+      "source_url": "https://zh.wikipedia.org/wiki/K9795%2F9796%E6%AC%A1%E5%88%97%E8%BD%A6",
+      "sampled_at": "2026-09-16",
+      "status": "verified_knowledge",
+      "review_by": "2026-12-16"
+    }
   ]
 }

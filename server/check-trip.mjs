@@ -282,7 +282,7 @@ const [F_OUT, F_IN] = FIXTURE.dated_legs.map((l) => ({ ...l, baggage_terms: { ca
   ok(capabilities(true, true, 'quota_exhausted').web_search_status === 'quota_exhausted' &&
     capabilities(true, true, 'quota_exhausted').web_search_configured === true, 'P1-4：配置成功但状态如实为 quota_exhausted');
   ok(capabilities(true, true).trip_planner_version === 'v0.29.1' &&
-    capabilities(true, true).anywhere_planner_version === 'v0.33.0', 'P1-4：版本拆分（trip/anywhere 各自对齐）');
+    capabilities(true, true).anywhere_planner_version === 'v0.36.2', 'P1-4：版本拆分（trip/anywhere 各自对齐）');
 }
 
 /* ---------- v0.26.0 服务动作：策略检索（fixture 驱动 + 反向不反转） ---------- */
