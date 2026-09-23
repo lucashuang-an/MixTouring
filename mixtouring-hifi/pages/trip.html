@@ -130,6 +130,22 @@
       return constraints;
     }
 
+    /* 十二轮 P0：区分系统回填与用户编辑——只有用户实际编辑过的字段拥有显式覆盖权。
+     * 程序赋值不触发 input 事件，天然不标 dirty；新顶层查询前清掉未编辑的自动回填，
+     * 消歧确认与重新规划不清（同一次流程内当前意图整体保留）。 */
+    var TRAVEL_FIELDS = [['tvType', 'type'], ['tvOut', 'out'], ['tvRet', 'ret'], ['tvCount', 'count']];
+    var travelDirty = { type: false, out: false, ret: false, count: false };
+    TRAVEL_FIELDS.forEach(function (p) {
+      ['input', 'change'].forEach(function (ev) {
+        document.getElementById(p[0]).addEventListener(ev, function () { travelDirty[p[1]] = true; });
+      });
+    });
+    function clearAutoFilledTravel() {
+      TRAVEL_FIELDS.forEach(function (p) {
+        if (!travelDirty[p[1]]) document.getElementById(p[0]).value = '';
+      });
+    }
+
     /* 行程信息字段（v0.35.0 P0：显式字段优先于文本提取，往返/日期/人数经消歧与重新规划不回退） */
     function collectTravel() {
       var travel = {};
@@ -159,6 +175,7 @@
       var to = document.getElementById('toInput').value.trim();
       if (!from || !to) { MT.toast('先选好出发地和目的地'); return; }
       if (from === to) { MT.toast('出发地和目的地不能相同'); return; }
+      clearAutoFilledTravel();
       lastRequest = { origin: from, destination: to, constraints: collectConstraints() };
       requestPlan();
     });
@@ -166,6 +183,7 @@
     document.getElementById('btnParse').addEventListener('click', function () {
       var text = document.getElementById('nlInput').value.trim();
       if (!text) { MT.toast('先输入一句话行程'); return; }
+      clearAutoFilledTravel();
       lastRequest = { text: text, constraints: collectConstraints() };
       requestPlan();
     });

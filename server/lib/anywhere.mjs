@@ -166,7 +166,8 @@ export function isValidWindow(s) {
   return pa <= pb;
 }
 
-/** 从一句话提取返程日期（M月D日 / M-D / M/D 紧跟或前接「回来/返回/回程/返程」），代码计算年份。 */
+/** 从一句话提取返程日期（M月D日 / M-D / M/D 紧跟或前接「回来/返回/回程/返程」），代码计算年份。
+ *  十二轮 P1：产出日期须过真实日历校验（Date 溢出回读一致）——2月31日/4月31日等不存在日期返回 null。 */
 export function extractReturnDate(text, nowMs = Date.now()) {
   const t = String(text || '');
   const m = t.match(/(\d{1,2})\s*月\s*(\d{1,2})\s*日?[^。！？，,]{0,8}?(?:回来|返回|回程|返程|回)/) ||
@@ -180,6 +181,9 @@ export function extractReturnDate(text, nowMs = Date.now()) {
   let year = now.getFullYear();
   const build = (y) => new Date(Date.UTC(y, month - 1, day));
   if (build(year) < new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()))) year += 1;
+  /* 真实日历校验：Date 会把 02-31 卷到 03-03，回读不一致即非法（十二轮 P1） */
+  const built = build(year);
+  if (built.getUTCMonth() !== month - 1 || built.getUTCDate() !== day) return null;
   const iso = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
   return `${iso} ~ ${iso}`;
 }
@@ -214,10 +218,11 @@ export function buildTravelIntent(text, explicit, nowMs = Date.now()) {
     return_window: exp.return_window || retFromText,
     traveler_count: exp.traveler_count ?? traveler ?? 1
   };
-  /* 时序：返程早于去程 → 丢弃返程窗口（降级为待补全），不做任何「倒叙往返」断言 */
+  /* 时序预检（十二轮 P1）：只在不存在任何「去程 ≤ 返程」组合（完全倒序：返程结束早于去程开始）时拒绝；
+   * 窗口重叠（如去 10-03~10-05 / 返 10-01~10-07）仍存在有效组合，保留交由后续证据层校验具体日期 */
   let returnDropped = false;
   if (finalIntent.return_window && finalIntent.outbound_window &&
-    finalIntent.return_window.slice(0, 10) < finalIntent.outbound_window.slice(0, 10)) {
+    finalIntent.return_window.slice(13, 23) < finalIntent.outbound_window.slice(0, 10)) {
     finalIntent.return_window = null;
     returnDropped = true;
   }

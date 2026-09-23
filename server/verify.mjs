@@ -295,7 +295,7 @@ async function main() {
   const caps = await (await fetch(BASE + '/api/capabilities')).json();
   if (caps.code === 0 && typeof caps.data.web_search_configured === 'boolean' &&
     ['available', 'quota_exhausted', 'timeout', 'error', 'unknown'].includes(caps.data.web_search_status) &&
-    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.35.1') {
+    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.35.2') {
     console.log('✓ /api/capabilities P1-4：configured 与最近真实状态分开（web_search_configured=' +
       caps.data.web_search_configured + ', status=' + caps.data.web_search_status + '），版本拆分对齐');
   } else { failed++; console.error('✗ /api/capabilities 形状异常：' + JSON.stringify(caps).slice(0, 200)); }
@@ -324,6 +324,25 @@ async function main() {
     ivD.data.needs_confirmation.filter((n) => n.includes('日期')).length === 2) {
     console.log('✓ /api/anywhere/plan 无效日期窗口（02-31/99-99）被日历校验丢弃 → 补全提示');
   } else { failed++; console.error('✗ /api/anywhere/plan 无效窗口未拒：' + JSON.stringify(ivD).slice(0, 200)); }
+
+  /* ---------- 十二轮：文本非法返程日期 + 时序完全倒序才拒（真实 POST 反例） ---------- */
+  const twA = await (await fetch(BASE + '/api/anywhere/plan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: '国庆附近从北京去阿拉木图，2月31日回来' }) })).json();
+  if (twA.code === 0 && twA.data.intent.return_window == null &&
+    twA.data.needs_confirmation.some((n) => n.includes('返程日期'))) {
+    console.log('✓ /api/anywhere/plan 文本「2月31日回来」非法日期 → null + 补全提示');
+  } else { failed++; console.error('✗ /api/anywhere/plan 非法返程日期未拒：' + JSON.stringify(twA).slice(0, 200)); }
+
+  const twB = await (await fetch(BASE + '/api/anywhere/plan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: '从北京去阿拉木图往返', travel: { outbound_window: '2026-10-03 ~ 2026-10-05', return_window: '2026-10-01 ~ 2026-10-07' } }) })).json();
+  if (twB.code === 0 && twB.data.intent.outbound_window === '2026-10-03 ~ 2026-10-05' &&
+    twB.data.intent.return_window === '2026-10-01 ~ 2026-10-07') {
+    console.log('✓ /api/anywhere/plan 重叠窗口（去 10-03~05 / 返 10-01~07）保留');
+  } else { failed++; console.error('✗ /api/anywhere/plan 重叠窗口被误拒：' + JSON.stringify(twB).slice(0, 200)); }
+
+  const twC = await (await fetch(BASE + '/api/anywhere/plan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: '从北京去阿拉木图往返', travel: { outbound_window: '2026-10-03 ~ 2026-10-05', return_window: '2026-10-01 ~ 2026-10-02' } }) })).json();
+  if (twC.code === 0 && twC.data.intent.return_window == null &&
+    twC.data.needs_confirmation.some((n) => n.includes('返程窗口早于去程'))) {
+    console.log('✓ /api/anywhere/plan 完全倒序（返程结束早于去程开始）拒绝并提示');
+  } else { failed++; console.error('✗ /api/anywhere/plan 完全倒序未拒：' + JSON.stringify(twC).slice(0, 200)); }
 
   console.log(failed ? `\n✗ ${failed} 项不一致` : '\n✓ 全部接口与 mock.js 派生结果一致');
   process.exit(failed ? 1 : 0);

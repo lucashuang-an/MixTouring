@@ -468,6 +468,36 @@ const NO_DIGIT_RE = /\d/;
     'P1：返程早于去程 → 忽略返程窗口并如实提示');
 }
 
+/* ---------- 十二轮：文本非法返程日期 + 时序完全倒序才拒（评审定向反例） ---------- */
+{
+  /* P1：文本非法返程日期过同一日历校验 */
+  const badFeb = await planAnywhere({ text: '国庆附近从北京去阿拉木图，2月31日回来' }, NO_LLM);
+  ok(badFeb.intent.return_window == null &&
+    badFeb.needs_confirmation.some((n) => n.includes('返程日期')),
+    'P1（十二轮）：「2月31日回来」非法日期 → return_window=null + 返程补全提示（不当已解析事实）');
+  const badApr = await planAnywhere({ text: '国庆附近从北京去阿拉木图，4月31日回来' }, NO_LLM);
+  ok(badApr.intent.return_window == null && badApr.needs_confirmation.some((n) => n.includes('返程日期')),
+    'P1（十二轮）：「4月31日回来」同样拒绝');
+  ok(isValidWindow('2028-02-29 ~ 2028-02-29') === true && isValidWindow('2027-02-29 ~ 2027-02-29') === false,
+    'P1：闰年 2028-02-29 合法、平年 2027-02-29 拒（真实日历）');
+
+  /* P1：时序只在完全倒序（返程结束早于去程开始）时拒绝 */
+  const overlap = await planAnywhere({ text: '从北京去阿拉木图往返', travel: { outbound_window: '2026-10-03 ~ 2026-10-05', return_window: '2026-10-01 ~ 2026-10-07' } }, NO_LLM);
+  ok(overlap.intent.outbound_window === '2026-10-03 ~ 2026-10-05' && overlap.intent.return_window === '2026-10-01 ~ 2026-10-07' &&
+    !overlap.needs_confirmation.some((n) => n.includes('早于去程')),
+    'P1（十二轮）：重叠窗口（去 10-03~05 / 返 10-01~07）保留——仍存在去≤返组合，不预检拒绝');
+  const fullRev = await planAnywhere({ text: '从北京去阿拉木图往返', travel: { outbound_window: '2026-10-03 ~ 2026-10-05', return_window: '2026-10-01 ~ 2026-10-02' } }, NO_LLM);
+  ok(fullRev.intent.return_window == null && fullRev.needs_confirmation.some((n) => n.includes('返程窗口早于去程')),
+    'P1（十二轮）：完全倒序（返程结束 10-02 早于去程开始 10-03）拒绝并提示');
+  const sameDay = await planAnywhere({ text: '从北京去阿拉木图往返', travel: { outbound_window: '2026-10-07 ~ 2026-10-07', return_window: '2026-10-07 ~ 2026-10-07' } }, NO_LLM);
+  ok(sameDay.intent.outbound_window && sameDay.intent.return_window === '2026-10-07 ~ 2026-10-07' &&
+    !sameDay.needs_confirmation.some((n) => n.includes('早于去程')),
+    'P1（十二轮）：同日去返窗口保留');
+  const crossYear = await planAnywhere({ text: '从北京去阿拉木图往返', travel: { outbound_window: '2026-12-30 ~ 2027-01-02', return_window: '2027-01-05 ~ 2027-01-08' } }, NO_LLM);
+  ok(crossYear.intent.outbound_window && crossYear.intent.return_window === '2027-01-05 ~ 2027-01-08',
+    'P1（十二轮）：跨年合法窗口保留');
+}
+
 /* ---------- planAnywhere 编排（注入桩，无网络无 key） ---------- */
 {
   const r1 = await planAnywhere({ text: '从北京去喀什' }, NO_LLM);
@@ -497,7 +527,7 @@ const NO_DIGIT_RE = /\d/;
     '编排：web_search 已配置时逐段挂相关线索（source_lead）');
   ok(r6.web_search && r6.web_search.configured === true && r6.web_search.status === 'quota_exhausted',
     'P1-4：规划响应如实带 web_search 配置与最近真实状态（configured ≠ available）');
-  ok(r6.planner_version === 'v0.35.1', '编排：anywhere 版本号对齐 v0.35.1');
+  ok(r6.planner_version === 'v0.35.2', '编排：anywhere 版本号对齐 v0.35.2');
 
   const r7 = await planAnywhere({ text: '想去新疆最西边那座古城玩' },
     { callJson: async () => ({ origin: '北京', destination: '喀什' }), env: {}, osmSearch: async () => [] });
