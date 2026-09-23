@@ -136,6 +136,10 @@
     var TRAVEL_FIELDS = [['tvType', 'type'], ['tvOut', 'out'], ['tvRet', 'ret'], ['tvCount', 'count']];
     var travelDirty = { type: false, out: false, ret: false, count: false };
     TRAVEL_FIELDS.forEach(function (p) {
+      document.getElementById(p[0]).addEventListener('change', function () {
+        /* 十三轮 P1：行程类型改为非往返时，同步清理系统回填的返程窗口（用户主动填写的保留，由服务端清并提示） */
+        if (p[0] === 'tvType' && this.value !== 'round_trip' && !travelDirty.ret) document.getElementById('tvRet').value = '';
+      });
       ['input', 'change'].forEach(function (ev) {
         document.getElementById(p[0]).addEventListener(ev, function () { travelDirty[p[1]] = true; });
       });

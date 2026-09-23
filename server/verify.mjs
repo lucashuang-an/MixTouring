@@ -295,7 +295,7 @@ async function main() {
   const caps = await (await fetch(BASE + '/api/capabilities')).json();
   if (caps.code === 0 && typeof caps.data.web_search_configured === 'boolean' &&
     ['available', 'quota_exhausted', 'timeout', 'error', 'unknown'].includes(caps.data.web_search_status) &&
-    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.35.2') {
+    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.36.2') {
     console.log('✓ /api/capabilities P1-4：configured 与最近真实状态分开（web_search_configured=' +
       caps.data.web_search_configured + ', status=' + caps.data.web_search_status + '），版本拆分对齐');
   } else { failed++; console.error('✗ /api/capabilities 形状异常：' + JSON.stringify(caps).slice(0, 200)); }
@@ -343,6 +343,14 @@ async function main() {
     twC.data.needs_confirmation.some((n) => n.includes('返程窗口早于去程'))) {
     console.log('✓ /api/anywhere/plan 完全倒序（返程结束早于去程开始）拒绝并提示');
   } else { failed++; console.error('✗ /api/anywhere/plan 完全倒序未拒：' + JSON.stringify(twC).slice(0, 200)); }
+
+  /* ---------- 十三轮：单程不保留返程窗口（真实 POST 反例，评审原载荷） ---------- */
+  const ttA = await (await fetch(BASE + '/api/anywhere/plan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: '从北京去阿拉木图往返', travel: { trip_type: 'one_way', outbound_window: '2026-10-03 ~ 2026-10-03', return_window: '2026-10-07 ~ 2026-10-07' } }) })).json();
+  if (ttA.code === 0 && ttA.data.intent.trip_type === 'one_way' && ttA.data.intent.return_window == null &&
+    ttA.data.intent.outbound_window === '2026-10-03 ~ 2026-10-03' &&
+    ttA.data.needs_confirmation.some((n) => n.includes('已忽略返程日期'))) {
+    console.log('✓ /api/anywhere/plan one_way + 返程窗 → 返程清空 + 纠正提示（无「单程＋返程日期」矛盾）');
+  } else { failed++; console.error('✗ /api/anywhere/plan 单程仍带返程窗：' + JSON.stringify(ttA).slice(0, 200)); }
 
   console.log(failed ? `\n✗ ${failed} 项不一致` : '\n✓ 全部接口与 mock.js 派生结果一致');
   process.exit(failed ? 1 : 0);

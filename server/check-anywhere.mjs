@@ -498,6 +498,31 @@ const NO_DIGIT_RE = /\d/;
     'P1（十二轮）：跨年合法窗口保留');
 }
 
+/* ---------- 十三轮：最终行程类型统一约束返程字段（评审定向反例） ---------- */
+{
+  /* P1 评审原载荷：文本往返 + 显式 one_way + 两窗有效 → one_way 且无返程窗，带纠正提示 */
+  const ow = await planAnywhere({ text: '从北京去阿拉木图往返', travel: { trip_type: 'one_way', outbound_window: '2026-10-03 ~ 2026-10-03', return_window: '2026-10-07 ~ 2026-10-07' } }, NO_LLM);
+  ok(ow.intent.trip_type === 'one_way' && ow.intent.return_window == null &&
+    ow.intent.outbound_window === '2026-10-03 ~ 2026-10-03' &&
+    ow.needs_confirmation.some((n) => n.includes('已忽略返程日期')),
+    'P1（十三轮）：one_way + 有效返程窗 → 返程清空 + 纠正提示（去程保留，不静默「单程＋返程」）');
+  /* 文本提取返程日期（10月7日回来）+ 显式 one_way → 同样清空 */
+  const owText = await planAnywhere({ text: '国庆附近从北京去阿拉木图，10月7日回来', travel: { trip_type: 'one_way' } }, NO_LLM);
+  ok(owText.intent.trip_type === 'one_way' && owText.intent.return_window == null &&
+    owText.needs_confirmation.some((n) => n.includes('已忽略返程日期')),
+    'P1（十三轮）：文本返程日期 + 显式 one_way → 返程同样清空并提示');
+  /* pending（待确认，按单程探索）也不保留返程窗 */
+  const pd = await planAnywhere({ text: '从北京去阿拉木图', travel: { return_window: '2026-10-07 ~ 2026-10-07' } }, NO_LLM);
+  ok(pd.intent.trip_type === 'pending' && pd.intent.return_window == null &&
+    pd.needs_confirmation.some((n) => n.includes('已忽略返程日期')),
+    'P1（十三轮）：pending + 显式返程窗 → 返程清空并提示');
+  /* 回归：round_trip 正常保留返程窗（评审原句） */
+  const rt = await planAnywhere({ text: '国庆附近从北京去阿拉木图，10月7日回来' }, NO_LLM);
+  ok(rt.intent.trip_type === 'round_trip' && rt.intent.return_window === '2026-10-07 ~ 2026-10-07' &&
+    !rt.needs_confirmation.some((n) => n.includes('已忽略返程日期')),
+    'P1（十三轮）回归：round_trip 保留返程窗，无清理提示');
+}
+
 /* ---------- planAnywhere 编排（注入桩，无网络无 key） ---------- */
 {
   const r1 = await planAnywhere({ text: '从北京去喀什' }, NO_LLM);
@@ -527,7 +552,7 @@ const NO_DIGIT_RE = /\d/;
     '编排：web_search 已配置时逐段挂相关线索（source_lead）');
   ok(r6.web_search && r6.web_search.configured === true && r6.web_search.status === 'quota_exhausted',
     'P1-4：规划响应如实带 web_search 配置与最近真实状态（configured ≠ available）');
-  ok(r6.planner_version === 'v0.35.2', '编排：anywhere 版本号对齐 v0.35.2');
+  ok(r6.planner_version === 'v0.36.2', '编排：anywhere 版本号对齐 v0.36.2');
 
   const r7 = await planAnywhere({ text: '想去新疆最西边那座古城玩' },
     { callJson: async () => ({ origin: '北京', destination: '喀什' }), env: {}, osmSearch: async () => [] });

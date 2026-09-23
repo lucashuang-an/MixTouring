@@ -218,6 +218,13 @@ export function buildTravelIntent(text, explicit, nowMs = Date.now()) {
     return_window: exp.return_window || retFromText,
     traveler_count: exp.traveler_count ?? traveler ?? 1
   };
+  /* 十三轮 P1：以最终行程类型统一约束日期字段——非往返（单程/待确认）不保留返程窗口，
+   * 无论其来自文本提取还是用户显式填写；清掉时给明确纠正提示，不静默显示「单程＋返程日期」 */
+  let returnClearedByType = false;
+  if (finalIntent.trip_type !== 'round_trip' && finalIntent.return_window) {
+    finalIntent.return_window = null;
+    returnClearedByType = true;
+  }
   /* 时序预检（十二轮 P1）：只在不存在任何「去程 ≤ 返程」组合（完全倒序：返程结束早于去程开始）时拒绝；
    * 窗口重叠（如去 10-03~10-05 / 返 10-01~10-07）仍存在有效组合，保留交由后续证据层校验具体日期 */
   let returnDropped = false;
@@ -232,6 +239,7 @@ export function buildTravelIntent(text, explicit, nowMs = Date.now()) {
     if (!finalIntent.outbound_window) needs.push('往返行程请补去程日期或大致窗口');
     if (!finalIntent.return_window) needs.push('往返行程请补返程日期（未补前不展示返程样本）');
   }
+  if (returnClearedByType) needs.push('行程类型为' + (finalIntent.trip_type === 'one_way' ? '单程' : '待确认') + '：已忽略返程日期，如需往返请把行程类型改为往返');
   if (returnDropped) needs.push('返程窗口早于去程：已忽略该返程窗口，请修正后重试');
   return { intent: finalIntent, needs };
 }
