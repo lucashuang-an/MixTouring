@@ -170,26 +170,68 @@ const NO_DIGIT_RE = /\d/;
     .candidates.find((c) => c.kind === 'mixed').legs[0];
   ok(domRailLeg.manual_check.includes('12306'), 'P2：国内铁路段（混合骨架北京→大同）仍指向 12306');
 
-  /* 国际 OD 无 LLM：北京→阿拉木图仅航班直达卡 + 两骨架降级说明 + 一个陆路探索 */
+  /* 国际 OD 无 LLM（G2.6）：北京→阿拉木图凭枢纽表出可解释中转——直达航班 + 枢纽中转 + 枢纽混合 + 陆路探索 */
   const intl = buildCandidateSkeletons(resolvePlace('北京'), resolvePlace('阿拉木图'), {}, {});
-  ok(intl.candidates.length === 1 && intl.candidates[0].variant === 'plane',
-    '骨架：国际 OD 无提名且无铁路依据时仅一张航班直达卡');
-  ok(intl.degradations.filter((x) => x.includes('中转城市来源')).length === 2, '骨架：无 LLM 时两类中转骨架明确降级（不静默消失）');
+  ok(intl.candidates.length === 3 && intl.candidates[0].variant === 'plane' &&
+    intl.candidates.filter((c) => c.builder === 'rule:hub').length === 2 &&
+    intl.candidates.every((c) => c.why_explore && c.uncertain_leg && c.next_checks.length >= 1),
+    'G2.6：北京→阿拉木图无 LLM 仍出枢纽中转（乌鲁木齐，builder=rule:hub）且三件套齐备');
+  /* 十六轮 P1-1：依据与路段/方向绑定——mixed 卡 whys 不含 rail 锚点（K 锚点属枢纽之后跨境铁路方向，
+   * 不属于「北京→乌鲁木齐 rail + 乌鲁木齐→阿拉木图 air」任一段）；out 段为 KZ 航空依据、in 段分离 */
+  const almMixed = intl.candidates.find((c) => c.kind === 'mixed');
+  ok(almMixed && almMixed.basis.whys.some((w) => w.leg === 'out' && w.direction === 'KZ' && w.scope === 'air') &&
+    almMixed.basis.whys.some((w) => w.leg === 'in') &&
+    almMixed.basis.whys.every((w) => w.scope !== 'rail'),
+    'P1（十六轮）：混合卡依据按段/方向绑定——out 段为 KZ 航空依据、in 段分离，rail 锚点不进混合卡（评审反例）');
+  /* 十六轮 P2：反向跨境行程逐段判定 */
+  const revHk = buildCandidateSkeletons(resolvePlace('香港'), resolvePlace('北京'), {}, { one_transfer_city: '广州' });
+  const revOne = revHk.candidates.find((c) => c.kind === 'one_transfer');
+  ok(revOne && revOne.uncertain_leg.includes('香港 → 广州（跨境') && revOne.uncertain_leg.includes('广州 → 北京（班期未核验）'),
+    'P2（十六轮）：反向跨境行程逐段判定（香港→广州跨境、广州→北京非跨境）');
+  ok(intl.candidates.find((c) => c.kind === 'one_transfer').legs[1].from === '乌鲁木齐' &&
+    intl.candidates.find((c) => c.kind === 'one_transfer').why_explore.includes('乌鲁木齐→哈萨克斯坦方向'),
+    'G2.6：中转枢纽=乌鲁木齐（gateway KZ），依据明示「枢纽→目的地」段方向（十六轮：路段级绑定）');
+  ok(intl.explorations.length === 1, 'G2.6：无走廊依据仍只有陆路探索（直达铁路不凭枢纽生成）');
 
-  /* LLM 提名：清单内生效、清单外丢弃（北京→阿拉木图：航班直达 + 两类中转，无铁路直达） */
-  const hint = buildCandidateSkeletons(resolvePlace('北京'), resolvePlace('阿拉木图'), {}, { one_transfer_city: '乌鲁木齐', mixed_rail_city: '乌鲁木齐' });
-  ok(hint.candidates.length === 3 && hint.candidates.filter((c) => c.builder === 'llm').length === 2,
-    '骨架：LLM 清单内提名生效并标注 builder=llm');
-  const bad = buildCandidateSkeletons(resolvePlace('北京'), resolvePlace('阿拉木图'), {}, { one_transfer_city: '火星', mixed_rail_city: '伊斯坦布尔' });
-  ok(bad.candidates.length === 1 && bad.degradations.filter((x) => x.includes('中转城市来源')).length === 2,
-    '骨架：LLM 清单外提名被丢弃（不造地名）');
+  /* LLM 提名：枢纽命中后 LLM 不再顶替（更优来源优先）；清单外丢弃；无枢纽匹配时 LLM 兜底生效 */
+  const hint = buildCandidateSkeletons(resolvePlace('北京'), resolvePlace('阿拉木图'), {}, { one_transfer_city: '西安', mixed_rail_city: '西安' });
+  ok(hint.candidates.find((c) => c.kind === 'one_transfer').builder === 'rule:hub',
+    'G2.6：枢纽匹配优先于 LLM 提名（确定性来源优先）');
+  const llmFallback = buildCandidateSkeletons(resolvePlace('北京'), { name: '塔什干', kind: 'city', country: 'UZ', is_mainland: false, lat: '41.31', lon: '69.28' }, {}, { one_transfer_city: '乌鲁木齐', mixed_rail_city: '乌鲁木齐' });
+  ok(llmFallback.candidates.filter((c) => c.builder === 'llm').length === 2,
+    'G2.6：无枢纽匹配（UZ）时 LLM 清单内提名兜底生效并标注 builder=llm');
+  const bad = buildCandidateSkeletons(resolvePlace('北京'), { name: '塔什干', kind: 'city', country: 'UZ', is_mainland: false, lat: '41.31', lon: '69.28' }, {}, { one_transfer_city: '火星', mixed_rail_city: '伊斯坦布尔' });
+  ok(bad.candidates.every((c) => c.builder !== 'llm') &&
+    bad.degradations.filter((x) => x.includes('骨架未生成')).length >= 2,
+    '骨架：LLM 清单外提名被丢弃（不造地名，无依据骨架不生成）');
 
-  /* 出发地非大陆：混合骨架不生成（铁路起段假设不成立）；香港→阿拉木图无铁路走廊依据 */
-  const hk = buildCandidateSkeletons(resolvePlace('香港'), resolvePlace('阿拉木图'), {}, { one_transfer_city: '北京', mixed_rail_city: '北京' });
+  /* 反向绕行反例：gateway_for 匹配但绕行比超标的枢纽不生成 */
+  const revOk = buildCandidateSkeletons(resolvePlace('北京'), { name: '阿拉木图', kind: 'city', country: 'KZ', is_mainland: false, lat: '43.24', lon: '76.89' }, {}, {});
+  ok(revOk.candidates.find((c) => c.kind === 'one_transfer')?.legs[1].from === '乌鲁木齐',
+    'G2.6 回归：正常绕行比（乌鲁木齐 ≈ 0.98）枢纽通过');
+
+  /* 出发地非大陆：混合骨架不生成（铁路起段假设不成立）；香港→阿拉木图枢纽中转仍出 */
+  const hk = buildCandidateSkeletons(resolvePlace('香港'), resolvePlace('阿拉木图'), {}, {});
   ok(hk.candidates.map((c) => c.id).join(',') === 'cand-direct-plane,cand-one-transfer' &&
     hk.degradations.some((x) => x.includes('大陆铁路起段')) &&
     hk.explorations.length === 1,
     '骨架：非大陆出发地不出混合骨架并说明；无走廊依据只有陆路探索');
+
+  /* G2.6：国内短距直达合适 → 只出直达，不凑中转 */
+  const short = buildCandidateSkeletons(resolvePlace('北京'), resolvePlace('上海'), {}, {});
+  ok(short.candidates.length === 1 && short.candidates[0].kind === 'direct' &&
+    short.candidates[0].why_explore.includes('优先核查直达') && !short.candidates[0].why_explore.includes('是最优'),
+    'G2.6（十五轮）：北京→上海只出直达卡，直达文案为优先核查而非最优断言（十五轮回归，v0.39.0 中转由依据驱动）');
+  const gzLhasa = buildCandidateSkeletons(resolvePlace('广州'), resolvePlace('拉萨'), {}, {});
+  const gzOne = gzLhasa.candidates.find((c) => c.kind === 'one_transfer');
+  ok(gzOne && gzOne.legs[1].from === '成都' && gzOne.why_explore.includes('成都→拉萨方向'),
+    'G2.6（十五轮）：广州→拉萨中转选成都（方向匹配枢纽，非绕行最小首位柳州），依据明示成都→拉萨段方向');
+  const almOne = buildCandidateSkeletons(resolvePlace('北京'), resolvePlace('阿拉木图'), {}, {}).candidates.find((c) => c.kind === 'one_transfer');
+  ok(almOne && almOne.legs[1].from === '乌鲁木齐' && !almOne.why_explore.includes('班期锚点'),
+    'G2.6（十五轮）：阿拉木图航空末段卡的依据不含铁路锚点（分域：rail 依据只挂铁路方向）');
+  const lhasa = buildCandidateSkeletons(resolvePlace('北京'), resolvePlace('拉萨'), {}, {});
+  ok(lhasa.candidates.length === 3 && lhasa.candidates.filter((c) => c.kind !== 'direct').length === 2,
+    'G2.6：北京→拉萨（长距）保留中转/混合方向（正向案例）');
 }
 
 /* ---------- 搜索线索分层（P0-2：相关性门槛 + source_lead ≠ 取证） ---------- */
@@ -208,7 +250,7 @@ const NO_DIGIT_RE = /\d/;
     calls++; queries.push(q);
     /* 相关结果（覆盖全部段的两端与方式词）+ 一条无关 https 干扰项 */
     return [
-      { title: '北京 喀什 大同 航班 火车 铁路 高铁 攻略', link: 'https://example.com/a', content: '北京 大同 喀什 航班 火车' },
+      { title: '北京 喀什 乌鲁木齐 航班 火车 铁路 高铁 攻略', link: 'https://example.com/a', content: '北京 乌鲁木齐 喀什 航班 火车' },
       { title: '无关促销页', link: 'https://example.com/seo', content: '双十一' },
       { title: '非https丢弃', link: 'http://x.com/b', content: '北京 喀什 航班' }
     ];
@@ -547,12 +589,12 @@ const NO_DIGIT_RE = /\d/;
   const fakeEnv = { LLM_API_KEY: 'x', LLM_BASE_URL: 'https://open.bigmodel.cn/api/paas/v4' };
   const r6 = await planAnywhere({ origin: '北京', destination: '喀什' },
     { callJson: async () => null, env: fakeEnv, osmSearch: async () => [], webSearchStatus: () => ({ status: 'quota_exhausted' }),
-      searchWeb: async () => [{ title: '北京 喀什 大同 航班 火车 铁路 高铁', link: 'https://e.com/x', content: '北京 大同 喀什' }] });
+      searchWeb: async () => [{ title: '北京 喀什 乌鲁木齐 航班 火车 铁路 高铁', link: 'https://e.com/x', content: '北京 乌鲁木齐 喀什' }] });
   ok(r6.candidates.flatMap((c) => c.legs).every((l) => l.evidence_state === 'source_lead'),
     '编排：web_search 已配置时逐段挂相关线索（source_lead）');
   ok(r6.web_search && r6.web_search.configured === true && r6.web_search.status === 'quota_exhausted',
     'P1-4：规划响应如实带 web_search 配置与最近真实状态（configured ≠ available）');
-  ok(r6.planner_version === 'v0.36.2', '编排：anywhere 版本号对齐 v0.36.2');
+  ok(r6.planner_version === 'v0.39.0', '编排：anywhere 版本号对齐 v0.39.0');
 
   const r7 = await planAnywhere({ text: '想去新疆最西边那座古城玩' },
     { callJson: async () => ({ origin: '北京', destination: '喀什' }), env: {}, osmSearch: async () => [] });

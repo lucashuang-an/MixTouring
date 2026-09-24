@@ -31,3 +31,5 @@ jobs:
         run: node server/check-trip.mjs
       - name: G2.5 任意地点规划确定性测试（check-anywhere.mjs）
         run: node server/check-anywhere.mjs
+      - name: G2.6 线路发现质量校准（calibrate-routes.mjs）
+        run: node server/calibrate-routes.mjs

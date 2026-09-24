@@ -18,9 +18,10 @@
 | 心愿自动采集 | `node --env-file-if-exists=server/.env pipeline/collect-wish.mjs --all --limit 2` | 联网采样→守门写回→心愿回流；失败自动计数转人工 |
 | 行程契约确定性测试 | `node server/check-trip.mjs` | G1 底座回归，无需起服务 |
 | G2.5 任意地点规划测试 | `node server/check-anywhere.mjs` | 确定性（注入桩，无网络无 key），v0.30.0 起 |
-| CI | push 自动触发 | GitHub Actions 跑 verify + check-pages + check-geo + check-trip + check-anywhere；collect 定时任务需配 Secrets 并设 `LLM_COLLECT=1` |
+| G2.6 线路发现校准 | `node server/calibrate-routes.mjs` | 分层抽样报告（写入 pipeline/out/route-calibration.json），v0.37.0 起 |
+| CI | push 自动触发 | GitHub Actions 跑 verify + check-pages + check-geo + check-trip + check-anywhere + calibrate-routes；collect 定时任务需配 Secrets 并设 `LLM_COLLECT=1` |
 
-**提交前必跑（全绿才提交）**：`check-pages` + `check-geo` + `verify` + `check-trip` + `check-anywhere`。
+**提交前必跑（全绿才提交）**：`check-pages` + `check-geo` + `verify` + `check-trip` + `check-anywhere` + `calibrate-routes`。
 
 ## 1. 协作工作流（硬性流程）
 

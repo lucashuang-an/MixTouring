@@ -308,6 +308,10 @@
             ' <a href="' + MT.esc(src) + '" target="_blank" rel="noopener" style="color:#1E7F45;">来源 ›</a></div>';
         }
         html += '<div style="margin-top:10px;font-size:12px;color:var(--mixtouring-muted-foreground);line-height:1.7;">' + MT.esc(c.explanation) + '</div>';
+        /* G2.6 推荐三件套：为什么值得探索 / 哪段最不确定 / 下一步查什么 */
+        if (c.why_explore) html += '<div style="margin-top:8px;font-size:12px;line-height:1.7;"><span style="color:#1E7F45;">为什么值得探索：</span>' + MT.esc(c.why_explore) + '</div>';
+        if (c.uncertain_leg) html += '<div style="margin-top:4px;font-size:12px;line-height:1.7;"><span style="color:#A16207;">待核路段：</span>' + MT.esc(c.uncertain_leg) + '</div>';
+        if (c.next_checks && c.next_checks.length) html += '<div style="margin-top:4px;font-size:12px;line-height:1.7;"><span style="color:var(--mixtouring-ring);">下一步：</span>' + c.next_checks.map(function (n) { return MT.esc(n); }).join('；') + '</div>';
         html += '</div>';
       });
 
