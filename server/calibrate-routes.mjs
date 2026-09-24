@@ -28,6 +28,9 @@ const dist = (a, b) => {
 /** 候选级合理性判据：返回失败类型数组（空=通过） */
 function judgeCandidate(c, o, d) {
   const f = [];
+  /* 十六轮 P1-2 反例回归：mixed 卡（非 in 段）不得出现哈萨克斯坦列车锚点/班期锚点类依据（段/方向错配） */
+  if (c.kind === 'mixed' && c.basis && Array.isArray(c.basis.whys) &&
+      c.basis.whys.some((w) => (w.leg !== 'in') && (w.scope === 'rail' || /班期锚点/.test(w.text || '')))) f.push('scope_mismatch');
   const overclaim = /是最优|保证|确定的省钱/.test((c.why_explore || '') + (c.explanation || ''));
   if (overclaim) f.push('overclaim');
   if (!(c.why_explore && c.uncertain_leg && Array.isArray(c.next_checks) && c.next_checks.length)) f.push('missing_explain');
@@ -50,10 +53,18 @@ function judgeCandidate(c, o, d) {
     if (via && via / km > 1.6) f.push('detour_violation');
   }
   /* 依据与方式一致性 */
-  const scopes = (c.basis && Array.isArray(c.basis.whys) ? c.basis.whys : []).map((w) => w.scope);
-  if (c.kind === 'one_transfer' && scopes.some((s) => s === 'rail' || s === 'rail-leg')) f.push('scope_mismatch');
-  if (c.kind === 'mixed' && !(scopes.includes('rail-leg') && scopes.includes('air-leg')) &&
+  const whys = c.basis && Array.isArray(c.basis.whys) ? c.basis.whys : [];
+  const scopes = whys.map((w) => w.scope);
+  if (c.kind === 'mixed' && !(whys.some((w) => w.leg === 'in') && whys.some((w) => w.leg === 'out' && w.scope === 'air')) &&
       !(c.builder === 'llm' && scopes.includes('llm'))) f.push('scope_mismatch');
+  /* 十六轮 P1-2：路段/方向级校验——带 leg/direction 的依据必须匹配实际路段与目的方向 */
+  const lastHub = c.legs[1] ? c.legs[1].from : null;
+  const lastTo = c.legs.length > 1 ? c.legs[c.legs.length - 1].to : d.name;
+  for (const w of whys) {
+    if (w.leg === 'out' && lastHub && !w.text.includes(lastHub)) f.push('leg_mismatch');
+    if (w.leg === 'in' && lastHub && !w.text.includes(o.name) && !/内地城市|东部城市|外部城市/.test(w.text)) f.push('leg_mismatch');
+    if (w.direction && !(lastTo.includes(w.direction) || (d.country && d.country === w.direction) || (d.country_name && d.country_name.includes(w.direction)))) f.push('direction_mismatch');
+  }
   return f;
 }
 
@@ -69,21 +80,21 @@ const LAYERS = [
     layer: 'L2 国内长距（方向匹配枢纽择优，非绕行最小首位）',
     samples: [
       { o: '广州', d: '拉萨', expect: { kinds: ['direct', 'one_transfer', 'mixed'], hub: '成都' } },
-      { o: '北京', d: '拉萨', expect: { kinds: ['direct', 'one_transfer', 'mixed'], hubIn: ['成都', '西安'] } },
-      { o: '北京', d: '喀什', expect: { kinds: ['direct', 'one_transfer', 'mixed'], hub: '乌鲁木齐' } }
+      { o: '北京', d: '拉萨', expect: { kinds: ['direct', 'one_transfer', 'mixed'], hubIn: ['成都', '西安', '西宁'] } },
+      { o: '北京', d: '喀什', expect: { kinds: ['direct', 'one_transfer', 'mixed'], hub: '乌鲁木齐', mixedWhysNo: '哈萨克斯坦' } }
     ]
   },
   {
     layer: 'L3 国际走廊（直达铁路需走廊依据）',
     samples: [
-      { o: '北京', d: '香港', expect: { kinds: ['direct', 'one_transfer', 'mixed'], railDirect: true, hub: '广州' } },
+      { o: '北京', d: '香港', expect: { kinds: ['direct', 'one_transfer'], railDirect: true, hub: '广州' } },
       { o: '乌鲁木齐', d: '阿拉木图', expect: { kinds: ['direct', 'one_transfer'], railDirect: true } }
     ]
   },
   {
     layer: 'L4 国际枢纽（无模型可解释中转；依据按方式分域）',
     samples: [
-      { o: '北京', d: '阿拉木图', expect: { kinds: ['direct', 'one_transfer', 'mixed'], hub: '乌鲁木齐', oneWhyNot: '班期锚点' } },
+      { o: '北京', d: '阿拉木图', expect: { kinds: ['direct', 'one_transfer', 'mixed'], hub: '乌鲁木齐', oneWhyNot: '班期锚点', mixedWhysNo: '班期锚点' } },
       { o: '北京', d: '阿斯塔纳', expect: { kinds: ['direct', 'one_transfer', 'mixed'], hub: '乌鲁木齐', oneWhyNot: '班期锚点' } }
     ]
   },

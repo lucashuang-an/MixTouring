@@ -1,12 +1,12 @@
 {
-  "generated_at": "2026-09-24T02:31:02.266Z",
+  "generated_at": "2026-09-24T13:47:51.754Z",
   "note": "小规模分层抽样 + 候选级合理性判据（确定性，无 LLM/搜索）：中转点可解释性、绕行比受控、依据与交通方式一致、措辞与证据相称、中转/混合差异化。内部质量参考，不构成对外准确率承诺，也不替代人工抽查；「约 80% 靠谱」为待测内部目标。",
   "sample": {
     "denominator": 12,
     "passed": 12
   },
   "candidates": {
-    "total": 28,
+    "total": 27,
     "failed": 0
   },
   "fail_types": {},
@@ -80,8 +80,7 @@
           "kinds": [
             "direct:plane",
             "direct:rail",
-            "one_transfer",
-            "mixed"
+            "one_transfer"
           ],
           "pass": true,
           "failures": [],
