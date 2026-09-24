@@ -221,7 +221,7 @@ const NO_DIGIT_RE = /\d/;
   const short = buildCandidateSkeletons(resolvePlace('北京'), resolvePlace('上海'), {}, {});
   ok(short.candidates.length === 1 && short.candidates[0].kind === 'direct' &&
     short.candidates[0].why_explore.includes('优先核查直达') && !short.candidates[0].why_explore.includes('是最优'),
-    'G2.6（十五轮）：北京→上海只出直达卡，直达文案为优先核查而非最优断言（十五轮回归，v0.39.0 中转由依据驱动）');
+    'G2.6（十五轮）：北京→上海只出直达卡，直达文案为优先核查而非最优断言（十五轮回归，v0.40.0 中转由依据驱动）');
   const gzLhasa = buildCandidateSkeletons(resolvePlace('广州'), resolvePlace('拉萨'), {}, {});
   const gzOne = gzLhasa.candidates.find((c) => c.kind === 'one_transfer');
   ok(gzOne && gzOne.legs[1].from === '成都' && gzOne.why_explore.includes('成都→拉萨方向'),
@@ -510,6 +510,29 @@ const NO_DIGIT_RE = /\d/;
     'P1：返程早于去程 → 忽略返程窗口并如实提示');
 }
 
+/* ---------- G3 首段（v0.40.0）：取舍与脆弱段 ---------- */
+{
+  const r = buildCandidateSkeletons(resolvePlace('北京'), resolvePlace('阿拉木图'), {}, {});
+  const m = r.candidates.find((c) => c.kind === 'mixed');
+  ok(m && Array.isArray(m.tradeoffs) && m.tradeoffs.length === 4 &&
+    m.tradeoffs.map((x) => x.dimension).join(',') === '时间,费用,体验,风险' &&
+    m.tradeoffs.every((x) => ['structural', 'qualitative'].includes(x.basis_kind)),
+    'G3：中转卡带时间/费用/体验/风险四维取舍（structural/qualitative 标注）');
+  ok(m.tradeoffs.every((x) => !/更省$|确定省|保证更快/.test(x.this_route)) &&
+    m.tradeoffs.find((x) => x.dimension === '费用').this_route.includes('可能更省也可能更贵'),
+    'G3：费用维度不断言省贵（取证比较核心如实表述）');
+  const mixedFrag = m.fragile_legs;
+  ok(mixedFrag.some((fl) => fl.leg === '乌鲁木齐 → 阿拉木图' && fl.reasons.some((x) => x.includes('跨境'))) &&
+    mixedFrag.some((fl) => fl.reasons.some((x) => x.includes('连接价值'))),
+    'G3：混合卡脆弱段=跨境段+连接价值段，各带备选方向');
+  ok(m.fragile_legs.every((fl) => Array.isArray(fl.fallbacks) && fl.fallbacks.length >= 1),
+    'G3：脆弱段各带备选方向');
+  const dg = r.candidates.find((c) => c.kind === 'direct');
+  ok(dg.tradeoffs.length === 4 && dg.fragile_legs.length === 0, 'G3：直达卡带取舍、无脆弱段');
+  const sh = buildCandidateSkeletons(resolvePlace('北京'), resolvePlace('上海'), {}, {}).candidates[0];
+  ok(sh.tradeoffs.length === 4 && sh.fragile_legs.length === 0, 'G3：国内短距直达取舍齐备且不误标脆弱段');
+}
+
 /* ---------- 十二轮：文本非法返程日期 + 时序完全倒序才拒（评审定向反例） ---------- */
 {
   /* P1：文本非法返程日期过同一日历校验 */
@@ -594,7 +617,7 @@ const NO_DIGIT_RE = /\d/;
     '编排：web_search 已配置时逐段挂相关线索（source_lead）');
   ok(r6.web_search && r6.web_search.configured === true && r6.web_search.status === 'quota_exhausted',
     'P1-4：规划响应如实带 web_search 配置与最近真实状态（configured ≠ available）');
-  ok(r6.planner_version === 'v0.39.0', '编排：anywhere 版本号对齐 v0.39.0');
+  ok(r6.planner_version === 'v0.40.0', '编排：anywhere 版本号对齐 v0.40.0');
 
   const r7 = await planAnywhere({ text: '想去新疆最西边那座古城玩' },
     { callJson: async () => ({ origin: '北京', destination: '喀什' }), env: {}, osmSearch: async () => [] });

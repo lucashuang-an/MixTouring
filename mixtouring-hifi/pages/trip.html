@@ -92,6 +92,8 @@
         <label style="font-size:12px;color:var(--mixtouring-muted-foreground);">换乘（次） <input id="cnTransfers" type="number" min="0" max="2" step="1" placeholder="不限" style="display:block;margin-top:4px;width:90px;box-sizing:border-box;border:0.5px solid var(--mixtouring-border);border-radius:8px;padding:8px 10px;font-size:13.5px;font-family:inherit;" /></label>
       </div>
       <div style="font-size:11.5px;color:var(--mixtouring-muted-foreground);margin-top:8px;">支持城市/机场（含代码 PEK/ALA…）/车站/景点及别名；未收录或重名地点由 AI 提候选、OpenStreetMap 外部来源核验后请你确认（候选 30 分钟内有效）。所有走法均为待验证假设，逐段只挂「搜索线索」（非班期核验）；约束在取证到价格/时刻前只做过滤与提示。</div>
+      <!-- G3 页面职责声明（G3 开工前门槛）：本页为统一规划入口与结果页；详情/停留/修改在 G3 后续段接入 -->
+      <div style="margin-top:10px;padding:10px 14px;border-radius:12px;background:var(--mixtouring-muted);font-size:11.5px;color:var(--mixtouring-muted-foreground);line-height:1.7;">本页职责：统一规划入口 + 走法候选结果（含相对直达的取舍说明与逐段待查项）。行程详情、可选停留与修改将在 G3 后续段接入本页流程；国内历史样本仍由样本库页承载。</div>
     </div>
 
     <!-- 结果区（v0.34.0 统一主入口：假设候选 / 搜索线索 / 陆路探索 / 已取证样本 分层呈现） -->
@@ -312,6 +314,28 @@
         if (c.why_explore) html += '<div style="margin-top:8px;font-size:12px;line-height:1.7;"><span style="color:#1E7F45;">为什么值得探索：</span>' + MT.esc(c.why_explore) + '</div>';
         if (c.uncertain_leg) html += '<div style="margin-top:4px;font-size:12px;line-height:1.7;"><span style="color:#A16207;">待核路段：</span>' + MT.esc(c.uncertain_leg) + '</div>';
         if (c.next_checks && c.next_checks.length) html += '<div style="margin-top:4px;font-size:12px;line-height:1.7;"><span style="color:var(--mixtouring-ring);">下一步：</span>' + c.next_checks.map(function (n) { return MT.esc(n); }).join('；') + '</div>';
+        /* G3 首段：相对直达取舍（时间/费用/体验/风险；structural=结构事实，qualitative=定性判断） */
+        if (c.tradeoffs && c.tradeoffs.length) {
+          html += '<div style="margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--mixtouring-muted);">' +
+            '<div style="font-size:12px;">相对直达的取舍</div>' +
+            c.tradeoffs.map(function (x) {
+              var tag = x.basis_kind === 'structural'
+                ? '<span style="font-size:10.5px;color:#1E7F45;">[结构事实]</span>'
+                : '<span style="font-size:10.5px;color:#A16207;">[定性判断]</span>';
+              return '<div style="margin-top:6px;font-size:11.5px;line-height:1.7;"><strong>' + MT.esc(x.dimension) + '</strong> ' + tag +
+                '<br>直达：' + MT.esc(x.direct_ref) + '<br>本方案：' + MT.esc(x.this_route) + '</div>';
+            }).join('') + '</div>';
+        }
+        /* G3 首段：脆弱段与备选方向 */
+        if (c.fragile_legs && c.fragile_legs.length) {
+          html += '<div style="margin-top:10px;padding:10px 12px;border-radius:12px;background:rgba(161,98,7,0.06);border:0.5px solid rgba(161,98,7,0.25);">' +
+            '<div style="font-size:12px;color:#A16207;">脆弱段与备选</div>' +
+            c.fragile_legs.map(function (fl) {
+              return '<div style="margin-top:6px;font-size:11.5px;line-height:1.7;">' + MT.esc(fl.leg) +
+                '<br>' + fl.reasons.map(function (r) { return '· ' + MT.esc(r); }).join('<br>') +
+                '<br><span style="color:var(--mixtouring-muted-foreground);">备选：</span>' + fl.fallbacks.map(function (fb) { return MT.esc(fb); }).join('；') + '</div>';
+            }).join('') + '</div>';
+        }
         html += '</div>';
       });
 
