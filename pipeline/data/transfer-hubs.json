@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "说明": "中转枢纽种子（v0.37.0 G2.6 首卡）：地理顺路之外的枢纽作用与已知连接依据，用于候选生成的可解释推荐理由（candidate_hypothesis 层），不构成任何班期或当期运营事实。",
-    "字段口径": "name=places.json 已收录城市名；roles=intl_gateway（国际方向门户）/rail_hub（铁路枢纽）/rail_gateway（铁路方向门户）；gateway_for=服务方向（ISO 国家码或中文方向描述）；connection_notes=可解释依据文案（不含数字）；枢纽扩充经取证后增补。",
-    "防反向": "枢纽命中仍须通过绕行比校验（枢纽与两端大圆距离和/两端直线距离 ≤ 1.6，与 geo-skill 同阈值），明显反向绕行不生成。"
+    "说明": "中转枢纽种子（v0.37.0 引入；v0.38.0 十五轮修订：连接依据按交通方式分域 scope=air/rail/general，消费侧只把对应域依据挂到对应方式的路段——铁路锚点不支撑航空末段）。用于候选生成的可解释推荐理由（candidate_hypothesis 层），不构成任何班期或当期运营事实。",
+    "字段口径": "name=places.json 已收录城市名；roles=air_hub/rail_hub/rail_gateway/intl_gateway；gateway_for=服务方向（ISO 国家码或中文方向）；connections[{scope,note}]=按方式分域的连接依据（air=支撑航空段区位/连接、rail=支撑铁路方向〔含历史锚点〕、general=不限方式）；枢纽扩充经取证后增补。",
+    "防反向": "枢纽命中仍须通过绕行比校验（≤1.6，与 geo-skill 同阈值），明显反向绕行不生成。"
   },
   "hubs": [
     {
@@ -16,9 +16,19 @@
         "KZ",
         "中亚"
       ],
-      "connection_notes": [
-        "面向中亚的国际门户：对哈萨克斯坦方向有国际列车班期锚点（走廊证据，历史样例口径）",
-        "国内西北空铁枢纽，承接进疆干线铁路与国内航线"
+      "connections": [
+        {
+          "scope": "air",
+          "note": "西北地区主要航空枢纽，国内干线网络覆盖，中亚方向出境航空的常见门户区位（具体航线待查）"
+        },
+        {
+          "scope": "rail",
+          "note": "对哈萨克斯坦方向有国际列车班期锚点（走廊证据，历史样例口径）——仅支撑陆路/铁路方向探索"
+        },
+        {
+          "scope": "general",
+          "note": "进疆交通门户，承接国内干线与跨境方向衔接"
+        }
       ]
     },
     {
@@ -30,8 +40,19 @@
       "gateway_for": [
         "西北方向"
       ],
-      "connection_notes": [
-        "全国高铁网络中心枢纽，东西向干线交汇"
+      "connections": [
+        {
+          "scope": "general",
+          "note": "全国高铁网络中心枢纽，东西向干线交汇"
+        },
+        {
+          "scope": "air",
+          "note": "国内干线航空枢纽，航线网络覆盖广"
+        },
+        {
+          "scope": "rail",
+          "note": "高铁干线交汇枢纽，支撑铁路段组合"
+        }
       ]
     },
     {
@@ -42,8 +63,11 @@
       "gateway_for": [
         "西藏方向"
       ],
-      "connection_notes": [
-        "青藏铁路门户：进藏铁路方向需经此衔接"
+      "connections": [
+        {
+          "scope": "rail",
+          "note": "青藏铁路门户：进藏铁路方向需经此衔接"
+        }
       ]
     },
     {
@@ -53,10 +77,19 @@
         "rail_hub"
       ],
       "gateway_for": [
-        "西南方向"
+        "西藏方向",
+        "西南方向",
+        "拉萨"
       ],
-      "connection_notes": [
-        "西南航空枢纽，承接高原与西南干线"
+      "connections": [
+        {
+          "scope": "air",
+          "note": "西南航空枢纽，高原方向航线的常见出发点（具体航线待查）"
+        },
+        {
+          "scope": "rail",
+          "note": "西南铁路枢纽，衔接进藏/西南干线"
+        }
       ]
     },
     {
@@ -67,8 +100,11 @@
       "gateway_for": [
         "东南亚方向"
       ],
-      "connection_notes": [
-        "面向东南亚的航空门户"
+      "connections": [
+        {
+          "scope": "air",
+          "note": "面向东南亚的航空门户区位（具体航线待查）"
+        }
       ]
     },
     {
@@ -80,8 +116,11 @@
       "gateway_for": [
         "国内全域"
       ],
-      "connection_notes": [
-        "首都综合枢纽"
+      "connections": [
+        {
+          "scope": "general",
+          "note": "首都综合枢纽"
+        }
       ]
     },
     {
@@ -93,8 +132,11 @@
       "gateway_for": [
         "国内全域"
       ],
-      "connection_notes": [
-        "华东综合枢纽"
+      "connections": [
+        {
+          "scope": "general",
+          "note": "华东综合枢纽"
+        }
       ]
     },
     {
@@ -108,9 +150,15 @@
         "东南亚方向",
         "HK"
       ],
-      "connection_notes": [
-        "华南综合枢纽，东南亚航线密集",
-        "广深港高铁衔接香港，华南赴港方向门户"
+      "connections": [
+        {
+          "scope": "general",
+          "note": "华南综合枢纽"
+        },
+        {
+          "scope": "rail",
+          "note": "广深港高铁衔接香港，华南赴港方向门户"
+        }
       ]
     }
   ]

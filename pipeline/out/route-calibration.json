@@ -1,12 +1,18 @@
 {
-  "generated_at": "2026-09-23T15:14:33.026Z",
-  "note": "小规模分层抽样校准（确定性，无 LLM/搜索）：路线合理性、失败类型与分母。内部质量参考，非对外准确率承诺。",
-  "denominator": 11,
-  "passed": 11,
+  "generated_at": "2026-09-24T02:31:02.266Z",
+  "note": "小规模分层抽样 + 候选级合理性判据（确定性，无 LLM/搜索）：中转点可解释性、绕行比受控、依据与交通方式一致、措辞与证据相称、中转/混合差异化。内部质量参考，不构成对外准确率承诺，也不替代人工抽查；「约 80% 靠谱」为待测内部目标。",
+  "sample": {
+    "denominator": 12,
+    "passed": 12
+  },
+  "candidates": {
+    "total": 28,
+    "failed": 0
+  },
   "fail_types": {},
   "layers": [
     {
-      "layer": "L1 国内短距（直达合适应只直达）",
+      "layer": "L1 国内短距（直达优先提示；中转仅在存在依据时生成）",
       "results": [
         {
           "sample": "北京→上海",
@@ -14,7 +20,8 @@
             "direct"
           ],
           "pass": true,
-          "failures": []
+          "failures": [],
+          "candidate_failures": []
         },
         {
           "sample": "北京→西安",
@@ -22,22 +29,24 @@
             "direct"
           ],
           "pass": true,
-          "failures": []
+          "failures": [],
+          "candidate_failures": []
         }
       ]
     },
     {
-      "layer": "L2 国内长距（中转/混合方向应出）",
+      "layer": "L2 国内长距（方向匹配枢纽择优，非绕行最小首位）",
       "results": [
         {
-          "sample": "北京→喀什",
+          "sample": "广州→拉萨",
           "kinds": [
             "direct",
             "one_transfer",
             "mixed"
           ],
           "pass": true,
-          "failures": []
+          "failures": [],
+          "candidate_failures": []
         },
         {
           "sample": "北京→拉萨",
@@ -47,12 +56,24 @@
             "mixed"
           ],
           "pass": true,
-          "failures": []
+          "failures": [],
+          "candidate_failures": []
+        },
+        {
+          "sample": "北京→喀什",
+          "kinds": [
+            "direct",
+            "one_transfer",
+            "mixed"
+          ],
+          "pass": true,
+          "failures": [],
+          "candidate_failures": []
         }
       ]
     },
     {
-      "layer": "L3 国际走廊（直达铁路可出，走廊依据）",
+      "layer": "L3 国际走廊（直达铁路需走廊依据）",
       "results": [
         {
           "sample": "北京→香港",
@@ -63,7 +84,8 @@
             "mixed"
           ],
           "pass": true,
-          "failures": []
+          "failures": [],
+          "candidate_failures": []
         },
         {
           "sample": "乌鲁木齐→阿拉木图",
@@ -74,12 +96,13 @@
             "mixed"
           ],
           "pass": true,
-          "failures": []
+          "failures": [],
+          "candidate_failures": []
         }
       ]
     },
     {
-      "layer": "L4 国际枢纽（无模型应出可解释中转）",
+      "layer": "L4 国际枢纽（无模型可解释中转；依据按方式分域）",
       "results": [
         {
           "sample": "北京→阿拉木图",
@@ -89,7 +112,8 @@
             "mixed"
           ],
           "pass": true,
-          "failures": []
+          "failures": [],
+          "candidate_failures": []
         },
         {
           "sample": "北京→阿斯塔纳",
@@ -99,12 +123,13 @@
             "mixed"
           ],
           "pass": true,
-          "failures": []
+          "failures": [],
+          "candidate_failures": []
         }
       ]
     },
     {
-      "layer": "L5 反例-跨洋/岛域（无铁路直达，跨境旗标/距离 veto）",
+      "layer": "L5 反例-跨洋/岛域（无铁路直达；veto 连探索都不给）",
       "results": [
         {
           "sample": "北京→台北",
@@ -112,7 +137,8 @@
             "direct:plane"
           ],
           "pass": true,
-          "failures": []
+          "failures": [],
+          "candidate_failures": []
         },
         {
           "sample": "北京→纽约（动态）",
@@ -120,7 +146,8 @@
             "direct:plane"
           ],
           "pass": true,
-          "failures": []
+          "failures": [],
+          "candidate_failures": []
         }
       ]
     },
@@ -133,12 +160,14 @@
             "direct:plane"
           ],
           "pass": true,
-          "failures": []
+          "failures": [],
+          "candidate_failures": []
         }
       ]
     }
   ],
   "config": {
-    "direct_ok_km": 1300
+    "direct_hint_km": 1300,
+    "hub_detour_max": 1.6
   }
 }
