@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  /* 产品版本号（与 工作记录.md 最新版本同步；me.html「关于」动态读取，勿在页面写死） */
+  /* 旧七页原型版本；me.html「关于」显示此值，G3 规划器版本另由服务端管理。 */
   var VERSION = 'v0.22.0';
 
   var FAV_KEY = 'mt:favs';
@@ -123,12 +123,16 @@
   }
 
   /* ---------- 底部导航统一接线（唯一选中规则：data-active="true"） ---------- */
-  var NAV_TARGET = { search: 'search.html', library: 'library.html', me: 'me.html' };
+  var NAV_TARGET = { search: 'trip.html', library: 'library.html', me: 'me.html' };
   function wireNav() {
     document.querySelectorAll('[data-nav-key]').forEach(function (btn) {
+      if (btn.getAttribute('data-nav-key') === 'search') {
+        var label = btn.querySelector('span:last-child');
+        if (label) label.textContent = '规划';
+      }
       btn.addEventListener('click', function () {
         var key = btn.getAttribute('data-nav-key');
-        if (btn.getAttribute('data-active') === 'true') return; // 当前页，不跳
+        if (btn.getAttribute('data-active') === 'true' && !(key === 'search' && /\/search\.html$/.test(location.pathname))) return;
         if (NAV_TARGET[key]) location.href = NAV_TARGET[key];
       });
     });

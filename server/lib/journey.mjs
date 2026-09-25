@@ -1,6 +1,6 @@
 /* G3 探索行程详情：只消费服务端本次规划的候选，不把浏览器传来的路线当事实。 */
 import { randomBytes } from 'node:crypto';
-import { buildCandidateSkeletons } from './anywhere.mjs';
+import { buildCandidateSkeletons, resolvePlace } from './anywhere.mjs';
 
 const plans = new Map();
 const TTL_MS = 30 * 60 * 1000;
@@ -14,14 +14,22 @@ export function registerJourneyPlan(plan, now = Date.now()) {
   return id;
 }
 
-function checklistRow(leg, direction) {
+function checklistRow(leg, direction, plan) {
+  const countryOf = (name) => {
+    if (name === plan.intent.origin_place?.name) return plan.intent.origin_place.country;
+    if (name === plan.intent.destination_place?.name) return plan.intent.destination_place.country;
+    return resolvePlace(name)?.country || null;
+  };
+  const fromCountry = countryOf(leg.from), toCountry = countryOf(leg.to);
+  const missing = ['指定日期班次与当地起落时间', '当期价格及行李／退改口径', '站点接驳'];
+  if (fromCountry && toCountry && fromCountry !== toCountry) missing.push('出入境条件');
   return {
     direction,
     segment: `${leg.from} → ${leg.to}`,
     mode_guess: leg.mode_guess || null,
     evidence_state: leg.evidence_state || 'explore',
     search_leads: leg.evidence_state === 'source_lead' ? (leg.sources || []) : [],
-    missing: ['指定日期班次与当地起落时间', '当期价格及行李／退改口径', '站点接驳与入境条件'],
+    missing,
     manual_check: leg.manual_check || '到原平台逐段核对'
   };
 }
@@ -45,8 +53,8 @@ export function buildJourneyDetail(plan, candidateId, stopoverNights = 0) {
     inbound = returnHypothesis ? returnHypothesis.legs.map((leg) => ({ ...leg })) : [];
   }
   const checklist = [
-    ...outbound.map((leg) => checklistRow(leg, 'outbound')),
-    ...inbound.map((leg) => checklistRow(leg, 'inbound'))
+    ...outbound.map((leg) => checklistRow(leg, 'outbound', plan)),
+    ...inbound.map((leg) => checklistRow(leg, 'inbound', plan))
   ];
   const unknownCosts = ['去程各段当期交通费用', '行李、退改与站点接驳费用'];
   if (roundTrip) unknownCosts.push('返程当期交通费用（须独立核查）');

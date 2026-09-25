@@ -41,6 +41,11 @@
     <div style="text-align:center;padding:6px 0 18px;">
       <span style="font-size:22px;">Mix<span style="color:var(--mixtouring-ring);">Touring</span></span>
       <div style="font-size:13.5px;color:var(--mixtouring-muted-foreground);margin-top:6px;">一个人出发，先把路想清楚</div>
+      <nav aria-label="主要导航" style="display:flex;justify-content:center;gap:14px;flex-wrap:wrap;margin-top:14px;font-size:12px;">
+        <span aria-current="page" style="color:var(--mixtouring-foreground);">规划</span>
+        <a href="library.html" style="color:var(--mixtouring-muted-foreground);">历史路线库</a>
+        <a href="me.html" style="color:var(--mixtouring-muted-foreground);">我的收藏</a>
+      </nav>
     </div>
 
     <!-- 输入卡（v0.27.0 G2：两字段 + 一句话；解析结果全部可编辑；确认后才查询） -->
@@ -73,8 +78,8 @@
             <option value="one_way">单程</option>
           </select>
         </label>
-        <label style="font-size:12px;color:var(--mixtouring-muted-foreground);">去程窗口 <input id="tvOut" type="text" placeholder="2026-09-27 ~ 2026-10-03" style="display:block;margin-top:4px;width:180px;box-sizing:border-box;border:0.5px solid var(--mixtouring-border);border-radius:8px;padding:8px 10px;font-size:13.5px;font-family:inherit;" /></label>
-        <label style="font-size:12px;color:var(--mixtouring-muted-foreground);">返程窗口 <input id="tvRet" type="text" placeholder="2026-10-05 ~ 2026-10-11" style="display:block;margin-top:4px;width:180px;box-sizing:border-box;border:0.5px solid var(--mixtouring-border);border-radius:8px;padding:8px 10px;font-size:13.5px;font-family:inherit;" /></label>
+        <label style="font-size:12px;color:var(--mixtouring-muted-foreground);flex:1 1 245px;min-width:0;">去程窗口 <input id="tvOut" type="text" placeholder="2026-09-27 ~ 2026-10-03" style="display:block;margin-top:4px;width:100%;box-sizing:border-box;border:0.5px solid var(--mixtouring-border);border-radius:8px;padding:8px 10px;font-size:13.5px;font-family:inherit;" /></label>
+        <label style="font-size:12px;color:var(--mixtouring-muted-foreground);flex:1 1 245px;min-width:0;">返程窗口 <input id="tvRet" type="text" placeholder="2026-10-05 ~ 2026-10-11" style="display:block;margin-top:4px;width:100%;box-sizing:border-box;border:0.5px solid var(--mixtouring-border);border-radius:8px;padding:8px 10px;font-size:13.5px;font-family:inherit;" /></label>
         <label style="font-size:12px;color:var(--mixtouring-muted-foreground);">人数 <input id="tvCount" type="number" min="1" max="9" placeholder="1" style="display:block;margin-top:4px;width:70px;box-sizing:border-box;border:0.5px solid var(--mixtouring-border);border-radius:8px;padding:8px 10px;font-size:13.5px;font-family:inherit;" /></label>
       </div>
 
@@ -91,7 +96,7 @@
         </label>
         <label style="font-size:12px;color:var(--mixtouring-muted-foreground);">换乘（次） <input id="cnTransfers" type="number" min="0" max="2" step="1" placeholder="不限" style="display:block;margin-top:4px;width:90px;box-sizing:border-box;border:0.5px solid var(--mixtouring-border);border-radius:8px;padding:8px 10px;font-size:13.5px;font-family:inherit;" /></label>
       </div>
-      <div style="font-size:11.5px;color:var(--mixtouring-muted-foreground);margin-top:8px;">支持城市/机场（含代码 PEK/ALA…）/车站/景点及别名；未收录或重名地点由 AI 提候选、OpenStreetMap 外部来源核验后请你确认（候选 30 分钟内有效）。所有走法均为待验证假设，逐段只挂「搜索线索」（非班期核验）；约束在取证到价格/时刻前只做过滤与提示。</div>
+      <div style="font-size:11.5px;color:var(--mixtouring-muted-foreground);margin-top:8px;line-height:1.6;">可输入城市、机场、车站或景点。遇到重名地点会请你选择；路线先供探索，班期、票价与衔接需要逐段核查。</div>
     </div>
 
     <!-- 结果区（v0.34.0 统一主入口：假设候选 / 搜索线索 / 陆路探索 / 已取证样本 分层呈现） -->
@@ -117,7 +122,7 @@
      * 降级：LLM（引擎标注）、OSM/Photon（通道不可用提示）、web_search（配置与最近状态如实展示）——均不把「暂无数据」写成「没有路线」。 */
     var AW_KIND = { city: '城市', airport: '机场', station: '车站', poi: '景点' };
     var AW_MODE = { plane: '航班（假设）', rail: '铁路（假设）' };
-    var AW_BUILDER = { 'rule': '规则骨架', 'rule:geo': '中转按地理顺路筛选（估算）', 'llm': '中转由 AI 从已收录城市提名（假设）' };
+    var AW_BUILDER = { 'rule': '交通方向假设', 'rule:hub': '经交通枢纽探索', 'rule:geo': '顺路城市方向（地理估算）', 'llm': 'AI 提名方向（待核）' };
     var lastRequest = null; /* {text} 或 {origin,destination}，含 constraints——确认与重放共用 */
     var confirmedPlaces = {}, activePlan = null, activeCandidate = null, activeNights = 0;
     var revisions = [], pendingRestore = null;
@@ -236,7 +241,8 @@
         html += '</div>';
       });
       if (!html) return '';
-      return html + '<button id="btnAwConfirm" style="margin-top:12px;background:var(--mixtouring-primary);color:var(--mixtouring-primary-foreground);border:none;border-radius:10px;padding:11px 20px;font-size:13.5px;font-family:inherit;cursor:pointer;">确认地点并生成走法假设</button>';
+      return html + '<p style="font-size:12px;color:#A16207;line-height:1.6;">没有看到目标地点？请在上方地点名称后补充国家或地区，再点「看看怎么走」。不要选择名字相似但位置不同的候选。</p>' +
+        '<button id="btnAwConfirm" style="margin-top:12px;min-height:44px;background:var(--mixtouring-primary);color:var(--mixtouring-primary-foreground);border:none;border-radius:10px;padding:11px 20px;font-size:13.5px;font-family:inherit;cursor:pointer;">确认地点并生成走法假设</button>';
     }
 
     function candidateTitle(c) {
@@ -273,8 +279,7 @@
         '<h2 style="font-size:17px;margin:0;">' + placeLabel(data.intent.origin || '（待确认）', data.intent.origin_place && data.intent.origin_place.kind) +
         ' → ' + placeLabel(data.intent.destination || '（待确认）', data.intent.destination_place && data.intent.destination_place.kind) + '</h2>' +
         '<span style="font-size:11.5px;padding:4px 12px;border-radius:9999px;background:rgba(200,106,75,0.08);color:#A8543A;">候选一律为待验证假设 · 不含未取证数字</span></div>';
-      html += '<div style="font-size:12px;color:var(--mixtouring-muted-foreground);margin-top:4px;">' + MT.esc(routeLabel) +
-        ' · 识别引擎 ' + MT.esc(data.intent.parse_engine) + (data.planner_version ? ' · 规划器 ' + MT.esc(data.planner_version) : '') + '</div>';
+      html += '<div style="font-size:12px;color:var(--mixtouring-muted-foreground);margin-top:4px;">' + MT.esc(routeLabel) + ' · 先看走法，再逐段核实班期与费用</div>';
       if (data.intent.constraint_chips && data.intent.constraint_chips.length) {
         html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">' +
           data.intent.constraint_chips.map(function (c) {
@@ -311,6 +316,7 @@
           '<div style="font-size:13.5px;">' + MT.esc(candidateTitle(c)) +
           ' <span style="font-size:12px;color:var(--mixtouring-muted-foreground);">· 换乘 ' + c.transfers + ' 次</span></div>' +
           '<span style="font-size:11.5px;color:var(--mixtouring-muted-foreground);">' + MT.esc(AW_BUILDER[c.builder] || c.builder) + '</span></div>';
+        html += '<button type="button" class="btnJourney" data-candidate="' + MT.esc(c.id) + '" style="margin-top:10px;min-height:44px;padding:10px 18px;border:0;border-radius:10px;background:var(--mixtouring-primary);color:#fff;font-family:inherit;cursor:pointer;">查看探索详情与核验清单</button>';
         c.legs.forEach(function (leg) {
           var lead = leg.evidence_state === 'source_lead';
           html += '<div style="margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--mixtouring-muted);">' +
@@ -340,15 +346,15 @@
         if (c.next_checks && c.next_checks.length) html += '<div style="margin-top:4px;font-size:12px;line-height:1.7;"><span style="color:var(--mixtouring-ring);">下一步：</span>' + c.next_checks.map(function (n) { return MT.esc(n); }).join('；') + '</div>';
         /* G3 首段：相对直达取舍（时间/费用/体验/风险；structural=结构事实，qualitative=定性判断） */
         if (c.tradeoffs && c.tradeoffs.length) {
-          html += '<div style="margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--mixtouring-muted);">' +
-            '<div style="font-size:12px;">相对直达的取舍</div>' +
+          html += '<details style="margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--mixtouring-muted);">' +
+            '<summary style="font-size:12px;cursor:pointer;min-height:24px;">相对直达的取舍 · 时间／费用／体验／风险</summary>' +
             c.tradeoffs.map(function (x) {
               var tag = x.basis_kind === 'structural'
                 ? '<span style="font-size:10.5px;color:#1E7F45;">[结构事实]</span>'
                 : '<span style="font-size:10.5px;color:#A16207;">[定性判断]</span>';
               return '<div style="margin-top:6px;font-size:11.5px;line-height:1.7;"><strong>' + MT.esc(x.dimension) + '</strong> ' + tag +
                 '<br>直达：' + MT.esc(x.direct_ref) + '<br>本方案：' + MT.esc(x.this_route) + '</div>';
-            }).join('') + '</div>';
+            }).join('') + '</details>';
         }
         /* G3 首段：脆弱段与备选方向 */
         if (c.fragile_legs && c.fragile_legs.length) {
@@ -360,7 +366,6 @@
                 '<br><span style="color:var(--mixtouring-muted-foreground);">备选：</span>' + fl.fallbacks.map(function (fb) { return MT.esc(fb); }).join('；') + '</div>';
             }).join('') + '</div>';
         }
-        html += '<button type="button" class="btnJourney" data-candidate="' + MT.esc(c.id) + '" style="margin-top:12px;min-height:44px;padding:10px 18px;border:0;border-radius:10px;background:var(--mixtouring-primary);color:#fff;font-family:inherit;cursor:pointer;">查看探索详情与核验清单</button>';
         html += '</div>';
       });
 
@@ -497,6 +502,7 @@
       var box = document.getElementById('journeyArea');
       if (!box) return;
       var html = '<section class="detail-card" style="background:var(--mixtouring-card);border-radius:18px;padding:20px;box-shadow:var(--shadow-card-soft);">' +
+        '<button id="btnBackCandidates" type="button" style="min-height:44px;padding:8px 0;border:0;background:none;color:var(--mixtouring-ring);font:inherit;font-size:12.5px;cursor:pointer;">‹ 返回走法候选</button>' +
         '<h3 style="font-size:17px;margin:0;">这条走法的探索详情</h3>' +
         '<p style="font-size:12px;color:#A16207;line-height:1.6;">完整路线结构仍是探索草案；没有当期班期、衔接、票价或可执行保证。</p>';
       html += journeyLegsHtml(detail.outbound, '去程 · ' + (detail.outbound_window ? MT.esc(detail.outbound_window) : '日期待补'));
@@ -521,6 +527,7 @@
         '<button id="btnEditForm" type="button" style="min-height:44px;padding:9px 16px;background:var(--mixtouring-muted);border:0;border-radius:10px;font-family:inherit;cursor:pointer;">修改上方条件</button></div>';
       html += '</section>';
       box.innerHTML = html;
+      document.getElementById('btnBackCandidates').addEventListener('click', function () { resultArea.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
       box.querySelectorAll('.btnStay').forEach(function (btn) { btn.addEventListener('click', function () { openJourney(activeCandidate, Number(btn.getAttribute('data-nights')), true); }); });
       document.getElementById('btnEditForm').addEventListener('click', function () { document.getElementById('fromInput').scrollIntoView({ behavior: 'smooth' }); document.getElementById('fromInput').focus(); });
       document.getElementById('btnApplyEdit').addEventListener('click', function () {

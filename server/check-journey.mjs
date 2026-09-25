@@ -21,6 +21,8 @@ assert.equal(detail.inbound[0].from, '阿拉木图');
 assert.equal(detail.inbound[0].to, '北京');
 assert.equal(detail.inbound[0].evidence_state, 'explore', '返程不能套用去程证据');
 assert.equal(detail.checklist.length, 3, '去程两段与返程一段都应列入核验清单');
+assert.ok(!detail.checklist[0].missing.includes('出入境条件'), '北京→乌鲁木齐国内段不得提示入境');
+assert.ok(detail.checklist[1].missing.includes('出入境条件'), '乌鲁木齐→阿拉木图跨境段须提示出入境');
 assert.equal(detail.cost.known_total, null, '无证据不得给已知总额');
 assert.ok(detail.cost.unknown_items.some((item) => item.includes('住宿')));
 assert.ok(detail.warnings.some((item) => item.includes('后半程')));
@@ -39,4 +41,5 @@ const oneWay = await planAnywhere({ origin: '北京', destination: '喀什', tra
 const oneDetail = buildJourneyDetail(oneWay, oneWay.candidates[0].id, 0);
 assert.equal(oneDetail.inbound.length, 0);
 assert.equal(oneDetail.return_window, null);
+assert.ok(oneDetail.checklist.every((row) => !row.missing.includes('出入境条件')), '国内单程不得提示入境');
 console.log('✓ G3 探索详情：去返独立、停留后半程、未知费用、候选存证与过期边界');
