@@ -212,7 +212,7 @@
       </div>
 
       <div class="text-center">
-        <div id="genHeadline" style="font-size: 19px; color: var(--mixtouring-foreground, #1E2022); letter-spacing: -0.01em;">AI 正在规划路线</div>
+        <div id="genHeadline" style="font-size: 19px; color: var(--mixtouring-foreground, #1E2022); letter-spacing: -0.01em;">正在打开国内历史路线样本</div>
         <div id="routeLabel" style="font-size: 13.5px; color: var(--mixtouring-muted-foreground, #7C8089); margin-top: 6px;">北京 → 喀什 · 10月1日</div>
       </div>
 
@@ -257,7 +257,7 @@
     document.getElementById('routeLabel').textContent = from + ' → ' + to + ' · ' + dateLabel;
 
     document.getElementById('btnCancel').addEventListener('click', function () {
-      MT.goBack('search.html');
+      MT.goBack('trip.html');
     });
 
     MT.wireNav();
@@ -284,27 +284,27 @@
         ? cities.slice(0, 2).join(' / ') + ' 等 ' + cities.length + ' 城'
         : cities.join(' / ');
       steps = [
-        '检索 ' + from + ' 出发的班次与票价样本',
-        '在 ' + cityText + ' 匹配中转组合',
-        '评估 ' + route.plans.length + ' 个候选的四因子衔接风险',
-        '对比直飞基准 ' + route.direct.price + '，按总花费排序'
+        '读取 ' + from + ' → ' + to + ' 的历史路线结构',
+        '展示经 ' + cityText + ' 的旧样本方向',
+        '标注当时的费用样本与待核事项',
+        '当前班期、票价与差额请按本次日期重新核验'
       ];
-      headline = '已找到 ' + route.plans.length + ' 个省钱方案';
+      headline = '已找到 ' + route.plans.length + ' 条历史路线样本';
       stepMs = 560; holdMs = 2950;
     } else if (isPending) {
       steps = [
         '已在探索队列' + (wish.ts ? ' · 登记于 ' + MT.fmtTs(wish.ts) : ''),
-        'AI 联网采集真实班次与票价，通常 1–2 分钟',
-        '完成后搜索页问答入口与「我的」页可见进度'
+        '采样进度以「我的」页显示为准',
+        '当前班期和费用尚未核验'
       ];
       headline = '探索中 · 无需等待';
       stepMs = 380; holdMs = 1700;
     } else {
       steps = [
-        '方案库暂无这条线的真实样本',
-        '不做编造——下一页自动开始 AI 联网探索（约 1–2 分钟）'
+        '旧方案库暂无这条线的历史样本',
+        '下一页可登记心愿；当前规划页仍可探索走法方向'
       ];
-      headline = '这条线暂无样本 · 即刻 AI 探索';
+      headline = '这条线暂无历史样本';
       stepMs = 360; holdMs = 1400;
     }
 
@@ -351,8 +351,8 @@
         headline = '探索中 · 无需等待';
         steps = [
           '已在探索队列（服务端登记）',
-          'AI 联网采集真实班次与票价，通常 1–2 分钟',
-          '完成后搜索页问答入口与「我的」页可见进度'
+          '采样进度以「我的」页显示为准',
+          '当前班期和费用尚未核验'
         ];
         stepList.innerHTML = steps.map(function (t) {
           return '<div class="step-row active"><span class="step-dot"></span>' +

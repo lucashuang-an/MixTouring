@@ -295,7 +295,8 @@
     var to = MT.qs('to') || '喀什';
     var date = MT.qs('date') || ''; /* v0.22.0：YYYY/MM 月份（兼容旧 YYYY/MM/DD） */
     var holiday = MT.qs('holiday') === '1';
-    var fromTrip = MT.qs('source') === 'trip';
+    /* 旧结果库只承载历史单程样本；任何入口都按历史口径展示。 */
+    var fromTrip = true;
     var sortMode = 'budget';
     var routeData = null;
 
@@ -490,7 +491,7 @@
             '<svg style="width:13px;height:13px;margin-top:2px;flex-shrink:0;color:var(--state-warning,#FBBF24);"><use href="#hero-exclamation-triangle"></use></svg>' +
             '<span style="font-size:12px;color:#A16207;line-height:1.5;">地理评估 · ' + MT.esc(p.geo.conclusion) + '</span></div>'
           : '') +
-        '<div class="pt-2">' + riskRowHtml(p.risks, p.play) + '</div>' +
+        (fromTrip ? '' : '<div class="pt-2">' + riskRowHtml(p.risks, p.play) + '</div>') +
         '<div class="flex items-center justify-between" style="padding-top:12px;margin-top:12px;border-top:0.5px solid var(--mixtouring-border,#E8E9EB);">' +
           '<span style="font-size:12px;padding:3px 10px;border-radius:9999px;background:rgba(52,199,89,0.08);color:#34c759;">' + (fromTrip ? '当前差额待核' : MT.esc(p.saved)) + '</span>' +
           '<span class="flex items-center" style="font-size:13px;color:var(--mixtouring-muted-foreground,#7C8089);">详情<svg style="width:14px;height:14px;margin-left:2px;"><use href="#hero-chevron-right"></use></svg></span>' +

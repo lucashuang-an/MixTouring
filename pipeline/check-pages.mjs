@@ -20,6 +20,11 @@ const err = (page, msg) => { fail++; console.error(`  ✗ [${page}] ${msg}`); };
 for (const page of pages) {
   const html = readFileSync(join(pagesDir, page), 'utf8');
 
+  /* 桌面跳转不能落回只有 430px 手机容器的页面。 */
+  if (!html.includes('href="../assets/desktop.css"')) err(page, '缺少桌面响应式样式');
+  if (!html.includes('data-mobile-nav="global"')) err(page, '缺少统一响应式导航');
+  if (!html.includes(page === 'trip.html' ? 'class="trip-shell"' : 'class="app-shell"')) err(page, '缺少桌面内容容器');
+
   /* 1) 内联脚本语法 */
   const scripts = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)].map((m) => m[1]);
   scripts.forEach((code, i) => {
