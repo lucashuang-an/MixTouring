@@ -239,6 +239,14 @@ async function main() {
     console.log('✓ /api/anywhere/plan 北京→喀什：假设骨架（' + anyPlan.data.candidates.length + ' 类）全探索态零价格字段');
   } else { failed++; console.error('✗ /api/anywhere/plan 异常：' + JSON.stringify(anyPlan).slice(0, 200)); }
 
+  const journey = await (await fetch(BASE + '/api/anywhere/journey', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ plan_id: anyPlan.data.plan_id, candidate_id: anyPlan.data.candidates[0].id, stopover_nights: 0 }) })).json();
+  if (journey.code === 0 && journey.data.evidence_state === 'explore' && journey.data.outbound.length === 1 && journey.data.inbound.length === 0 && journey.data.cost.known_total === null) {
+    console.log('✓ /api/anywhere/journey：服务端候选生成单程探索详情，费用未知');
+  } else { failed++; console.error('✗ /api/anywhere/journey 单程详情异常：' + JSON.stringify(journey).slice(0, 200)); }
+  const forgedJourney = await (await fetch(BASE + '/api/anywhere/journey', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ plan_id: anyPlan.data.plan_id, candidate_id: '伪造', stopover_nights: 2 }) })).json();
+  if (forgedJourney.code === 1) console.log('✓ /api/anywhere/journey：拒绝伪造候选');
+  else { failed++; console.error('✗ /api/anywhere/journey 未拒绝伪造候选'); }
+
   const anyHkg = await (await fetch(BASE + '/api/anywhere/plan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ origin: '北京', destination: '香港' }) })).json();
   const hkgDirects = (anyHkg.data && anyHkg.data.candidates || []).filter((c) => c.kind === 'direct');
   if (anyHkg.code === 0 && anyHkg.data.route.route_type === 'international' &&
@@ -272,7 +280,8 @@ async function main() {
   if (destCand) {
     const anyConfirmed = await (await fetch(BASE + '/api/anywhere/plan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ origin: '北京', destination: '塔什干', confirmed_places: { destination: destCand.candidate_id } }) })).json();
     const ac = anyConfirmed.data || {};
-    if (anyConfirmed.code === 0 && ac.route && ac.route.route_type === 'international' &&
+    /* 外部地点源可能返回同名国内地点；此处验证存证事实一致性，国际语义由用户消歧选择决定。 */
+    if (anyConfirmed.code === 0 && ac.route && ac.route.route_type === (destCand.country === 'CN' ? 'domestic' : 'international') &&
       ac.intent && ac.intent.destination_place && ac.intent.destination_place.dynamic === true &&
       ac.intent.destination_place.country === destCand.country &&
       ac.intent.destination_place.source_url === destCand.source_url) {
@@ -295,13 +304,18 @@ async function main() {
   const caps = await (await fetch(BASE + '/api/capabilities')).json();
   if (caps.code === 0 && typeof caps.data.web_search_configured === 'boolean' &&
     ['available', 'quota_exhausted', 'timeout', 'error', 'unknown'].includes(caps.data.web_search_status) &&
-    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.40.2') {
+    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.41.0') {
     console.log('✓ /api/capabilities P1-4：configured 与最近真实状态分开（web_search_configured=' +
       caps.data.web_search_configured + ', status=' + caps.data.web_search_status + '），版本拆分对齐');
   } else { failed++; console.error('✗ /api/capabilities 形状异常：' + JSON.stringify(caps).slice(0, 200)); }
 
   /* ---------- 十一轮：意图合并顺序 / 无效窗口（真实 API 定向反例） ---------- */
   const ivA = await (await fetch(BASE + '/api/anywhere/plan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: '从北京去阿拉木图往返' }) })).json();
+  if (ivA.code === 0 && ivA.data.plan_id && ivA.data.candidates.length) {
+    const rtDetail = await (await fetch(BASE + '/api/anywhere/journey', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ plan_id: ivA.data.plan_id, candidate_id: ivA.data.candidates[0].id, stopover_nights: 0 }) })).json();
+    if (rtDetail.code === 0 && rtDetail.data.inbound.length === 1 && rtDetail.data.inbound[0].from === '阿拉木图' && rtDetail.data.inbound[0].evidence_state === 'explore') console.log('✓ /api/anywhere/journey：往返方向独立探索，不继承去程证据');
+    else { failed++; console.error('✗ /api/anywhere/journey 往返详情异常：' + JSON.stringify(rtDetail).slice(0, 200)); }
+  }
   if (ivA.code === 0 && ivA.data.intent.trip_type === 'round_trip' &&
     ivA.data.needs_confirmation.filter((n) => n.includes('日期')).length === 2) {
     console.log('✓ /api/anywhere/plan 无 travel 往返请求不 500：round_trip + 补去返日期两条提示');

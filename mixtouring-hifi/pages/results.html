@@ -208,7 +208,7 @@
         <div class="flex-1 flex justify-start">
           <button id="btnBack" class="flex items-center" style="color: var(--mixtouring-ring, #C86A4B); font-size: 15px; background: none; border: none; cursor: pointer; font-family: inherit; padding: 8px 0;">
             <span style="font-size: 22px; line-height: 1;">&#8249;</span>
-            <span class="ml-0.5">搜索</span>
+            <span class="ml-0.5" id="backLabel">搜索</span>
           </button>
         </div>
         <div class="flex-1 flex justify-center">
@@ -221,6 +221,7 @@
     <!-- Meta + Sort -->
     <div class="px-4 pt-3">
       <div id="metaLine" style="font-size: 13px; color: var(--mixtouring-muted-foreground, #7C8089);"></div>
+      <div id="historicalNotice" style="display:none;margin-top:10px;padding:10px 12px;border-radius:10px;background:rgba(161,98,7,0.08);color:#895208;font-size:12px;line-height:1.6;">本页为国内旧路线历史样本。价格与班次未按你在规划页的日期重新核验，请回规划页查看本次探索候选。</div>
       <div class="mt-3 flex items-center" style="background: var(--mixtouring-muted, #F4F5F7); border-radius: 9999px; padding: 3px; width: fit-content;" role="tablist" aria-label="排序方式">
         <button class="seg-pill active" data-sort="budget" role="tab" aria-selected="true">预算优先</button>
         <button class="seg-pill" data-sort="time" role="tab" aria-selected="false">耗时优先</button>
@@ -294,10 +295,16 @@
     var to = MT.qs('to') || '喀什';
     var date = MT.qs('date') || ''; /* v0.22.0：YYYY/MM 月份（兼容旧 YYYY/MM/DD） */
     var holiday = MT.qs('holiday') === '1';
+    var fromTrip = MT.qs('source') === 'trip';
     var sortMode = 'budget';
     var routeData = null;
 
     document.getElementById('navTitle').textContent = from + ' → ' + to;
+    if (fromTrip) {
+      document.getElementById('backLabel').textContent = '规划';
+      document.getElementById('freshLine').textContent = '国内历史样本参考 · 日期、票价与供给请重新核查';
+      document.getElementById('historicalNotice').style.display = 'block';
+    }
     var dmD = date.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
     var dmM = date.match(/^(\d{4})\/(\d{1,2})$/);
     var dateLabel = dmD ? (parseInt(dmD[2], 10) + '月' + parseInt(dmD[3], 10) + '日')
@@ -305,7 +312,8 @@
       : (holiday ? '节假日' : '近期');
 
     document.getElementById('btnBack').addEventListener('click', function () {
-      MT.goBack('search.html');
+      if (fromTrip) location.href = 'trip.html?' + new URLSearchParams({ from: from, to: to }).toString();
+      else MT.goBack('search.html');
     });
     document.getElementById('goLibrary').addEventListener('click', function () {
       location.href = 'library.html';
@@ -581,6 +589,10 @@
       return Math.round(days / 30) + ' 个月前';
     }
     function updateFreshness() {
+      if (fromTrip) {
+        document.getElementById('freshLine').textContent = '国内历史样本参考 · 日期、票价与供给请重新核查';
+        return;
+      }
       var stamps = (routeData.plans || []).map(function (p) { return p.sampledAt; })
         .concat(routeData.direct && routeData.direct.sampled_at ? [routeData.direct.sampled_at] : [])
         .filter(Boolean).sort();
