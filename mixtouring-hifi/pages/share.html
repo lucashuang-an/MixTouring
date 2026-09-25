@@ -197,7 +197,7 @@
         </svg>
         <span style="font-size: 13px; color: var(--mixtouring-muted-foreground, #7C8089);">来自 MixTouring</span>
       </div>
-      <h2 id="shareHeadline" style="font-size: 21px; color: var(--mixtouring-foreground, #1E2022); letter-spacing: -0.01em; margin-top: 10px; line-height: 1.35;">TA 给你分享了一条省钱路线</h2>
+      <h2 id="shareHeadline" style="font-size: 21px; color: var(--mixtouring-foreground, #1E2022); letter-spacing: -0.01em; margin-top: 10px; line-height: 1.35;">分享一条历史路线结构</h2>
       <p id="shareSub" style="font-size: 13.5px; color: var(--mixtouring-muted-foreground, #7C8089); margin-top: 8px;"></p>
     </div>
 
@@ -212,13 +212,13 @@
       </button>
       <button id="btnGotoSearch" class="cta-btn w-full rounded-full flex items-center justify-center gap-1.5" style="margin-top: 10px; background: var(--mixtouring-muted, #F4F5F7); color: var(--mixtouring-foreground, #1E2022); font-size: 15px; padding: 12px 16px; border: none; cursor: pointer; font-family: inherit;">
         <svg style="width: 16px; height: 16px; color: var(--mixtouring-foreground, #1E2022);"><use href="#hero-magnifying-glass"></use></svg>
-        <span>搜我的省钱路线</span>
+        <span>探索我的路线</span>
       </button>
     </div>
 
     <!-- 页脚声明（分享落地页无购买入口） -->
     <div class="px-8 text-center" style="margin-top: 28px;">
-      <p style="font-size: 12px; color: var(--mixtouring-muted-foreground, #7C8089); line-height: 1.7;">MixTouring 是背包客的路线方案社区，不提供购票服务。<br />价格为估算样本，请按分段信息自行购票。</p>
+      <p style="font-size: 12px; color: var(--mixtouring-muted-foreground, #7C8089); line-height: 1.7;">这份路线与费用为历史样本，当前班期、票价及是否更省均待重新核验。MixTouring 不提供购票服务。</p>
     </div>
 
   </main>
@@ -250,7 +250,7 @@
     var tpl = MT.qs('tpl');
 
     document.getElementById('btnBack').addEventListener('click', function () {
-      MT.goBack('search.html');
+      MT.goBack('trip.html');
     });
     MT.wireNav();
 
@@ -299,33 +299,26 @@
         return '<div class="w-8 h-8 rounded-full flex items-center justify-center" style="background:var(--mixtouring-muted,#F4F5F7);">' +
           modeIcon(m, 16, m === 'plane' ? 'var(--mixtouring-ring,#C86A4B)' : 'var(--mixtouring-foreground,#1E2022)') + '</div>';
       }).join('');
-      var tplMeta = '';
-      if (item.type === 'tpl' && item.contributor) {
-        tplMeta = '<div class="flex items-center" style="gap:8px;padding-top:12px;">' +
-          '<span class="flex items-center" style="gap:3px;font-size:12px;color:var(--mixtouring-foreground,#1E2022);">' +
-            '<svg style="width:12px;height:12px;color:var(--state-warning,#FBBF24);"><use href="#hero-star-solid"></use></svg>' + item.rating + '</span>' +
-          '<span style="font-size:12px;color:var(--mixtouring-ring,#C86A4B);">' + MT.esc(item.contributor) + '</span>' +
-          '<span style="font-size:12px;color:var(--mixtouring-muted-foreground,#7C8089);">' + item.walkers + ' 人走过</span></div>';
-      }
+      var tplMeta = '<div style="font-size:12px;color:var(--mixtouring-muted-foreground,#7C8089);padding-top:12px;">历史路线结构参考 · 本次日期尚未核验</div>';
       return '<div class="detail-card p-4">' +
         '<div class="flex items-center justify-between">' +
           '<div class="flex items-center" style="gap:6px;">' + modes + '</div>' +
           '<div class="flex items-center" style="gap:6px;">' +
             '<span style="font-size:12px;padding:5px 12px;border-radius:9999px;background:var(--mixtouring-muted,#F4F5F7);color:var(--mixtouring-muted-foreground,#7C8089);">' + MT.esc(item.totalTime) + '</span>' +
-            '<span style="font-size:13px;padding:5px 12px;border-radius:9999px;background:var(--mixtouring-muted,#F4F5F7);color:var(--mixtouring-ring,#C86A4B);">' + MT.esc(item.price) + '</span>' +
+            '<span style="font-size:13px;padding:5px 12px;border-radius:9999px;background:var(--mixtouring-muted,#F4F5F7);color:var(--mixtouring-ring,#C86A4B);">历史费用 ' + MT.esc(item.price) + '</span>' +
           '</div>' +
         '</div>' +
         '<div class="pt-4 pb-1">' + routeBarHtml(item) + '</div>' +
-        '<div class="pt-2">' + riskRowHtml(item.risks) + '</div>' + tplMeta +
+        tplMeta +
         '<div class="flex items-center" style="padding-top:12px;margin-top:12px;border-top:0.5px solid var(--mixtouring-border,#E8E9EB);">' +
-          '<span style="font-size:12px;padding:3px 10px;border-radius:9999px;background:rgba(52,199,89,0.08);color:#34c759;">' + MT.esc(item.saved) + ' vs 直飞</span>' +
+          '<span style="font-size:12px;padding:3px 10px;border-radius:9999px;background:var(--mixtouring-muted,#F4F5F7);color:var(--mixtouring-muted-foreground,#7C8089);">当前差额待核</span>' +
         '</div>' +
       '</div>';
     }
 
     function renderMissing() {
       document.getElementById('shareHeadline').textContent = '这条分享已失效';
-      document.getElementById('shareSub').textContent = '方案数据不存在或已更新，去搜一条新的省钱路线吧';
+      document.getElementById('shareSub').textContent = '样本数据不存在或已更新，可回规划页重新探索';
       document.getElementById('cardWrap').innerHTML =
         '<div class="detail-card p-6 text-center" style="font-size:13.5px;color:var(--mixtouring-muted-foreground,#7C8089);line-height:1.7;">没有找到对应的方案数据</div>';
     }
@@ -336,7 +329,7 @@
       if (!item) { renderMissing(); return; }
       document.title = item.from + ' → ' + item.to + ' · MixTouring 路线分享';
       document.getElementById('shareSub').textContent =
-        item.from + ' → ' + item.to + ' · ' + item.totalTime.replace('总 ', '') + ' · ' + item.price + ' · ' + item.saved;
+        item.from + ' → ' + item.to + ' · 历史费用 ' + item.price + ' · 当前班期与费用待核';
       document.getElementById('cardWrap').innerHTML = cardHtml(item);
     });
 
@@ -363,7 +356,7 @@
     });
 
     document.getElementById('btnGotoSearch').addEventListener('click', function () {
-      location.href = 'search.html';
+      location.href = 'trip.html';
     });
   })();
   </script>

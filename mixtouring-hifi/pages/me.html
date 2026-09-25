@@ -204,7 +204,7 @@
           <span style="font-size: 15px; color: var(--mixtouring-foreground, #1E2022);">Mix<span style="color: var(--mixtouring-ring, #C86A4B);">Touring</span></span>
           <span id="verLine" style="font-size: 12px; color: var(--mixtouring-muted-foreground, #7C8089);">MVP 原型</span>
         </div>
-        <p style="font-size: 12.5px; color: var(--mixtouring-muted-foreground, #7C8089); line-height: 1.7; margin-top: 10px;">背包客的 AI 省钱路线规划师。自动发现直飞之外的「火车 × 飞机」自由组票，按总花费排序，衔接风险透明化。纯内容与方案产品，不提供购票服务。</p>
+        <p style="font-size: 12.5px; color: var(--mixtouring-muted-foreground, #7C8089); line-height: 1.7; margin-top: 10px;">帮助独立旅行者发现值得探索的走法、理解取舍与待查项。这里保留的是旧路线收藏和心愿；当前班期、费用需回规划页逐段核验。MixTouring 不提供购票服务。</p>
       </div>
     </div>
 
@@ -247,7 +247,7 @@
           '</div>' +
           '<div class="min-w-0">' +
             '<div style="font-size:15px;color:var(--mixtouring-foreground,#1E2022);">' + MT.esc(f.title) + '</div>' +
-            '<div style="font-size:12px;color:var(--mixtouring-muted-foreground,#7C8089);margin-top:3px;">' + MT.esc(f.price) + ' · ' + MT.esc(f.saved) + ' · 收藏于 ' + MT.fmtTs(f.ts) + '</div>' +
+            '<div style="font-size:12px;color:var(--mixtouring-muted-foreground,#7C8089);margin-top:3px;">历史路线收藏 · 当前费用待核 · 收藏于 ' + MT.fmtTs(f.ts) + '</div>' +
           '</div>' +
         '</div>' +
         '<svg class="shrink-0" style="width:16px;height:16px;color:var(--mixtouring-muted-foreground,#7C8089);margin-left:8px;"><use href="#hero-chevron-right"></use></svg>' +
@@ -266,7 +266,7 @@
         function open() {
           var id = card.getAttribute('data-fav-id');
           var type = card.getAttribute('data-fav-type');
-          location.href = type === 'tpl' ? ('detail.html?tpl=' + id) : ('detail.html?id=' + id);
+          location.href = type === 'tpl' ? ('detail.html?tpl=' + id + '&source=library') : ('detail.html?id=' + id + '&source=library');
         }
         card.addEventListener('click', open);
         card.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
@@ -335,7 +335,7 @@
       var list = MT.wishList().filter(function (w) { return w.status !== 'dismissed'; });
       var wrap = document.getElementById('wishWrap');
       if (!list.length) {
-        wrap.innerHTML = '<div class="detail-card p-5 text-center" style="font-size:13px;color:var(--mixtouring-muted-foreground,#7C8089);line-height:1.7;">还没有心愿路线<br />在搜索结果页遇到无数据路线，可以让 AI 离线探索</div>';
+        wrap.innerHTML = '<div class="detail-card p-5 text-center" style="font-size:13px;color:var(--mixtouring-muted-foreground,#7C8089);line-height:1.7;">还没有心愿路线<br />可以先到规划页探索新的出行方向</div>';
         return;
       }
       wrap.innerHTML = list.map(wishRowHtml).join('');
@@ -365,7 +365,7 @@
           var id = card.getAttribute('data-wish-id');
           var w = MT.wishList().find(function (x) { return x.id === id; });
           if (!w) return;
-          location.href = 'loading.html?' + new URLSearchParams({ from: w.from, to: w.to, date: w.date });
+          location.href = 'trip.html?' + new URLSearchParams({ from: w.from, to: w.to });
         }
         card.addEventListener('click', open);
         card.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });

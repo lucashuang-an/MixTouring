@@ -331,7 +331,7 @@
     <main>
       <div class="app-shell">
         <h1 class="page-title">路线库</h1>
-        <p class="page-subtitle">被真实背包客走过的省钱路线，一键复用</p>
+        <p class="page-subtitle">国内历史路线结构样本；班期、费用与节省额需按本次日期重新核验</p>
 
         <div class="chip-row" id="chipRow" role="tablist" aria-label="地区筛选"></div>
 
@@ -416,13 +416,13 @@
       return '<div class="tpl-card" data-tpl-id="' + MT.esc(t.id) + '" role="button" tabindex="0" aria-label="' + MT.esc(t.from + ' 到 ' + t.to + ' 路线详情') + '">' +
         '<div class="card-header">' +
           '<span class="card-title">' + num + ' · ' + MT.esc(t.from) + ' → ' + MT.esc(t.to) + '</span>' +
-          '<span class="card-badge">' + MT.esc(t.badge) + '</span>' +
+          '<span class="card-badge">历史样本</span>' +
         '</div>' +
         routeBarHtml(t) +
         '<div class="card-footer">' +
-          '<span class="amt-chip amt-chip-muted">' + t.walkers + ' 人走过</span>' +
-          '<span class="amt-chip amt-chip-price">' + MT.esc(t.price) + '</span>' +
-          '<span class="amt-chip amt-chip-saved">' + MT.esc(t.saved) + '</span>' +
+          '<span class="amt-chip amt-chip-muted">路线结构参考</span>' +
+          '<span class="amt-chip amt-chip-price">历史费用 ' + MT.esc(t.price) + '</span>' +
+          '<span class="amt-chip amt-chip-saved">当前差额待核</span>' +
         '</div>' +
       '</div>';
     }
@@ -435,7 +435,7 @@
       }
       wrap.innerHTML = list.map(tplCardHtml).join('');
       wrap.querySelectorAll('.tpl-card').forEach(function (card) {
-        function open() { location.href = 'detail.html?tpl=' + card.getAttribute('data-tpl-id'); }
+        function open() { location.href = 'detail.html?tpl=' + card.getAttribute('data-tpl-id') + '&source=library'; }
         card.addEventListener('click', open);
         card.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
       });

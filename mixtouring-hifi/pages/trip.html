@@ -26,26 +26,23 @@
     </style>
     <link rel="stylesheet" href="../assets/desktop.css" />
 </head>
-<body style="margin:0;background:var(--mixtouring-background);font-family:var(--mixtouring-font-sans);color:var(--mixtouring-foreground);-webkit-font-smoothing:antialiased;">
+<body class="trip-page" style="margin:0;background:var(--mixtouring-background);font-family:var(--mixtouring-font-sans);color:var(--mixtouring-foreground);-webkit-font-smoothing:antialiased;">
   <svg xmlns="http://www.w3.org/2000/svg" style="display:none;" aria-hidden="true">
     <defs>
       <symbol id="hero-sparkles" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.456-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456Z"/></symbol>
       <symbol id="hero-exclamation-triangle" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0zM12 15.75h.008v.008H12v-.008z"/></symbol>
       <symbol id="hero-magnifying-glass" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/></symbol>
+      <symbol id="hero-map-pin" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z"/></symbol>
+      <symbol id="hero-user" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"/></symbol>
       <symbol id="hero-shield-check" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.959 11.959 0 0 1 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/></symbol>
     </defs>
   </svg>
 
-  <div style="max-width: 860px; margin: 0 auto; padding: 28px 20px 60px;">
+  <main class="trip-shell">
     <!-- 品牌区 -->
     <div style="text-align:center;padding:6px 0 18px;">
       <span style="font-size:22px;">Mix<span style="color:var(--mixtouring-ring);">Touring</span></span>
       <div style="font-size:13.5px;color:var(--mixtouring-muted-foreground);margin-top:6px;">一个人出发，先把路想清楚</div>
-      <nav aria-label="主要导航" style="display:flex;justify-content:center;gap:14px;flex-wrap:wrap;margin-top:14px;font-size:12px;">
-        <span aria-current="page" style="color:var(--mixtouring-foreground);">规划</span>
-        <a href="library.html" style="color:var(--mixtouring-muted-foreground);">历史路线库</a>
-        <a href="me.html" style="color:var(--mixtouring-muted-foreground);">我的收藏</a>
-      </nav>
     </div>
 
     <!-- 输入卡（v0.27.0 G2：两字段 + 一句话；解析结果全部可编辑；确认后才查询） -->
@@ -101,7 +98,15 @@
 
     <!-- 结果区（v0.34.0 统一主入口：假设候选 / 搜索线索 / 陆路探索 / 已取证样本 分层呈现） -->
     <div id="resultArea" style="margin-top:18px;"></div>
-  </div>
+  </main>
+
+  <nav data-mobile-nav="global" aria-label="主要导航" class="trip-nav">
+    <div>
+      <a href="trip.html" aria-current="page" class="trip-nav-current"><svg aria-hidden="true"><use href="#hero-magnifying-glass"></use></svg><span>规划</span></a>
+      <a href="library.html"><svg aria-hidden="true"><use href="#hero-map-pin"></use></svg><span>路线库</span></a>
+      <a href="me.html"><svg aria-hidden="true"><use href="#hero-user"></use></svg><span>我的</span></a>
+    </div>
+  </nav>
 
   <script src="../assets/app.js"></script>
   <script>

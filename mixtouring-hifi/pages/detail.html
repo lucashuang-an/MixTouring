@@ -322,13 +322,14 @@
   (function () {
     var id = MT.qs('id');
     var tpl = MT.qs('tpl');
-    var fromTrip = MT.qs('source') === 'trip';
+    /* 旧方案与模板详情统一为历史样本；直达深链也不可冒充当期方案。 */
+    var fromTrip = true;
     var item = null;
 
     if (fromTrip) document.getElementById('historicalDetailNotice').style.display = 'block';
 
     document.getElementById('btnBack').addEventListener('click', function () {
-      MT.goBack('search.html');
+      MT.goBack(MT.qs('source') === 'library' ? 'library.html' : 'trip.html');
     });
     /* 底部导航高亮随来源切换：?tpl= 来自路线库，?id= 来自搜索结果 */
     (function setNavActive() {
@@ -447,8 +448,8 @@
       if (isTpl && it.img) {
         coverHtml = '<div class="px-4 pt-4"><div style="position:relative;width:100%;height:160px;overflow:hidden;border-radius:16px;">' +
           '<img src="' + MT.esc(it.img) + '" alt="' + MT.esc(it.to) + '风光" style="width:100%;height:100%;object-fit:cover;display:block;" />' +
-          '<span style="position:absolute;top:10px;left:10px;display:flex;align-items:center;gap:3px;background:rgba(255,255,255,0.92);backdrop-filter:blur(8px);border-radius:9999px;padding:4px 10px;font-size:12px;color:#1E2022;">' +
-            '<svg style="width:12px;height:12px;color:var(--state-warning,#FBBF24);"><use href="#hero-star-solid"></use></svg>' + it.rating + '</span>' +
+          (fromTrip ? '' : '<span style="position:absolute;top:10px;left:10px;display:flex;align-items:center;gap:3px;background:rgba(255,255,255,0.92);backdrop-filter:blur(8px);border-radius:9999px;padding:4px 10px;font-size:12px;color:#1E2022;">' +
+            '<svg style="width:12px;height:12px;color:var(--state-warning,#FBBF24);"><use href="#hero-star-solid"></use></svg>' + it.rating + '</span>') +
         '</div></div>';
       }
 
@@ -458,7 +459,7 @@
           '<div class="flex items-center" style="gap:8px;">' + modes + '</div>' +
           '<div class="flex items-center" style="gap:8px;">' +
             '<span style="font-size:12px;padding:5px 12px;border-radius:9999px;background:var(--mixtouring-muted,#F4F5F7);color:var(--mixtouring-muted-foreground,#7C8089);">' + MT.esc(it.totalTime) + '</span>' +
-            '<span style="font-size:13px;padding:5px 12px;border-radius:9999px;background:var(--mixtouring-muted,#F4F5F7);color:var(--mixtouring-ring,#C86A4B);">' + MT.esc(it.price) + '</span>' +
+            '<span style="font-size:13px;padding:5px 12px;border-radius:9999px;background:var(--mixtouring-muted,#F4F5F7);color:var(--mixtouring-ring,#C86A4B);">' + (fromTrip ? '历史费用 ' : '') + MT.esc(it.price) + '</span>' +
           '</div>' +
         '</div>' +
         '<div class="flex items-center" style="padding-top:12px;">' +
@@ -468,7 +469,7 @@
 
       /* 模板社区信息条 */
       var tplMeta = '';
-      if (isTpl) {
+      if (isTpl && !fromTrip) {
         tplMeta = '<div class="px-4 pt-3"><div class="detail-card p-4 flex items-center flex-wrap" style="gap:8px;">' +
           '<span style="font-size:11.5px;padding:3px 10px;border-radius:9999px;background:rgba(200,106,75,0.08);color:#C86A4B;">' + MT.esc(it.badge) + '</span>' +
           '<span style="font-size:13px;color:var(--mixtouring-ring,#C86A4B);">' + MT.esc(it.contributor) + '</span>' +
@@ -552,7 +553,7 @@
         '<p style="font-size:12px;color:var(--mixtouring-muted-foreground,#7C8089);">' + (fromTrip ? '历史样本 · 班次、票价与衔接请按本次日期重新核验' : '估算价格样本更新于 6 小时前 · 请按分段信息自行购票') + '</p></div>';
 
       document.getElementById('content').innerHTML =
-        coverHtml + headerCard + tplMeta + aiSection + routeBar + segSection + riskSection + playSection + actions + footer;
+        coverHtml + headerCard + tplMeta + aiSection + routeBar + segSection + (fromTrip ? '' : riskSection + playSection) + actions + footer;
 
       wireActions(it);
     }
@@ -578,7 +579,7 @@
       });
 
       document.getElementById('btnShare').addEventListener('click', function () {
-        location.href = MT.detailUrl(it).replace('detail.html', 'share.html');
+        location.href = MT.detailUrl(it).replace('detail.html', 'share.html') + (fromTrip ? '&source=library' : '');
       });
 
       var reuseBtn = document.getElementById('btnReuse');
