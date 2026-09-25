@@ -312,6 +312,28 @@
         if (c.why_explore) html += '<div style="margin-top:8px;font-size:12px;line-height:1.7;"><span style="color:#1E7F45;">为什么值得探索：</span>' + MT.esc(c.why_explore) + '</div>';
         if (c.uncertain_leg) html += '<div style="margin-top:4px;font-size:12px;line-height:1.7;"><span style="color:#A16207;">待核路段：</span>' + MT.esc(c.uncertain_leg) + '</div>';
         if (c.next_checks && c.next_checks.length) html += '<div style="margin-top:4px;font-size:12px;line-height:1.7;"><span style="color:var(--mixtouring-ring);">下一步：</span>' + c.next_checks.map(function (n) { return MT.esc(n); }).join('；') + '</div>';
+        /* G3 首段：相对直达取舍（时间/费用/体验/风险；structural=结构事实，qualitative=定性判断） */
+        if (c.tradeoffs && c.tradeoffs.length) {
+          html += '<div style="margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--mixtouring-muted);">' +
+            '<div style="font-size:12px;">相对直达的取舍</div>' +
+            c.tradeoffs.map(function (x) {
+              var tag = x.basis_kind === 'structural'
+                ? '<span style="font-size:10.5px;color:#1E7F45;">[结构事实]</span>'
+                : '<span style="font-size:10.5px;color:#A16207;">[定性判断]</span>';
+              return '<div style="margin-top:6px;font-size:11.5px;line-height:1.7;"><strong>' + MT.esc(x.dimension) + '</strong> ' + tag +
+                '<br>直达：' + MT.esc(x.direct_ref) + '<br>本方案：' + MT.esc(x.this_route) + '</div>';
+            }).join('') + '</div>';
+        }
+        /* G3 首段：脆弱段与备选方向 */
+        if (c.fragile_legs && c.fragile_legs.length) {
+          html += '<div style="margin-top:10px;padding:10px 12px;border-radius:12px;background:rgba(161,98,7,0.06);border:0.5px solid rgba(161,98,7,0.25);">' +
+            '<div style="font-size:12px;color:#A16207;">脆弱段与备选</div>' +
+            c.fragile_legs.map(function (fl) {
+              return '<div style="margin-top:6px;font-size:11.5px;line-height:1.7;">' + MT.esc(fl.leg) +
+                '<br>' + fl.reasons.map(function (r) { return '· ' + MT.esc(r); }).join('<br>') +
+                '<br><span style="color:var(--mixtouring-muted-foreground);">备选：</span>' + fl.fallbacks.map(function (fb) { return MT.esc(fb); }).join('；') + '</div>';
+            }).join('') + '</div>';
+        }
         html += '</div>';
       });
 

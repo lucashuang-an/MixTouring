@@ -28,6 +28,17 @@ const dist = (a, b) => {
 /** 候选级合理性判据：返回失败类型数组（空=通过） */
 function judgeCandidate(c, o, d) {
   const f = [];
+  /* G3 首段：取舍齐备性（四维+basis_kind）与脆弱段标记 */
+  if (!(Array.isArray(c.tradeoffs) && c.tradeoffs.length === 4 &&
+    c.tradeoffs.every((x) => ['时间', '费用', '体验', '风险'].includes(x.dimension) &&
+      ['structural', 'qualitative'].includes(x.basis_kind) && x.direct_ref && x.this_route))) f.push('missing_tradeoffs');
+  const hasCrossBorderLeg = c.legs.length > 1 && c.legs.some((l) => {
+    const a = resolvePlace(l.from), b = resolvePlace(l.to);
+    return a && b && a.country !== b.country;
+  });
+  if (hasCrossBorderLeg && !(Array.isArray(c.fragile_legs) && c.fragile_legs.some((fl) => fl.reasons.some((r) => r.includes('跨境'))))) {
+    f.push('missing_fragile_mark');
+  }
   /* 十六轮 P1-2 反例回归：mixed 卡（非 in 段）不得出现哈萨克斯坦列车锚点/班期锚点类依据（段/方向错配） */
   if (c.kind === 'mixed' && c.basis && Array.isArray(c.basis.whys) &&
       c.basis.whys.some((w) => (w.leg !== 'in') && (w.scope === 'rail' || /班期锚点/.test(w.text || '')))) f.push('scope_mismatch');
