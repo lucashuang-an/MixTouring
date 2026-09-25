@@ -221,7 +221,7 @@ const NO_DIGIT_RE = /\d/;
   const short = buildCandidateSkeletons(resolvePlace('北京'), resolvePlace('上海'), {}, {});
   ok(short.candidates.length === 1 && short.candidates[0].kind === 'direct' &&
     short.candidates[0].why_explore.includes('优先核查直达') && !short.candidates[0].why_explore.includes('是最优'),
-    'G2.6（十五轮）：北京→上海只出直达卡，直达文案为优先核查而非最优断言（十五轮回归，v0.40.0 中转由依据驱动）');
+    'G2.6（十五轮）：北京→上海只出直达卡，直达文案为优先核查而非最优断言（十五轮回归，v0.40.1 中转由依据驱动）');
   const gzLhasa = buildCandidateSkeletons(resolvePlace('广州'), resolvePlace('拉萨'), {}, {});
   const gzOne = gzLhasa.candidates.find((c) => c.kind === 'one_transfer');
   ok(gzOne && gzOne.legs[1].from === '成都' && gzOne.why_explore.includes('成都→拉萨方向'),
@@ -510,7 +510,7 @@ const NO_DIGIT_RE = /\d/;
     'P1：返程早于去程 → 忽略返程窗口并如实提示');
 }
 
-/* ---------- G3 首段（v0.40.0）：取舍与脆弱段 ---------- */
+/* ---------- G3 首段（v0.40.1）：取舍与脆弱段 ---------- */
 {
   const r = buildCandidateSkeletons(resolvePlace('北京'), resolvePlace('阿拉木图'), {}, {});
   const m = r.candidates.find((c) => c.kind === 'mixed');
@@ -518,9 +518,10 @@ const NO_DIGIT_RE = /\d/;
     m.tradeoffs.map((x) => x.dimension).join(',') === '时间,费用,体验,风险' &&
     m.tradeoffs.every((x) => ['structural', 'qualitative'].includes(x.basis_kind)),
     'G3：中转卡带时间/费用/体验/风险四维取舍（structural/qualitative 标注）');
-  ok(m.tradeoffs.every((x) => !/更省$|确定省|保证更快/.test(x.this_route)) &&
-    m.tradeoffs.find((x) => x.dimension === '费用').this_route.includes('可能更省也可能更贵'),
-    'G3：费用维度不断言省贵（取证比较核心如实表述）');
+  ok(m.tradeoffs.every((x) => !/确定省|保证更快|供给通常充分|两段票分别计价/.test(x.direct_ref + x.this_route)) &&
+    m.tradeoffs.find((x) => x.dimension === '费用').this_route.includes('未知哪种更省') &&
+    m.tradeoffs.find((x) => x.dimension === '费用').this_route.includes('联程/分段出票形式'),
+    'G3（十九轮 P1-3）：费用维度不断言省贵/供给/出票形式——只写需查询什么（直达价、联程/分段、附加成本）');
   const mixedFrag = m.fragile_legs;
   ok(mixedFrag.some((fl) => fl.leg === '乌鲁木齐 → 阿拉木图' && fl.reasons.some((x) => x.includes('跨境'))) &&
     mixedFrag.some((fl) => fl.reasons.some((x) => x.includes('连接价值'))),
@@ -531,6 +532,31 @@ const NO_DIGIT_RE = /\d/;
   ok(dg.tradeoffs.length === 4 && dg.fragile_legs.length === 0, 'G3：直达卡带取舍、无脆弱段');
   const sh = buildCandidateSkeletons(resolvePlace('北京'), resolvePlace('上海'), {}, {}).candidates[0];
   ok(sh.tradeoffs.length === 4 && sh.fragile_legs.length === 0, 'G3：国内短距直达取舍齐备且不误标脆弱段');
+}
+
+/* ---------- 十九轮：动态地点跨境判定 / 备选按实际结果生成 ---------- */
+{
+  const sydney = { name: '悉尼', kind: 'city', country: 'AU', is_mainland: false, lat: '-33.87', lon: '151.21', dynamic: true };
+  const r = buildCandidateSkeletons(resolvePlace('北京'), sydney, {}, { one_transfer_city: '上海' });
+  const one = r.candidates.find((c) => c.kind === 'one_transfer');
+  ok(one && one.fragile_legs.some((fl) => fl.leg === '上海 → 悉尼' && fl.reasons.some((x) => x.includes('跨境段'))),
+    'P1-1（十九轮）：动态国际终点——上海→悉尼 标跨境段（词典外不默认 CN，用动态 Place 的 AU）');
+  ok(one.fragile_legs.every((fl) => !fl.fallbacks.some((fb) => fb.includes('陆路'))),
+    'P1-2（十九轮）：无陆路探索区时备选不指向它');
+  ok(one.fragile_legs.every((fl) => !fl.fallbacks.some((fb) => fb.includes('直达卡是不依赖该段的备选'))),
+    'P1-2：直达假设不再称「备选」，改为「可另行核查的直达方向（未经核实）」');
+  const r2 = buildCandidateSkeletons(sydney, resolvePlace('北京'), {}, { one_transfer_city: '上海' });
+  const one2 = r2.candidates.find((c) => c.kind === 'one_transfer');
+  ok(one2 && one2.fragile_legs.some((fl) => fl.leg === '悉尼 → 上海' && fl.reasons.some((x) => x.includes('跨境段'))),
+    'P1-1：动态国际起点——悉尼→上海 标跨境段');
+  /* 有探索区时备选指向探索（回归：阿拉木图场景有陆路探索） */
+  const r3 = buildCandidateSkeletons(resolvePlace('北京'), resolvePlace('阿拉木图'), {}, {});
+  const m3 = r3.candidates.find((c) => c.kind === 'mixed');
+  ok(m3.fragile_legs.some((fl) => fl.fallbacks.some((fb) => fb.includes('陆路'))),
+    'P1-2 回归：有陆路探索区时备选包含指向（阿拉木图场景）');
+  const dg = r.candidates.find((c) => c.kind === 'direct');
+  ok(dg.tradeoffs.find((x) => x.dimension === '费用').direct_ref.includes('待查'),
+    'P1-3：直达费用维度明示供给待查（不写供给通常充分）');
 }
 
 /* ---------- 十二轮：文本非法返程日期 + 时序完全倒序才拒（评审定向反例） ---------- */
@@ -617,7 +643,7 @@ const NO_DIGIT_RE = /\d/;
     '编排：web_search 已配置时逐段挂相关线索（source_lead）');
   ok(r6.web_search && r6.web_search.configured === true && r6.web_search.status === 'quota_exhausted',
     'P1-4：规划响应如实带 web_search 配置与最近真实状态（configured ≠ available）');
-  ok(r6.planner_version === 'v0.40.0', '编排：anywhere 版本号对齐 v0.40.0');
+  ok(r6.planner_version === 'v0.40.1', '编排：anywhere 版本号对齐 v0.40.1');
 
   const r7 = await planAnywhere({ text: '想去新疆最西边那座古城玩' },
     { callJson: async () => ({ origin: '北京', destination: '喀什' }), env: {}, osmSearch: async () => [] });

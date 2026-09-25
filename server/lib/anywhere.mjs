@@ -807,49 +807,55 @@ function segUncertain(a, b) {
 
 /** 相对直达的取舍（G3 首段）：每条 {dimension, direct_ref, this_route, basis_kind}。
  *  basis_kind=structural（确定性结构事实：段数/距离/方式组合）或 qualitative（明确定性判断）；
- *  需要班期/价格才能量化的维度如实写「待取证」，不做数字比较、不断言更省/更快。 */
+ *  需要班期/价格才能量化的维度如实写「待取证」，不做数字比较、不断言更省/更快、
+ *  不断言供给充足或出票形式（十九轮 P1-3：供给与票务形式无证据支撑）。 */
 function buildTradeoffs(c) {
   const isDirect = c.kind === 'direct';
   const t = [];
   const mk = (dimension, direct_ref, this_route, basis_kind) => t.push({ dimension, direct_ref, this_route, basis_kind });
   if (isDirect) {
     mk('时间', '单段直达，无中转衔接耗时', '衔接时间为零（段时长待取证）', 'structural');
-    mk('费用', '供给通常充分，价位可直接查询作为比较基准', '与自身基准一致', 'structural');
+    mk('费用', '需要先查询该直达方向的当期票价作为比较基准（是否有供给、供给多少均待查）', '同一直达方向，价格口径一致；联程/分段等出票形式不适用于单段', 'structural');
     mk('体验', '无换乘', '无换乘，行程组织最简单', 'qualitative');
     mk('风险', '无中转衔接风险', '无衔接风险；班期待取证', 'structural');
     return t;
   }
   mk('时间', '单段直达，总时长即段时长', '两段时长加衔接余量；是否反而更快待取证（部分方向中转总时长更短）', 'structural');
-  mk('费用', '直达票价可直接查询', '两段票分别计价：可能更省也可能更贵——是否更省正是需要取证比较的核心', 'structural');
+  mk('费用', '需要先查询直达方向的当期票价作为基准', '需要查询两段票价及联程/分段出票形式（未知哪种更省——这正是取证比较的核心）；另查中转是否有过夜等附加成本', 'structural');
   mk('体验', '一次到达，无换乘', '多一次换乘（行李搬运/候转）；经停枢纽可顺路体验', 'qualitative');
   mk('风险', '无中转衔接风险', '存在衔接风险：前段延误可能错过后段；脆弱段见本卡「脆弱段与备选」', 'structural');
   return t;
 }
 
-/** 脆弱段识别与备选方向（G3 首段）：跨境段 / 中转卡的末段连接标记脆弱，各给备选方向。
- *  段跨境判定逐段比较两端国家/地区；词典外城市按其来源视为国内（geo 顺路仅产国内城市）。 */
-function buildFragileLegs(c, o, d) {
+/** 脆弱段识别与备选方向（G3 首段；十九轮 P1-1/P1-2 修订）。
+ *  跨境判定逐段用两端 Place 的 country——静态词典命中或动态 Place（OSM 核验）都带真实国家；
+ *  只有「词典外且无动态信息」的 geo 顺路城市（geo-skill 为国内 179 城库）才视为国内，其余未知不猜。
+ *  备选文案按本次实际结果生成：有陆路探索区才指向它；直达卡标「可另行核查的直达方向（未经核实）」。 */
+function buildFragileLegs(c, o, d, ctx) {
   if (c.kind === 'direct' || c.legs.length < 2) return [];
-  const countryOf = (name) => {
-    const p = resolvePlace(name);
+  const countryOf = (place) => {
+    if (place && typeof place.country === 'string' && place.country) return place.country;
+    const p = resolvePlace(place && place.name !== undefined ? place.name : place);
     if (p) return p.country;
-    return 'CN'; /* geo 顺路候选仅产国内城市 */
+    return null; /* 未知不默认中国（十九轮 P1-1） */
   };
+  const hasDirectCard = !!(ctx && ctx.hasDirectCard);
+  const hasExplorations = !!(ctx && ctx.hasExplorations);
   const out = [];
   const isLast = (leg) => c.legs.indexOf(leg) === c.legs.length - 1;
   for (const leg of c.legs) {
+    const a = leg._from_place || null;
+    const b = leg._to_place || null;
+    const ca = countryOf(a), cb = countryOf(b);
     const reasons = [];
-    if (countryOf(leg.from) !== countryOf(leg.to)) reasons.push('跨境段：班期与口岸/签证衔接未核验');
+    if (ca && cb && ca !== cb) reasons.push('跨境段：班期与口岸/签证衔接未核验');
     if (isLast(leg)) reasons.push('本方案的连接价值取决于该段（中转/混合是否成立以其成立为前提）');
     if (reasons.length) {
-      out.push({
-        leg: leg.from + ' → ' + leg.to,
-        reasons,
-        fallbacks: [
-          '若该段不成行：同结果页的直达卡是不依赖该段的备选',
-          '或改走其它已标注连接依据的枢纽方向（见陆路探索提示）；该段核实成立后，本方案的衔接假设才升级'
-        ]
-      });
+      const fallbacks = [];
+      if (hasDirectCard) fallbacks.push('可另行核查的直达方向（未经核实的假设，成行性待查）');
+      if (hasExplorations) fallbacks.push('或参考本结果页的铁路/陆路方向探索提示，改走其它已标注连接依据的枢纽方向');
+      fallbacks.push('该段核实成立后，本方案的衔接假设才升级');
+      out.push({ leg: leg.from + ' → ' + leg.to, reasons, fallbacks });
     }
   }
   return out;
@@ -981,10 +987,23 @@ export function buildCandidateSkeletons(o, d, constraints, llmHints = {}) {
   if (constraints.max_layover_hours != null) constraint_notes.push('最长中转时长约束需取证到两段班期后才能校验衔接余量');
   if (constraints.night_arrival) constraint_notes.push('夜间到达约束需取证到段到达时刻后才能校验（骨架阶段无时刻）');
 
-  /* G3 首段：相对直达取舍 + 脆弱段备选（挂到约束过滤后的每个候选） */
+  /* G3 首段：相对直达取舍 + 脆弱段备选（挂到约束过滤后的每个候选）。
+   * 脆弱段备选按本次实际结果生成（十九轮 P1-2）：有直达卡/探索区才指向；段两端用真实 Place 国家判定。 */
+  const fragCtx = {
+    hasDirectCard: candidates.some((c) => c.kind === 'direct'),
+    hasExplorations: explorations.length > 0
+  };
   for (const c of candidates) {
     c.tradeoffs = buildTradeoffs(c);
-    c.fragile_legs = buildFragileLegs(c, o, d);
+    for (const leg of c.legs) { leg._from_place = leg._from_place || null; leg._to_place = leg._to_place || null; }
+    /* 段两端 Place：起终点用本次已确认的 o/d；中转城市用词典/骨架节点 */
+    const placeByNode = (name) => name === o.name ? o : (name === d.name ? d : (placeByName(name) || hubNode(name)));
+    for (const leg of c.legs) {
+      leg._from_place = placeByNode(leg.from);
+      leg._to_place = placeByNode(leg.to);
+    }
+    c.fragile_legs = buildFragileLegs(c, o, d, fragCtx);
+    for (const leg of c.legs) { delete leg._from_place; delete leg._to_place; }
   }
   return { candidates, degradations, constraint_notes, explorations };
 }
