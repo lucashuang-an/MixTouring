@@ -827,10 +827,11 @@ function buildTradeoffs(c) {
   return t;
 }
 
-/** 脆弱段识别与备选方向（G3 首段；十九轮 P1-1/P1-2 修订）。
+/** 脆弱段识别与备选方向（G3 首段；十九轮 P1-1/P1-2、二十轮 P1-2 修订）。
  *  跨境判定逐段用两端 Place 的 country——静态词典命中或动态 Place（OSM 核验）都带真实国家；
  *  只有「词典外且无动态信息」的 geo 顺路城市（geo-skill 为国内 179 城库）才视为国内，其余未知不猜。
- *  备选文案按本次实际结果生成：有陆路探索区才指向它；直达卡标「可另行核查的直达方向（未经核实）」。 */
+ *  备选指向必须真实存在于本次结果：直达卡（标注未经核实）、其它中转/混合卡（区分同枢纽/不同枢纽）、
+ *  探索区（区分泛化陆路探索与带连接依据的枢纽方向）；不存在的不提。 */
 function buildFragileLegs(c, o, d, ctx) {
   if (c.kind === 'direct' || c.legs.length < 2) return [];
   const countryOf = (place) => {
@@ -839,8 +840,10 @@ function buildFragileLegs(c, o, d, ctx) {
     if (p) return p.country;
     return null; /* 未知不默认中国（十九轮 P1-1） */
   };
-  const hasDirectCard = !!(ctx && ctx.hasDirectCard);
-  const hasExplorations = !!(ctx && ctx.hasExplorations);
+  const ctxAll = ctx || {};
+  const hasDirectCard = !!(ctxAll.hasDirectCard);
+  const hasExplorations = !!(ctxAll.hasExplorations);
+  const otherRouteCards = ctxAll.otherRouteCards || [];
   const out = [];
   const isLast = (leg) => c.legs.indexOf(leg) === c.legs.length - 1;
   for (const leg of c.legs) {
@@ -853,7 +856,13 @@ function buildFragileLegs(c, o, d, ctx) {
     if (reasons.length) {
       const fallbacks = [];
       if (hasDirectCard) fallbacks.push('可另行核查的直达方向（未经核实的假设，成行性待查）');
-      if (hasExplorations) fallbacks.push('或参考本结果页的铁路/陆路方向探索提示，改走其它已标注连接依据的枢纽方向');
+      /* 其它走法卡：区分不同枢纽（其它枢纽方向）与同枢纽另一种方式组合，不把泛化探索说成枢纽走法 */
+      const others = otherRouteCards.filter((r) => r.id !== c.id);
+      const diffHub = others.filter((r) => r.hub && r.hub !== (c.legs[1] ? c.legs[1].from : null) && r.hasBasis);
+      const sameHub = others.filter((r) => r.hub && r.hub === (c.legs[1] ? c.legs[1].from : null));
+      if (diffHub.length) fallbacks.push('或参考其它枢纽方向：' + diffHub.map((r) => r.hub).join('、') + '（各自卡内已标注连接依据）');
+      else if (sameHub.length) fallbacks.push('同结果页还有同枢纽的另一种方式组合卡，可对照查看');
+      if (hasExplorations) fallbacks.push('或参考本结果页的铁路/陆路方向探索提示（泛化方向参考，非已标注枢纽走法）');
       fallbacks.push('该段核实成立后，本方案的衔接假设才升级');
       out.push({ leg: leg.from + ' → ' + leg.to, reasons, fallbacks });
     }
@@ -988,10 +997,20 @@ export function buildCandidateSkeletons(o, d, constraints, llmHints = {}) {
   if (constraints.night_arrival) constraint_notes.push('夜间到达约束需取证到段到达时刻后才能校验（骨架阶段无时刻）');
 
   /* G3 首段：相对直达取舍 + 脆弱段备选（挂到约束过滤后的每个候选）。
-   * 脆弱段备选按本次实际结果生成（十九轮 P1-2）：有直达卡/探索区才指向；段两端用真实 Place 国家判定。 */
+   * 脆弱段备选按本次实际结果生成（十九/二十轮 P1-2）：指向的内容必须真实存在于本次结果——
+   * hasDirectCard=直达卡存在；otherRouteCards=本次其它中转/混合卡（区分同枢纽/不同枢纽）；
+   * explorations 分「泛化陆路探索（无枢纽依据）」与「其它已标注连接依据的枢纽方向」两档措辞。 */
   const fragCtx = {
     hasDirectCard: candidates.some((c) => c.kind === 'direct'),
-    hasExplorations: explorations.length > 0
+    hasExplorations: explorations.length > 0,
+    otherRouteCards: candidates
+      .filter((c) => c.kind === 'one_transfer' || c.kind === 'mixed')
+      .map((c) => ({
+        id: c.id,
+        hub: c.legs[1] ? c.legs[1].from : null,
+        hasBasis: !!(c.basis && Array.isArray(c.basis.whys) && c.basis.whys.some((w) => w.leg || (w.scope && w.scope !== 'llm'))),
+        modes: c.legs.map((l) => l.mode_guess).join('+')
+      }))
   };
   for (const c of candidates) {
     c.tradeoffs = buildTradeoffs(c);
