@@ -116,7 +116,8 @@ export function extractConstraints(text) {
   if ((m = t.match(/(?:中转|转机)[^。！？，,]{0,10}?(?:不超过|最多|少于|短于)?\s*(\d{1,2}(?:\.\d)?)\s*个?小时/))) c.max_layover_hours = +m[1];
   if (NIGHT_AVOID_RE.some((re) => re.test(t))) c.night_arrival = 'avoid';
   else if (NIGHT_ALLOW_RE.some((re) => re.test(t))) c.night_arrival = 'allow';
-  if ((m = t.match(/(?:换乘|转乘|中转|转机)[^。！？，,]{0,8}?(?:不超过|最多|少于)?\s*([0-2])\s*次/))) c.max_transfers = +m[1];
+  if ((m = t.match(/(?:最多|不超过|至多|少于)\s*(?:换乘|转乘|中转|转机|换)\s*([零一二0-2])\s*次/)) ||
+      (m = t.match(/(?:换乘|转乘|中转|转机)[^。！？，,]{0,8}?(?:不超过|最多|少于)?\s*([零一二0-2])\s*次/))) c.max_transfers = ({ 零: 0, 一: 1, 二: 2 })[m[1]] ?? +m[1];
   else if (/不想换乘|不换乘|不转乘|拒绝换乘/.test(t)) c.max_transfers = 0;
   return c;
 }

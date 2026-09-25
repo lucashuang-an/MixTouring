@@ -17,6 +17,7 @@ import { addWish, listWishes, removeWish } from './lib/wishlist.mjs';
 import { llmConfigured, llmModel } from './lib/llm.mjs';
 import { parseTripIntent, searchTripStrategies, buildVerificationChecklist, resolveRoute, capabilities, webSearchConfigured } from './lib/trip-service.mjs';
 import { planAnywhere } from './lib/anywhere.mjs';
+import { registerJourneyPlan, journeyDetailFromPlanId } from './lib/journey.mjs';
 import { webSearchStatus } from './lib/llm.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -318,7 +319,20 @@ app.use(async (ctx, next) => {
       ctx.body = { code: 1, msg: '缺少 text 或 origin/destination' };
       return;
     }
-    ctx.body = { code: 0, data: await planAnywhere(body) };
+    const data = await planAnywhere(body);
+    if (data.candidates.length) data.plan_id = registerJourneyPlan(data);
+    ctx.body = { code: 0, data };
+    return;
+  }
+
+  /* G3：根据服务端保存的规划生成探索详情；客户端仅提交 plan_id、candidate_id 与停留晚数。 */
+  if (path === '/api/anywhere/journey' && ctx.method === 'POST') {
+    const body = await readBody(ctx) || {};
+    try {
+      ctx.body = { code: 0, data: journeyDetailFromPlanId(body.plan_id, body.candidate_id, body.stopover_nights ?? 0) };
+    } catch (error) {
+      ctx.body = { code: 1, msg: error.message };
+    }
     return;
   }
 

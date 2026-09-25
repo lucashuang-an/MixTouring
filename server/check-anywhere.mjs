@@ -57,6 +57,7 @@ const NO_DIGIT_RE = /\d/;
     '约束：预算/中转时长/夜间到达/换乘次数四项全提取');
   ok(extractConstraints('红眼航班也行，可以半夜到').night_arrival === 'allow', '约束：夜间到达 allow 表述');
   ok(extractConstraints('不想换乘').max_transfers === 0, '约束：「不想换乘」→ 0 次');
+  ok(extractConstraints('不要夜间到达，最多换一次').max_transfers === 1, '约束：自然语言「最多换一次」→ 1 次');
   ok(extractConstraints('国庆从北京去喀什').budget_max_cny === undefined && !('night_arrival' in extractConstraints('国庆从北京去喀什')),
     '约束：无约束表述 → 不出现字段（不猜）');
   ok(constraintChips(c).length === 4, 'chips：四项齐备（数字仅来自用户输入值）');
@@ -221,7 +222,7 @@ const NO_DIGIT_RE = /\d/;
   const short = buildCandidateSkeletons(resolvePlace('北京'), resolvePlace('上海'), {}, {});
   ok(short.candidates.length === 1 && short.candidates[0].kind === 'direct' &&
     short.candidates[0].why_explore.includes('优先核查直达') && !short.candidates[0].why_explore.includes('是最优'),
-    'G2.6（十五轮）：北京→上海只出直达卡，直达文案为优先核查而非最优断言（十五轮回归，v0.40.2 中转由依据驱动）');
+    'G2.6（十五轮）：北京→上海只出直达卡，直达文案为优先核查而非最优断言（十五轮回归）');
   const gzLhasa = buildCandidateSkeletons(resolvePlace('广州'), resolvePlace('拉萨'), {}, {});
   const gzOne = gzLhasa.candidates.find((c) => c.kind === 'one_transfer');
   ok(gzOne && gzOne.legs[1].from === '成都' && gzOne.why_explore.includes('成都→拉萨方向'),
@@ -510,7 +511,7 @@ const NO_DIGIT_RE = /\d/;
     'P1：返程早于去程 → 忽略返程窗口并如实提示');
 }
 
-/* ---------- G3 首段（v0.40.2）：取舍与脆弱段 ---------- */
+/* ---------- G3 首段：取舍与脆弱段 ---------- */
 {
   const r = buildCandidateSkeletons(resolvePlace('北京'), resolvePlace('阿拉木图'), {}, {});
   const m = r.candidates.find((c) => c.kind === 'mixed');
@@ -648,7 +649,7 @@ const NO_DIGIT_RE = /\d/;
     '编排：web_search 已配置时逐段挂相关线索（source_lead）');
   ok(r6.web_search && r6.web_search.configured === true && r6.web_search.status === 'quota_exhausted',
     'P1-4：规划响应如实带 web_search 配置与最近真实状态（configured ≠ available）');
-  ok(r6.planner_version === 'v0.40.2', '编排：anywhere 版本号对齐 v0.40.2');
+  ok(r6.planner_version === 'v0.41.0', '编排：anywhere 版本号对齐 v0.41.0');
 
   const r7 = await planAnywhere({ text: '想去新疆最西边那座古城玩' },
     { callJson: async () => ({ origin: '北京', destination: '喀什' }), env: {}, osmSearch: async () => [] });
@@ -666,4 +667,6 @@ const NO_DIGIT_RE = /\d/;
 console.log(fail === 0
   ? `\n✓ G2.5 任意地点规划确定性测试全部通过（${total} 项断言）`
   : `\n✗ 失败 ${fail} 项（共 ${total} 项断言）`);
-process.exit(fail === 0 ? 0 : 1);
+if (fail) process.exit(1);
+/* 现有 CI 的 check-anywhere 步骤一并覆盖 G3 探索详情契约。 */
+await import('./check-journey.mjs');
