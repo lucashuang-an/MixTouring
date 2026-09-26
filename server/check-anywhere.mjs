@@ -429,6 +429,24 @@ const NO_DIGIT_RE = /\d/;
     'P0：国庆假期宽窗提取（' + rt.intent.outbound_window + '）');
   ok(rt.intent.return_window === '2026-10-07 ~ 2026-10-07',
     'P0：返程日期提取「10月7日回来」→ 2026-10-07 单日窗（代码计算年份）');
+  const explicitOut = buildTravelIntent('国庆附近从北京去阿拉木图，一个人往返，10月3日出发，10月10日回来', null, new Date('2026-09-26T00:00:00+08:00').getTime());
+  ok(explicitOut.intent.outbound_window === '2026-10-03 ~ 2026-10-03' &&
+    explicitOut.intent.return_window === '2026-10-10 ~ 2026-10-10',
+    '卡 C：明确去程日覆盖国庆宽窗，返程日保持独立');
+  const returnOnly = buildTravelIntent('国庆附近从北京去阿拉木图，10月7日回来', null, new Date('2026-09-26T00:00:00+08:00').getTime());
+  ok(returnOnly.intent.outbound_window === '2026-09-27 ~ 2026-10-07' &&
+    returnOnly.intent.return_window === '2026-10-07 ~ 2026-10-07',
+    '卡 C：仅有返程明确日期时仍保留国庆去程宽窗');
+  const explicitUi = buildTravelIntent('国庆附近从北京去阿拉木图，10月3日出发，10月10日回来',
+    { trip_type: 'round_trip', outbound_window: '2026-10-02 ~ 2026-10-04' }, new Date('2026-09-26T00:00:00+08:00').getTime());
+  ok(explicitUi.intent.outbound_window === '2026-10-02 ~ 2026-10-04', '卡 C：用户显式日期窗仍优先于文本明确日期');
+  const explicitYear = buildTravelIntent('2027年10月3日出发，2027年10月10日回来，往返', null, new Date('2026-09-26T00:00:00+08:00').getTime());
+  ok(explicitYear.intent.outbound_window === '2027-10-03 ~ 2027-10-03' &&
+    explicitYear.intent.return_window === '2027-10-10 ~ 2027-10-10',
+    '卡 C：写明年份的去返日期均按原年份保留');
+  const liveRoute = await planAnywhere({ text: '国庆附近从北京去阿拉木图，一个人往返，10月3日出发，10月10日回来' }, NO_LLM);
+  ok(/^\d{4}-10-03 ~ \d{4}-10-03$/.test(liveRoute.intent.outbound_window || ''),
+    '卡 C：真实规划路径回填明确去程日，而非假期宽窗');
   /* 塔什干确认流（有候选路径）：消歧与重新规划后意图字段保留 */
   const osmT = [{ display_name: 'Tashkent, 乌兹别克斯坦', country: 'UZ', lat: '41.31', lon: '69.28', type: 'city', category: 'place', osm_type: 'relation', osm_id: '2369842', url: 'https://www.openstreetmap.org/relation/2369842' }];
   const p1 = await planAnywhere({ text: '国庆附近从北京去塔什干，10月7日回来，2个人' }, {

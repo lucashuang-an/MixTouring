@@ -78,6 +78,36 @@ const SOLO_RE = /一个人|独自|单独|solo/i;
 const PAIR_RE = /两个人|两人|双人|和朋友|和对象/;
 /* v0.26.3 复审②：「国庆附近/前后/期间」保留弹性假期区间，不得收缩为 10/01 单日 */
 const NEAR_HOLIDAY_RE = /国庆\s*(?:附近|前后|期间|那几天)/;
+const EXPLICIT_DATE_RE = /(?:(20\d{2})\s*(?:年|[/-])\s*)?(\d{1,2})\s*(?:月|[/-])\s*(\d{1,2})\s*日?/g;
+
+/** 一句话中的明确去程日；返程日不冒充去程。未写年份时，已过去的月日指向次年。 */
+export function extractExplicitOutboundDate(text, nowMs = Date.now()) {
+  const t = String(text || '');
+  const now = new Date(nowMs);
+  let sawDate = false;
+  let firstUnmarked = null;
+  for (const m of t.matchAll(EXPLICIT_DATE_RE)) {
+    sawDate = true;
+    const before = t.slice(Math.max(0, m.index - 12), m.index).split(/[，,。！？；;]/).pop();
+    const after = t.slice(m.index + m[0].length, m.index + m[0].length + 12).split(/[，,。！？；;]/)[0];
+    if (/(?:返程|回程|回来|返回|回国|回家|回)\s*$/.test(before) || /^\s*(?:返程|回程|回来|返回|回国|回家|回)/.test(after)) continue;
+    const month = Number(m[2]), day = Number(m[3]);
+    if (month < 1 || month > 12 || day < 1 || day > 31) continue;
+    let year = m[1] ? Number(m[1]) : now.getFullYear();
+    const valid = (y) => {
+      const d = new Date(Date.UTC(y, month - 1, day));
+      return d.getUTCFullYear() === y && d.getUTCMonth() === month - 1 && d.getUTCDate() === day;
+    };
+    if (!valid(year)) continue;
+    if (!m[1] && Date.UTC(year, month - 1, day) < Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())) year += 1;
+    if (!valid(year)) continue;
+    const iso = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const window = `${iso} ~ ${iso}`;
+    if (/(?:去程|出发|启程|动身)\s*$/.test(before) || /^\s*(?:去程|出发|启程|动身)/.test(after)) return { window, sawDate };
+    if (!firstUnmarked) firstUnmarked = window;
+  }
+  return { window: firstUnmarked, sawDate };
+}
 
 /** 当年（已过 10/7 则次年）国庆假期宽窗——2026 为中秋 9/25-27 + 国庆 10/1-7 连休 */
 export function nationalHolidayWindow(nowMs = Date.now()) {
@@ -95,7 +125,9 @@ export function extractIntentFields(text, nowMs = Date.now()) {
   else if (ONE_WAY_RE.test(t)) intent.trip_type = 'one_way';
   if (SOLO_RE.test(t)) intent.traveler_count = 1;
   else if (PAIR_RE.test(t)) intent.traveler_count = 2;
-  if (NEAR_HOLIDAY_RE.test(t)) intent.outbound_window = nationalHolidayWindow(nowMs);
+  const explicit = extractExplicitOutboundDate(t, nowMs);
+  if (explicit.window) intent.outbound_window = explicit.window;
+  else if (NEAR_HOLIDAY_RE.test(t)) intent.outbound_window = nationalHolidayWindow(nowMs);
   return intent;
 }
 
@@ -120,14 +152,15 @@ export async function parseTripIntent(text, cities, tripCities = [], nowMs = Dat
   const filledByRule = base.engine === 'llm' && ((base.from && !base.to && !!to) || (!base.from && !!base.to && !!from));
   const trip_type = intent.trip_type || 'pending';
   const outboundDate = /^\d{4}\/\d{2}\/\d{2}$/.test(baseDate || '') ? baseDate.replaceAll('/', '-') : null;
-  /* 弹性假期窗优先（复审②：不可静默收缩为单日）；明确单日输入保持单日窗 */
-  const outbound_window = intent.outbound_window || (outboundDate ? `${outboundDate} ~ ${outboundDate}` : null);
+  /* 明确去程日优先；仅有「国庆附近」时保留宽窗。返程日或非法日期不可冒充去程。 */
+  const explicitDate = extractExplicitOutboundDate(text, nowMs);
+  const outbound_window = intent.outbound_window || (!explicitDate.sawDate && outboundDate ? `${outboundDate} ~ ${outboundDate}` : null);
   if (!from) needs.push('出发地未识别，请补全');
   if (!to) needs.push('目的地未识别，请补全');
   if (trip_type === 'round_trip' && !outbound_window) needs.push('往返行程请补去程日期或大致窗口');
   if (trip_type === 'round_trip') needs.push('往返行程请补返程日期或窗口');
   if (trip_type === 'pending') needs.push('没听出单程还是往返，请补充（不影响先看路线方向）');
-  if (intent.outbound_window) needs.push('已按假期窗口预填出行的区间，可修改');
+  if (NEAR_HOLIDAY_RE.test(String(text || '')) && !explicitDate.window) needs.push('已按假期窗口预填出行的区间，可修改');
   return {
     query: {
       origin: from || null,

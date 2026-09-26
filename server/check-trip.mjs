@@ -245,6 +245,10 @@ const [F_OUT, F_IN] = FIXTURE.dated_legs.map((l) => ({ ...l, baggage_terms: { ca
   ok(near.outbound_window === '2026-09-27 ~ 2026-10-07', `C2 国庆附近 → 假期宽窗（实际 ${near.outbound_window}），不收缩为 10/01`);
   const nearNextYear = extractIntentFields('国庆附近出发', new Date('2026-10-20').getTime());
   ok(nearNextYear.outbound_window === '2027-09-27 ~ 2027-10-07', 'C2 已过 10/7 → 次年窗口');
+  const nearExact = extractIntentFields('国庆附近从北京去阿拉木图，10月3日出发，10月10日回来', NOW);
+  ok(nearExact.outbound_window === '2026-10-03 ~ 2026-10-03', '卡 C：明确去程日优先于国庆宽窗，不把返程日当去程');
+  const nearReturnOnly = extractIntentFields('国庆附近从北京去阿拉木图，10月7日回来', NOW);
+  ok(nearReturnOnly.outbound_window === '2026-09-27 ~ 2026-10-07', '卡 C：仅有返程日时保留国庆宽窗');
 
   /* R16 复审①：parseTripIntent 合并 Trip 城市词典——真实城市源识别阿拉木图（规则版确定性） */
   const tripCities = JSON.parse(readFileSync(join(root, 'pipeline/data/trips/trip-cities.json'), 'utf8')).cities;
@@ -256,6 +260,10 @@ const [F_OUT, F_IN] = FIXTURE.dated_legs.map((l) => ({ ...l, baggage_terms: { ca
   /* 明确「10 月 1 日」输入 → 单日窗（不误伤精确意图） */
   const exact = await parseTripIntent('10月1日从北京去阿拉木图', ['北京'], tripCities, NOW);
   ok(exact.query.outbound_window === '2026-10-01 ~ 2026-10-01', `C1 明确日期 → 单日窗（实际 ${exact.query.outbound_window}）`);
+  const exactWithHoliday = await parseTripIntent('国庆附近从北京去阿拉木图，10月3日出发，10月10日回来', ['北京'], tripCities, NOW);
+  ok(exactWithHoliday.query.outbound_window === '2026-10-03 ~ 2026-10-03' &&
+    !exactWithHoliday.needs_confirmation.some((n) => n.includes('已按假期窗口预填')),
+    '卡 C：Trip 意图也保留明确去程日，不误提示预填假期宽窗');
   /* 未知城市仍待确认（不编造） */
   const unknownCity = await parseTripIntent('从北京去乌兰巴托', ['北京'], tripCities, NOW);
   ok(unknownCity.query.destination === null && unknownCity.needs_confirmation.some((n) => n.includes('目的地')), 'C1 未知城市保持待确认（trip 词典外不编造）');

@@ -167,21 +167,21 @@ export function isValidWindow(s) {
   return pa <= pb;
 }
 
-/** 从一句话提取返程日期（M月D日 / M-D / M/D 紧跟或前接「回来/返回/回程/返程」），代码计算年份。
+/** 从一句话提取返程日期（可带年份的 M月D日 / M-D / M/D 紧跟或前接「回来/返回/回程/返程」），代码计算缺失年份。
  *  十二轮 P1：产出日期须过真实日历校验（Date 溢出回读一致）——2月31日/4月31日等不存在日期返回 null。 */
 export function extractReturnDate(text, nowMs = Date.now()) {
   const t = String(text || '');
-  const m = t.match(/(\d{1,2})\s*月\s*(\d{1,2})\s*日?[^。！？，,]{0,8}?(?:回来|返回|回程|返程|回)/) ||
-    t.match(/(?:回来|返回|回程|返程)[^。！？，,]{0,4}(\d{1,2})\s*月\s*(\d{1,2})\s*日?/) ||
-    t.match(/(\d{1,2})\s*[\/\-]\s*(\d{1,2})[^。！？，,]{0,8}?(?:回来|返回|回程|返程)/);
+  const date = '(?:(?<year>20\\d{2})\\s*(?:年|[/-])\\s*)?(?<month>\\d{1,2})\\s*(?:月|[/-])\\s*(?<day>\\d{1,2})\\s*日?';
+  const m = t.match(new RegExp(date + '[^。！？，,]{0,8}?(?:回来|返回|回程|返程|回)')) ||
+    t.match(new RegExp('(?:回来|返回|回程|返程)[^。！？，,]{0,4}' + date));
   if (!m) return null;
-  const month = +m[1], day = +m[2];
+  const month = Number(m.groups.month), day = Number(m.groups.day);
   if (!(month >= 1 && month <= 12 && day >= 1 && day <= 31)) return null;
-  /* 年份代码推算：目标日已过（当年口径）则次年（禁心算） */
+  /* 显式年份保留；未写年份时目标日已过则次年（禁心算）。 */
   const now = new Date(nowMs);
-  let year = now.getFullYear();
+  let year = m.groups.year ? Number(m.groups.year) : now.getFullYear();
   const build = (y) => new Date(Date.UTC(y, month - 1, day));
-  if (build(year) < new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()))) year += 1;
+  if (!m.groups.year && build(year) < new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()))) year += 1;
   /* 真实日历校验：Date 会把 02-31 卷到 03-03，回读不一致即非法（十二轮 P1） */
   const built = build(year);
   if (built.getUTCMonth() !== month - 1 || built.getUTCDate() !== day) return null;
