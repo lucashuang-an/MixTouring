@@ -33,3 +33,5 @@ jobs:
         run: node server/check-anywhere.mjs
       - name: G2.6 线路发现质量校准（calibrate-routes.mjs）
         run: node server/calibrate-routes.mjs
+      - name: G4 私人草案存储层测试（check-drafts.mjs）
+        run: node server/check-drafts.mjs

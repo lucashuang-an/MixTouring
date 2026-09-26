@@ -109,6 +109,7 @@
   </nav>
 
   <script src="../assets/app.js"></script>
+  <script src="../assets/draft-store.js"></script>
   <script>
   (function () {
     var resultArea = document.getElementById('resultArea');
@@ -189,13 +190,38 @@
         activePlan = res.data;
         activeCandidate = null; activeNights = 0;
         renderUnified(res.data);
+        if (pendingRestore && res.data.candidates.length === 0 && !res.data.route) {
+          /* 开放地点首次规划只返回确认卡（无候选无 route）：保留待恢复目标，确认后二次规划再匹配 */
+          renderUnified(res.data);
+          return;
+        }
         if (pendingRestore) {
           var restore = pendingRestore; pendingRestore = null;
           if (restore.candidate_id && res.data.candidates.some(function (c) { return c.id === restore.candidate_id; })) {
             openJourney(restore.candidate_id, restore.nights, !!restore.record);
-          } else {
-            if (restore.record) recordRevision(null, 0);
-            if (restore.candidate_id) MT.toast('修改后原走法不再符合条件，请从当前候选中重新选择');
+          } else if (restore.draft_id && restore.ver) {
+            /* 二十二轮 P1-1：草案恢复——按走法结构（段数/方式序列/枢纽）匹配等价候选，匹配则恢复停留；无等价保留旧摘要提示重选 */
+            var legSig = function (c) { return c.legs.map(function (l) { return l.mode_guess || '?'; }).join('+'); };
+            var wantHub = restore.hub;
+            var eq = res.data.candidates.filter(function (c) {
+              /* 直达与中转都按结构匹配：段方式序列一致；中转另比枢纽 */
+              var modesOk = restore.modes ? legSig(c) === restore.modes : true;
+              var hubOk = !wantHub || (c.legs.length > 1 && c.legs[1].from === wantHub);
+              return modesOk && hubOk;
+            });
+            if (eq.length) {
+              MT.toast('已匹配原走法（按当前供给重新规划）；开放地点已重新确认');
+              openJourney(eq[0].id, restore.nights, false);
+            } else {
+              var oldDesc = (restore.label || '原走法') + (wantHub ? '（经 ' + wantHub + '）' : '') + (restore.nights ? '，含停留 ' + restore.nights + ' 晚' : '');
+              var noteBox = document.getElementById('journeyArea');
+              if (noteBox) noteBox.innerHTML = '<div class="detail-card" style="border:1px solid #A16207;border-radius:14px;padding:14px;margin-top:12px;">' +
+                '<div style="font-size:13px;color:#A16207;">原走法待重新查</div>' +
+                '<div style="font-size:12px;color:var(--mixtouring-muted-foreground);line-height:1.7;margin-top:6px;">草案「' + MT.esc(oldDesc) + '」在当前供给下没有等价候选。上方为当前可探索的走法，请重新选择；核实后原走法方向仍可另行探索。</div></div>';
+              MT.toast('原走法暂无等价候选：请从当前走法中重新选择');
+            }
+          } else if (restore.candidate_id) {
+            MT.toast('修改后原走法不再符合条件，请从当前候选中重新选择');
           }
         }
       }).catch(function () { pendingRestore = null; resultArea.innerHTML = ''; MT.toast('规划服务不可用'); });
@@ -211,6 +237,49 @@
       lastRequest = { origin: from, destination: to, constraints: collectConstraints() };
       requestPlan();
     });
+
+    /* ---------- 卡 A：从私人草案恢复（restore=1）＝回填输入 + 重新规划；开放地点须重新核验确认 ---------- */
+    (function restoreFromDraft() {
+      var q = new URLSearchParams(location.search);
+      if (q.get('restore') !== '1') return;
+      var fill = function (id, v) { if (v != null && v !== '') document.getElementById(id).value = v; };
+      fill('fromInput', q.get('from'));
+      fill('toInput', q.get('to'));
+      fill('nlInput', q.get('text'));
+      fill('tvOut', q.get('out'));
+      fill('tvRet', q.get('ret'));
+      fill('tvCount', q.get('count'));
+      if (q.get('type')) {
+        var typeMap = { round_trip: 'round_trip', one_way: 'one_way' };
+        if (typeMap[q.get('type')]) { document.getElementById('tvType').value = typeMap[q.get('type')]; travelDirty.type = true; }
+      }
+      if (q.get('out')) travelDirty.out = true;
+      if (q.get('ret')) travelDirty.ret = true;
+      if (q.get('count')) travelDirty.count = true;
+      var c = collectConstraints();
+      if (q.get('budget')) { fill('cnBudget', q.get('budget')); }
+      if (q.get('layover')) { fill('cnLayover', q.get('layover')); }
+      if (q.get('night')) { document.getElementById('cnNight').value = q.get('night'); }
+      if (q.get('transfers') != null && q.get('transfers') !== '') { fill('cnTransfers', q.get('transfers')); }
+      /* 自动发起重新规划：优先两字段，否则一句话 */
+      var from = q.get('from'), to = q.get('to'), text = q.get('text');
+      if (from && to) {
+        lastRequest = { origin: from, destination: to, constraints: collectConstraints() };
+      } else if (text) {
+        lastRequest = { text: text, constraints: collectConstraints() };
+      } else {
+        MT.toast('草案缺少起终点信息，请手动输入');
+        return;
+      }
+      /* 二十二轮 P1-1：恢复目标=草案 ID/版本 + 原走法结构（hub/mode 序列）+ 停留晚数；
+       * 规划完成后按结构匹配等价候选自动打开详情并恢复停留；无等价候选保留旧摘要提示重选 */
+      pendingRestore = {
+        draft_id: q.get('draft'), ver: q.get('ver'),
+        hub: q.get('hub'), label: q.get('clabel'), nights: Number(q.get('nights')) || 0, modes: q.get('modes') || ''
+      };
+      MT.toast('已从草案回填，正在重新规划（开放地点须重新确认）');
+      requestPlan();
+    })();
 
     document.getElementById('btnParse').addEventListener('click', function () {
       var text = document.getElementById('nlInput').value.trim();
@@ -527,6 +596,12 @@
           '<div style="color:#A16207;">待核：' + row.missing.map(MT.esc).join('、') + '</div>' +
           '<div style="color:var(--mixtouring-muted-foreground);">' + MT.esc(row.manual_check) + '</div></div>';
       }).join('');
+      /* 卡 A：保存到我的行程（私人草案）——恢复时重新规划，不把快照当事实 */
+      var cand = activePlan.candidates.find(function (c) { return c.id === activeCandidate; });
+      var draftName = (activePlan.intent.origin || '') + ' → ' + (activePlan.intent.destination || '');
+      html += '<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--mixtouring-border);">' +
+        '<button id="btnSaveDraft" type="button" style="min-height:44px;padding:10px 18px;background:none;border:1px solid var(--mixtouring-ring);border-radius:10px;font-family:inherit;font-size:13px;color:var(--mixtouring-ring);cursor:pointer;">保存到我的行程（私人草案）</button>' +
+        '<div id="draftSaveNote" style="font-size:11.5px;color:var(--mixtouring-muted-foreground);margin-top:8px;line-height:1.6;">草案仅保存在本浏览器（清理浏览器数据可能丢失）；恢复时会重新规划并重新确认开放地点，不把保存时的走法当已核事实。</div></div>';
       html += '<div style="margin-top:16px;"><label style="font-size:12px;">用一句话修改本次条件<input id="editPrompt" type="text" placeholder="例如：不要夜间到达，最多换一次；或在中转城市停两晚" style="display:block;width:100%;box-sizing:border-box;margin-top:6px;padding:10px;border:1px solid var(--mixtouring-border);border-radius:10px;font:inherit;" /></label>' +
         '<button id="btnApplyEdit" type="button" style="margin-top:9px;min-height:44px;padding:9px 16px;background:var(--mixtouring-primary);color:#fff;border:0;border-radius:10px;font-family:inherit;cursor:pointer;">重新规划并核对</button> ' +
         '<button id="btnEditForm" type="button" style="min-height:44px;padding:9px 16px;background:var(--mixtouring-muted);border:0;border-radius:10px;font-family:inherit;cursor:pointer;">修改上方条件</button></div>';
@@ -535,6 +610,30 @@
       document.getElementById('btnBackCandidates').addEventListener('click', function () { resultArea.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
       box.querySelectorAll('.btnStay').forEach(function (btn) { btn.addEventListener('click', function () { openJourney(activeCandidate, Number(btn.getAttribute('data-nights')), true); }); });
       document.getElementById('btnEditForm').addEventListener('click', function () { document.getElementById('fromInput').scrollIntoView({ behavior: 'smooth' }); document.getElementById('fromInput').focus(); });
+      var btnSave = document.getElementById('btnSaveDraft');
+      if (btnSave) btnSave.addEventListener('click', function () {
+        var note = document.getElementById('draftSaveNote');
+        var cand2 = activePlan.candidates.find(function (c) { return c.id === activeCandidate; });
+        var name2 = (activePlan.intent.origin || '') + ' → ' + (activePlan.intent.destination || '');
+        var snapshot = {
+          request: JSON.parse(JSON.stringify(lastRequest || {})),
+          travel: collectTravel(), constraints: collectConstraints(),
+          place_names: { origin: activePlan.intent.origin_place ? activePlan.intent.origin_place.name : null, destination: activePlan.intent.destination_place ? activePlan.intent.destination_place.name : null },
+          confirmed_note: { origin: activePlan.intent.origin_place && activePlan.intent.origin_place.dynamic ? '当时为开放地点确认（恢复须重新核验确认）' : null, destination: activePlan.intent.destination_place && activePlan.intent.destination_place.dynamic ? '当时为开放地点确认（恢复须重新核验确认）' : null },
+          candidate: { id: activeCandidate, label: cand2 ? candidateTitle(cand2) : '待重新选择走法', kind: cand2 ? cand2.kind : null, hub: cand2 && cand2.legs.length > 1 ? cand2.legs[1].from : null, modes: cand2 ? cand2.legs.map(function (l) { return l.mode_guess || '?'; }).join('+') : '' },
+          nights: activeNights, engine: activePlan.intent.parse_engine
+        };
+        var res = MTDrafts.save(name2, snapshot);
+        if (res.ok) {
+          note.innerHTML = '已保存（' + res.draft.versions.length + ' 个版本）。可在「我的 → 私人草案」恢复；恢复将重新规划。';
+          MT.toast('已保存到私人草案');
+        } else {
+          note.innerHTML = res.reason === 'write_failed'
+            ? '<span style="color:#A8543A;">保存失败：浏览器存储不可写（隐私模式/空间不足）。草案未保存，可稍后重试。</span>'
+            : '<span style="color:#A8543A;">保存失败：' + MT.esc(res.reason || '未知原因') + '</span>';
+          MT.toast('保存失败（存储不可写）');
+        }
+      });
       document.getElementById('btnApplyEdit').addEventListener('click', function () {
         var edit = document.getElementById('editPrompt').value.trim();
         if (!edit) { MT.toast('先描述想修改的条件'); return; }
