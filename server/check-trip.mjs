@@ -18,6 +18,7 @@ import {
   evidenceState, legFreshness, nextVersion
 } from './lib/trip.mjs';
 import { extractIntentFields, parseTripIntent, searchTripStrategies, buildVerificationChecklist, resolveRoute, findPlace, capabilities } from './lib/trip-service.mjs';
+import { parseTripRule } from './lib/parse.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 let fail = 0;
@@ -248,6 +249,19 @@ const [F_OUT, F_IN] = FIXTURE.dated_legs.map((l) => ({ ...l, baggage_terms: { ca
   ok(nearExact.outbound_window === '2026-10-03 ~ 2026-10-03', '卡 C：明确去程日优先于国庆宽窗，不把返程日当去程');
   const nearReturnOnly = extractIntentFields('国庆附近从北京去阿拉木图，10月7日回来', NOW);
   ok(nearReturnOnly.outbound_window === '2026-09-27 ~ 2026-10-07', '卡 C：仅有返程日时保留国庆宽窗');
+  const holidayArrival = extractIntentFields('北京去阿拉木图，国庆1-3号之间到就可以', NOW);
+  ok(holidayArrival.arrival_window === '2026-10-01 ~ 2026-10-03' && !holidayArrival.outbound_window,
+    '国庆1-3号之间到 → 10月1-3日到达窗，不冒充去程出发日');
+  const holidayDeparture = extractIntentFields('国庆1-3号之间出发', NOW);
+  ok(holidayDeparture.outbound_window === '2026-10-01 ~ 2026-10-03' && !holidayDeparture.arrival_window,
+    '国庆1-3号之间出发 → 10月1-3日去程窗');
+  ok(extractIntentFields('国庆1号到3号之间到', NOW).arrival_window === '2026-10-01 ~ 2026-10-03',
+    '国庆1号到3号同样识别为到达范围');
+  ok(extractIntentFields('10月1-3号之间到达', NOW).arrival_window === '2026-10-01 ~ 2026-10-03' &&
+    extractIntentFields('10月3日到达', NOW).arrival_window === '2026-10-03 ~ 2026-10-03',
+    '写明月份的范围与单日到达也不误作出发日');
+  ok(parseTripRule('北京去阿拉木图，国庆1-3号之间到就可以', ['北京', '阿拉木图']).date === null,
+    '旧单日解析器不把国庆日期范围误读为1月3日');
 
   /* R16 复审①：parseTripIntent 合并 Trip 城市词典——真实城市源识别阿拉木图（规则版确定性） */
   const tripCities = JSON.parse(readFileSync(join(root, 'pipeline/data/trips/trip-cities.json'), 'utf8')).cities;
@@ -259,6 +273,8 @@ const [F_OUT, F_IN] = FIXTURE.dated_legs.map((l) => ({ ...l, baggage_terms: { ca
   /* 明确「10 月 1 日」输入 → 单日窗（不误伤精确意图） */
   const exact = await parseTripIntent('10月1日从北京去阿拉木图', ['北京'], tripCities, NOW);
   ok(exact.query.outbound_window === '2026-10-01 ~ 2026-10-01', `C1 明确日期 → 单日窗（实际 ${exact.query.outbound_window}）`);
+  const arrivalOnly = await parseTripIntent('北京去阿拉木图，国庆1-3号之间到就可以', ['北京'], tripCities, NOW);
+  ok(arrivalOnly.query.outbound_window == null, 'Trip 入口不会把到达窗或1月3日写入去程出发窗');
   const exactWithHoliday = await parseTripIntent('国庆附近从北京去阿拉木图，10月3日出发，10月10日回来', ['北京'], tripCities, NOW);
   ok(exactWithHoliday.query.outbound_window === '2026-10-03 ~ 2026-10-03' &&
     !exactWithHoliday.needs_confirmation.some((n) => n.includes('已按假期窗口预填')),

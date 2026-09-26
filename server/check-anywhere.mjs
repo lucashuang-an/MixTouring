@@ -444,9 +444,21 @@ const NO_DIGIT_RE = /\d/;
   ok(explicitYear.intent.outbound_window === '2027-10-03 ~ 2027-10-03' &&
     explicitYear.intent.return_window === '2027-10-10 ~ 2027-10-10',
     '卡 C：写明年份的去返日期均按原年份保留');
+  const arrivalRange = buildTravelIntent('北京去阿拉木图，国庆1-3号之间到就可以', null, new Date('2026-09-26T00:00:00+08:00').getTime());
+  ok(arrivalRange.intent.arrival_window === '2026-10-01 ~ 2026-10-03' &&
+    arrivalRange.intent.outbound_window == null && arrivalRange.needs.some((n) => n.includes('到达时间')),
+    '截图回归：国庆1-3号按到达窗理解，去程出发日保持待定');
+  const arrivalWithDeparture = buildTravelIntent('国庆1-3号之间到，9月30日出发', null, new Date('2026-09-26T00:00:00+08:00').getTime());
+  ok(arrivalWithDeparture.intent.arrival_window === '2026-10-01 ~ 2026-10-03' &&
+    arrivalWithDeparture.intent.outbound_window === '2026-09-30 ~ 2026-09-30',
+    '到达窗与另写的出发日分别保留');
   const liveRoute = await planAnywhere({ text: '国庆附近从北京去阿拉木图，一个人往返，10月3日出发，10月10日回来' }, NO_LLM);
   ok(/^\d{4}-10-03 ~ \d{4}-10-03$/.test(liveRoute.intent.outbound_window || ''),
     '卡 C：真实规划路径回填明确去程日，而非假期宽窗');
+  const arrivalRoute = await planAnywhere({ text: '北京去阿拉木图，国庆1-3号之间到就可以' }, NO_LLM);
+  ok(/^\d{4}-10-01 ~ \d{4}-10-03$/.test(arrivalRoute.intent.arrival_window || '') &&
+    arrivalRoute.intent.outbound_window == null && arrivalRoute.intent.parse_engine === 'dict',
+    '真实规划路径：国庆到达窗保留，去程窗不再出现次年1月3日');
   /* 塔什干确认流（有候选路径）：消歧与重新规划后意图字段保留 */
   const osmT = [{ display_name: 'Tashkent, 乌兹别克斯坦', country: 'UZ', lat: '41.31', lon: '69.28', type: 'city', category: 'place', osm_type: 'relation', osm_id: '2369842', url: 'https://www.openstreetmap.org/relation/2369842' }];
   const p1 = await planAnywhere({ text: '国庆附近从北京去塔什干，10月7日回来，2个人' }, {

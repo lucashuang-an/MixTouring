@@ -79,34 +79,73 @@ const PAIR_RE = /两个人|两人|双人|和朋友|和对象/;
 /* v0.26.3 复审②：「国庆附近/前后/期间」保留弹性假期区间，不得收缩为 10/01 单日 */
 const NEAR_HOLIDAY_RE = /国庆\s*(?:附近|前后|期间|那几天)/;
 const EXPLICIT_DATE_RE = /(?:(20\d{2})\s*(?:年|[/-])\s*)?(\d{1,2})\s*(?:月|[/-])\s*(\d{1,2})\s*日?/g;
+const HOLIDAY_RANGE_RE = /(?:(20\d{2})\s*年\s*)?国庆(?:节)?\s*(\d{1,2})\s*(?:日|号)?\s*[-~～—至到]\s*(\d{1,2})\s*(?:日|号)/g;
+const MONTH_RANGE_RE = /(?:(20\d{2})\s*年\s*)?(\d{1,2})\s*月\s*(\d{1,2})\s*(?:日|号)?\s*[-~～—至到]\s*(\d{1,2})\s*(?:日|号)/g;
 
-/** 一句话中的明确去程日；返程日不冒充去程。未写年份时，已过去的月日指向次年。 */
+function dateWindow(year, month, start, end) {
+  const valid = (day) => {
+    const d = new Date(Date.UTC(year, month - 1, day));
+    return d.getUTCFullYear() === year && d.getUTCMonth() === month - 1 && d.getUTCDate() === day;
+  };
+  if (month < 1 || month > 12 || start < 1 || end < start || !valid(start) || !valid(end)) return null;
+  const iso = (day) => `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  return `${iso(start)} ~ ${iso(end)}`;
+}
+
+function dateRole(after) {
+  if (/^\s*(?:回来|返回|返程|回程|回国|回家)/.test(after)) return 'return';
+  if (/^\s*(?:之间|之前|前|左右)?\s*(?:到达|抵达|落地|到(?!\s*\d))/.test(after)) return 'arrival';
+  if (/^\s*(?:之间|左右)?\s*(?:出发|启程|动身)/.test(after)) return 'outbound';
+  return 'unmarked';
+}
+
+/** 一句话中的明确日期；到达窗不冒充去程出发窗，返程日也不冒充去程。 */
 export function extractExplicitOutboundDate(text, nowMs = Date.now()) {
   const t = String(text || '');
   const now = new Date(nowMs);
   let sawDate = false;
   let firstUnmarked = null;
+  let markedOutbound = null;
+  let arrivalWindow = null;
+  const spans = [];
+  for (const [re, holiday] of [[HOLIDAY_RANGE_RE, true], [MONTH_RANGE_RE, false]]) {
+    for (const m of t.matchAll(re)) {
+      sawDate = true;
+      spans.push([m.index, m.index + m[0].length]);
+      const month = holiday ? 10 : Number(m[2]);
+      const start = Number(holiday ? m[2] : m[3]);
+      const end = Number(holiday ? m[3] : m[4]);
+      let year = m[1] ? Number(m[1]) : holiday ? Number(nationalHolidayWindow(nowMs).slice(0, 4)) : now.getFullYear();
+      if (!m[1] && !holiday && Date.UTC(year, month - 1, end) < Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())) year += 1;
+      const window = dateWindow(year, month, start, end);
+      if (!window) continue;
+      const after = t.slice(m.index + m[0].length, m.index + m[0].length + 12).split(/[，,。！？；;]/)[0];
+      const role = dateRole(after);
+      if (role === 'arrival' && !arrivalWindow) arrivalWindow = window;
+      else if (role === 'outbound' && !markedOutbound) markedOutbound = window;
+      else if (role === 'unmarked' && !firstUnmarked) firstUnmarked = window;
+    }
+  }
   for (const m of t.matchAll(EXPLICIT_DATE_RE)) {
+    if (spans.some(([start, end]) => m.index < end && m.index + m[0].length > start)) continue;
+    /* 「1-3号」缺月份时是日期范围，不是 1 月 3 日。 */
+    if (!m[1] && !m[0].includes('月') && t[m.index + m[0].length] === '号') { sawDate = true; continue; }
     sawDate = true;
     const before = t.slice(Math.max(0, m.index - 12), m.index).split(/[，,。！？；;]/).pop();
     const after = t.slice(m.index + m[0].length, m.index + m[0].length + 12).split(/[，,。！？；;]/)[0];
     if (/(?:返程|回程|回来|返回|回国|回家|回)\s*$/.test(before) || /^\s*(?:返程|回程|回来|返回|回国|回家|回)/.test(after)) continue;
     const month = Number(m[2]), day = Number(m[3]);
-    if (month < 1 || month > 12 || day < 1 || day > 31) continue;
     let year = m[1] ? Number(m[1]) : now.getFullYear();
-    const valid = (y) => {
-      const d = new Date(Date.UTC(y, month - 1, day));
-      return d.getUTCFullYear() === y && d.getUTCMonth() === month - 1 && d.getUTCDate() === day;
-    };
-    if (!valid(year)) continue;
+    if (!dateWindow(year, month, day, day)) continue;
     if (!m[1] && Date.UTC(year, month - 1, day) < Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())) year += 1;
-    if (!valid(year)) continue;
-    const iso = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    const window = `${iso} ~ ${iso}`;
-    if (/(?:去程|出发|启程|动身)\s*$/.test(before) || /^\s*(?:去程|出发|启程|动身)/.test(after)) return { window, sawDate };
+    const window = dateWindow(year, month, day, day);
+    if (!window) continue;
+    const role = dateRole(after);
+    if (role === 'arrival') { if (!arrivalWindow) arrivalWindow = window; continue; }
+    if (/(?:去程|出发|启程|动身)\s*$/.test(before) || role === 'outbound') { if (!markedOutbound) markedOutbound = window; continue; }
     if (!firstUnmarked) firstUnmarked = window;
   }
-  return { window: firstUnmarked, sawDate };
+  return { window: markedOutbound || firstUnmarked, arrival_window: arrivalWindow, sawDate };
 }
 
 /** 当年（已过 10/7 则次年）国庆假期宽窗——2026 为中秋 9/25-27 + 国庆 10/1-7 连休 */
@@ -127,7 +166,8 @@ export function extractIntentFields(text, nowMs = Date.now()) {
   else if (PAIR_RE.test(t)) intent.traveler_count = 2;
   const explicit = extractExplicitOutboundDate(t, nowMs);
   if (explicit.window) intent.outbound_window = explicit.window;
-  else if (NEAR_HOLIDAY_RE.test(t)) intent.outbound_window = nationalHolidayWindow(nowMs);
+  else if (!explicit.arrival_window && NEAR_HOLIDAY_RE.test(t)) intent.outbound_window = nationalHolidayWindow(nowMs);
+  if (explicit.arrival_window) intent.arrival_window = explicit.arrival_window;
   return intent;
 }
 

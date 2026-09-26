@@ -216,6 +216,7 @@ export function buildTravelIntent(text, explicit, nowMs = Date.now()) {
   const finalIntent = {
     trip_type: exp.trip_type || fields.trip_type || 'pending',
     outbound_window: exp.outbound_window || fields.outbound_window || null,
+    arrival_window: fields.arrival_window || null,
     return_window: exp.return_window || retFromText,
     traveler_count: exp.traveler_count ?? traveler ?? 1
   };
@@ -236,6 +237,7 @@ export function buildTravelIntent(text, explicit, nowMs = Date.now()) {
   }
   const needs = [];
   if (finalIntent.trip_type === 'pending') needs.push('行程类型未识别（单程/往返）：可先用单程做方向探索，或补充说明');
+  if (finalIntent.arrival_window && !finalIntent.outbound_window) needs.push('已记录希望到达时间；当前走法尚未按班次筛选，出发日期待定');
   if (finalIntent.trip_type === 'round_trip') {
     if (!finalIntent.outbound_window) needs.push('往返行程请补去程日期或大致窗口');
     if (!finalIntent.return_window) needs.push('往返行程请补返程日期（未补前不展示返程样本）');
@@ -1221,6 +1223,7 @@ export async function planAnywhere(input, deps = {}) {
     parse_engine,
     trip_type: travel.intent.trip_type,
     outbound_window: travel.intent.outbound_window,
+    arrival_window: travel.intent.arrival_window,
     return_window: travel.intent.return_window,
     traveler_count: travel.intent.traveler_count
   };

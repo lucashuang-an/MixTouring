@@ -141,6 +141,7 @@ MIXTOURING/
 - **瞬时页面用 `location.replace`**：loading 过渡页勿进返回栈。
 - **数据源冲突是常态**：以「最新鲜来源优先 + sampled_at + source 字段」兜底，勿静默取其一。
 - **行程清单接口边界**：`/api/trip/checklist` 只接收 `{query, strategy_id}`，从服务端样本重取分段；不要将客户端提交的任意 `strategy` 当成已核事实。解析日期窗统一 `YYYY-MM-DD ~ YYYY-MM-DD`，单程检索不得混入返程。
+- **口语日期范围**：`国庆1-3号` 是十月日期范围，不能被单日 `M-D` 规则吞成 1 月 3 日；「之间到」表示希望到达，不能填入去程出发窗口。没有逐段班次时只记录到达偏好，不宣称走法满足该日期。
 - **淡季混搭未必省钱**：如实展示，AI 文案转向体验价值，勿美化数字。
 - **CSS 覆盖三坑**（desktop.css 实战）：页面 body 有内联样式只能 `!important` 覆盖；Tailwind v4 的 `-translate-x-*` 走独立 `translate` 属性；body 内 critical-layout 样式块晚于 head 里的 link，覆盖需提特异性而非靠级联顺序。
 - **智谱 glm-4-flash 约束遵循偏弱**：文案生成曾手写数字被守门拦截（拦截即浪费整次调用）；优化方向见工作记录 v0.11.1。

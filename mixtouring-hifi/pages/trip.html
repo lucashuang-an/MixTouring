@@ -361,6 +361,7 @@
       if (data.intent.trip_type === 'round_trip') tvLabels.push('往返');
       else if (data.intent.trip_type === 'one_way') tvLabels.push('单程');
       if (data.intent.outbound_window) tvLabels.push('去程 ' + data.intent.outbound_window);
+      if (data.intent.arrival_window) tvLabels.push('希望到达 ' + data.intent.arrival_window);
       if (data.intent.return_window) tvLabels.push('返程 ' + data.intent.return_window);
       if (data.intent.traveler_count != null) tvLabels.push(data.intent.traveler_count + ' 人');
       if (tvLabels.length) {
@@ -570,6 +571,7 @@
         '<button id="btnBackCandidates" type="button" style="min-height:44px;padding:8px 0;border:0;background:none;color:var(--mixtouring-ring);font:inherit;font-size:12.5px;cursor:pointer;">‹ 返回走法候选</button>' +
         '<h3 style="font-size:17px;margin:0;">走法详情</h3>' +
         '<p style="font-size:12px;color:var(--mixtouring-muted-foreground);line-height:1.6;">当前展示路线结构；出行前请查询各段班次、价格与接驳。</p>';
+      if (activePlan.intent.arrival_window) html += '<p style="font-size:12.5px;line-height:1.6;">希望到达：' + MT.esc(activePlan.intent.arrival_window) + '；各段班次尚未按此时间筛选。</p>';
       html += journeyLegsHtml(detail.outbound, '去程 · ' + (detail.outbound_window ? MT.esc(detail.outbound_window) : '日期待补'));
       if (detail.trip_type === 'round_trip') {
         html += journeyLegsHtml(detail.inbound, '返程 · ' + (detail.return_window ? MT.esc(detail.return_window) : '日期待补'));
