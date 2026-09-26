@@ -190,18 +190,24 @@
         activePlan = res.data;
         activeCandidate = null; activeNights = 0;
         renderUnified(res.data);
+        if (pendingRestore && res.data.candidates.length === 0 && !res.data.route) {
+          /* 开放地点首次规划只返回确认卡（无候选无 route）：保留待恢复目标，确认后二次规划再匹配 */
+          renderUnified(res.data);
+          return;
+        }
         if (pendingRestore) {
           var restore = pendingRestore; pendingRestore = null;
           if (restore.candidate_id && res.data.candidates.some(function (c) { return c.id === restore.candidate_id; })) {
             openJourney(restore.candidate_id, restore.nights, !!restore.record);
           } else if (restore.draft_id && restore.ver) {
             /* 二十二轮 P1-1：草案恢复——按走法结构（段数/方式序列/枢纽）匹配等价候选，匹配则恢复停留；无等价保留旧摘要提示重选 */
-            var legSig = function (c) { return c.legs.map(function (l) { return l.mode_guess; }).join('+'); };
+            var legSig = function (c) { return c.legs.map(function (l) { return l.mode_guess || '?'; }).join('+'); };
             var wantHub = restore.hub;
             var eq = res.data.candidates.filter(function (c) {
-              return c.kind !== 'direct' && c.legs.length > 1 &&
-                (!wantHub || c.legs[1].from === wantHub) &&
-                (restore.modes ? legSig(c) === restore.modes : true);
+              /* 直达与中转都按结构匹配：段方式序列一致；中转另比枢纽 */
+              var modesOk = restore.modes ? legSig(c) === restore.modes : true;
+              var hubOk = !wantHub || (c.legs.length > 1 && c.legs[1].from === wantHub);
+              return modesOk && hubOk;
             });
             if (eq.length) {
               MT.toast('已匹配原走法（按当前供给重新规划）；开放地点已重新确认');
@@ -614,7 +620,7 @@
           travel: collectTravel(), constraints: collectConstraints(),
           place_names: { origin: activePlan.intent.origin_place ? activePlan.intent.origin_place.name : null, destination: activePlan.intent.destination_place ? activePlan.intent.destination_place.name : null },
           confirmed_note: { origin: activePlan.intent.origin_place && activePlan.intent.origin_place.dynamic ? '当时为开放地点确认（恢复须重新核验确认）' : null, destination: activePlan.intent.destination_place && activePlan.intent.destination_place.dynamic ? '当时为开放地点确认（恢复须重新核验确认）' : null },
-          candidate: { id: activeCandidate, label: cand2 ? candidateTitle(cand2) : '待重新选择走法', kind: cand2 ? cand2.kind : null, hub: cand2 && cand2.legs.length > 1 ? cand2.legs[1].from : null, modes: cand2 ? cand2.legs.map(function (l) { return l.mode_guess; }).join('+') : '' },
+          candidate: { id: activeCandidate, label: cand2 ? candidateTitle(cand2) : '待重新选择走法', kind: cand2 ? cand2.kind : null, hub: cand2 && cand2.legs.length > 1 ? cand2.legs[1].from : null, modes: cand2 ? cand2.legs.map(function (l) { return l.mode_guess || '?'; }).join('+') : '' },
           nights: activeNights, engine: activePlan.intent.parse_engine
         };
         var res = MTDrafts.save(name2, snapshot);

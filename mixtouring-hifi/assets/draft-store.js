@@ -24,8 +24,10 @@
     return { data: val, corrupted: false };
   }
 
+  /* 形状判定不含 vid（二十三轮 P1-1）：v0.42.2 及更早的合法草案没有 vid，
+   * 先按形状识别为草案，再由 normalizeDraft 迁移补 vid——迁移前不得判为损坏 */
   function isVersionShape(v) {
-    return v && typeof v === 'object' && typeof v.vid === 'string' && v.vid &&
+    return v && typeof v === 'object' &&
       v.snapshot && typeof v.snapshot === 'object' && v.snapshot.request !== undefined &&
       typeof v.saved_at === 'string';
   }
@@ -35,9 +37,25 @@
       d.versions.every(isVersionShape);
   }
 
-  /** 旧数据迁移：为缺 vid 的版本补稳定 vid（v<序号>），并剔除不合规条目外的内容不动 */
-  function normalizeDraft(d) {
-    d.versions.forEach(function (v, i) { if (!v.vid) v.vid = 'v' + (i + 1); });
+  /** 迁移：为缺 vid 的版本补稳定唯一 vid（全局序号 __seq 向后推），并剔除形状不合规的版本条目；
+   *  重复 vid（历史 bug 产生的重号）迁移时重新分配，保证草案内 vid 唯一。全部版本不合规的草案才算损坏。 */
+  function normalizeDraft(d, all) {
+    var seq = all && typeof all.__seq === 'number' ? all.__seq : 0;
+    var used = new Set();
+    var kept = [];
+    d.versions.forEach(function (v) {
+      if (!v.vid || used.has(v.vid)) {
+        seq += 1;
+        v.vid = 'v' + seq;
+      } else {
+        var m = /^v([0-9]+)$/.exec(v.vid);
+        if (m) seq = Math.max(seq, +m[1]);
+      }
+      used.add(v.vid);
+      if (isVersionShape(v)) kept.push(v);
+    });
+    if (all) all.__seq = seq;
+    d.versions = kept;
     return d;
   }
 
@@ -48,7 +66,7 @@
     var drafts = [], corrupted_ids = [];
     Object.keys(all).forEach(function (id) {
       if (id === '__seq') return; /* 版本 vid 全局序号，非草案条目 */
-      if (isDraftShape(all[id])) drafts.push(normalizeDraft(all[id]));
+      if (isDraftShape(all[id])) drafts.push(normalizeDraft(all[id], all));
       else corrupted_ids.push(id);
     });
     drafts.sort(function (a, b) { return String(b.updated_at || '').localeCompare(String(a.updated_at || '')); });
@@ -60,7 +78,7 @@
     var st = readState();
     if (st.corrupted) return null;
     var d = st.data[id];
-    return isDraftShape(d) ? normalizeDraft(d) : null;
+    return isDraftShape(d) ? normalizeDraft(d, st.data) : null;
   }
 
   /** 用户确认后的损坏清理：只清坏条目；整体损坏需显式 reset */
@@ -100,7 +118,7 @@
     var warn = null;
     if (match) {
       id = match;
-      var d = normalizeDraft(all[id]);
+      var d = normalizeDraft(all[id], all);
       if (d.versions.length >= MAX_VERSIONS) warn = 'version_limit';
       d.versions.push({ vid: vid, version: d.versions.length + 1, snapshot: snapshot, saved_at: now }); /* 不自动删除（二十轮 P1-3） */
       d.updated_at = now;
@@ -111,7 +129,7 @@
     }
     try { localStorage.setItem(DRAFT_KEY, JSON.stringify(all)); }
     catch (e) { return { ok: false, reason: 'write_failed' }; }
-    return { ok: true, draft: normalizeDraft(all[id]), vid: vid, warn: warn };
+    return { ok: true, draft: normalizeDraft(all[id], all), vid: vid, warn: warn };
   }
 
   function rename(id, name) {
