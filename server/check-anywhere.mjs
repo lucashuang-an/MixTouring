@@ -13,6 +13,8 @@ import {
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { discoverRoutes } from './lib/route-discovery.mjs';
+import { buildJourneyDetail } from './lib/journey.mjs';
 
 let fail = 0;
 let total = 0;
@@ -679,7 +681,7 @@ const NO_DIGIT_RE = /\d/;
     '编排：web_search 已配置时逐段挂相关线索（source_lead）');
   ok(r6.web_search && r6.web_search.configured === true && r6.web_search.status === 'quota_exhausted',
     'P1-4：规划响应如实带 web_search 配置与最近真实状态（configured ≠ available）');
-  ok(r6.planner_version === 'v0.42.5', '编排：anywhere 版本号对齐 v0.42.5');
+  ok(r6.planner_version === 'v0.43.1', '编排：anywhere 版本号对齐 v0.43.1');
 
   const r7 = await planAnywhere({ text: '想去新疆最西边那座古城玩' },
     { callJson: async () => ({ origin: '北京', destination: '喀什' }), env: {}, osmSearch: async () => [] });
@@ -692,6 +694,48 @@ const NO_DIGIT_RE = /\d/;
     osmKind({ type: 'city', category: 'place' }) === 'city' &&
     osmKind({ type: 'attraction', category: 'tourism' }) === 'poi',
     'OSM 类型映射：aerodrome/station/city/attraction → 四类 kind');
+}
+
+/* 搜索改变候选集合：模型仅能组合来源提到的地点，国庆日期仍不能变成班次事实。 */
+{
+  const sources = [
+    { title: '伊宁 霍尔果斯 阿拉木图 国际公路客运', content: '伊宁经霍尔果斯前往阿拉木图的客运方向', link: 'https://example.org/corridor' },
+    { title: '北京 伊宁 航班方向', content: '北京到伊宁航班方向', link: 'https://example.org/access' }
+  ];
+  const searchFn = async () => sources;
+  const modelFn = async () => ({ routes: [{ stops: ['伊宁'], modes: ['plane', 'road'], source_ids: [1, 2] }] });
+  const found = await discoverRoutes(resolvePlace('北京'), resolvePlace('阿拉木图'), { searchFn, modelFn });
+  ok(found.routes.some((x) => x.stops[0] === '伊宁' && x.sources.some((s) => s.link.startsWith('https://jtyst.xinjiang.gov.cn/'))),
+    '搜索与模型：有客运走廊线索时发现伊宁方向，保留来源');
+  const plan = await planAnywhere({ origin: '北京', destination: '阿拉木图' }, {
+    env: { LLM_API_KEY: 'test', LLM_BASE_URL: 'https://open.bigmodel.cn/api/paas/v4' },
+    searchWeb: searchFn, callJson: modelFn, webSearchStatus: () => ({ status: 'available' })
+  });
+  const route = plan.candidates.find((c) => c.kind === 'discovered');
+  ok(route && route.legs.map((leg) => leg.from).join('→') === '北京→伊宁' && route.legs[1].to === '阿拉木图' &&
+    route.legs[1].mode_guess === 'road' && route.hypothesis === true,
+    '编排：搜索新节点进入本次候选，公路段仍为探索假设');
+  const detail = route && buildJourneyDetail(plan, route.id, 1);
+  ok(detail && detail.stopover.city === '伊宁' && detail.checklist[1].missing.includes('出入境条件') &&
+    detail.outbound.every((leg) => !leg.service_no && !leg.price_sample),
+    '详情：伊宁停留与跨境清单可用，无虚构班次和价格');
+  const newSearchRoute = await discoverRoutes(resolvePlace('北京'), resolvePlace('喀什'), {
+    searchFn: async () => [{ title: '北京 银川 喀什 铁路航班走法', content: '北京经银川前往喀什的铁路与航班组合', link: 'https://example.org/route' }],
+    modelFn: async () => ({ routes: [{ stops: ['银川'], modes: ['rail', 'plane'], source_ids: [1] }] })
+  });
+  ok(newSearchRoute.routes.length === 1 && newSearchRoute.routes[0].stops[0] === '银川' &&
+    newSearchRoute.routes[0].sources[0].link === 'https://example.org/route',
+    '搜索扩线：词典外旧骨架的来源城市可由搜索加模型生成');
+  const blocked = await discoverRoutes(resolvePlace('北京'), resolvePlace('喀什'), {
+    searchFn: async () => [{ title: '北京 银川 喀什 交通', content: '北京 银川 喀什', link: 'https://example.org/other' }],
+    modelFn: async () => ({ routes: [{ stops: ['火星'], modes: ['plane', 'road'], source_ids: [1] }] })
+  });
+  ok(blocked.routes.length === 0, '发现守门：模型提名未在来源和地点库中的节点被拒绝');
+  const noRoad = await discoverRoutes(resolvePlace('北京'), resolvePlace('喀什'), {
+    searchFn: async () => [{ title: '银川 喀什 风景', content: '银川 喀什 旅行摄影', link: 'https://example.org/photo' }],
+    modelFn: async () => ({ routes: [{ stops: ['银川'], modes: ['plane', 'road'], source_ids: [1] }] })
+  });
+  ok(noRoad.routes.length === 0, '发现守门：风景内容不支持跨境公路客运连接');
 }
 
 console.log(fail === 0

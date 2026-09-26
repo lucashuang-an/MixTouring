@@ -45,8 +45,16 @@
       <div style="font-size:13.5px;color:var(--mixtouring-muted-foreground);margin-top:6px;">一个人出发，先把路想清楚</div>
     </div>
 
-    <!-- 输入卡（v0.27.0 G2：两字段 + 一句话；解析结果全部可编辑；确认后才查询） -->
+    <!-- 一句话先行；手动起终点与具体限制在需要时展开。 -->
     <div class="detail-card" style="background:var(--mixtouring-card);border-radius:20px;padding:22px;box-shadow:var(--shadow-card-soft);">
+      <label for="nlInput" style="display:block;font-size:14px;margin-bottom:9px;">你想怎么出发？</label>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <input id="nlInput" type="text" placeholder="例如：国庆从北京去阿拉木图，想看看还有什么走法" aria-label="一句话行程"
+               style="flex:1 1 420px;min-width:0;border:0.5px solid var(--mixtouring-border);outline:none;background:var(--mixtouring-input);border-radius:12px;padding:12px 16px;font-size:14px;font-family:inherit;color:var(--mixtouring-foreground);" />
+        <button id="btnParse" style="background:var(--mixtouring-primary);color:var(--mixtouring-primary-foreground);border:none;border-radius:12px;padding:12px 20px;font-size:14px;font-family:inherit;cursor:pointer;min-height:44px;">看看怎么走</button>
+      </div>
+      <details id="manualEntry" style="margin-top:13px;">
+        <summary style="cursor:pointer;font-size:12px;color:var(--mixtouring-muted-foreground);padding:8px 0;">也可以直接填写出发地和目的地</summary>
       <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
         <div style="flex:1;min-width:150px;">
           <div style="font-size:12px;color:var(--mixtouring-muted-foreground);margin-bottom:6px;">出发地</div>
@@ -60,11 +68,10 @@
         </div>
         <button id="btnSearch" style="background:var(--mixtouring-primary);color:var(--mixtouring-primary-foreground);border:none;border-radius:12px;padding:12px 22px;font-size:14px;font-family:inherit;cursor:pointer;">看看怎么走</button>
       </div>
-      <div style="display:flex;gap:10px;align-items:center;margin-top:12px;">
-        <input id="nlInput" type="text" placeholder="或用一句话说行程：国庆附近从首都机场去喀纳斯，预算5000元，不接受夜间到达" aria-label="一句话行程"
-               style="flex:1;min-width:0;border:0.5px solid var(--mixtouring-border);outline:none;background:var(--mixtouring-input);border-radius:9999px;padding:10px 16px;font-size:13.5px;font-family:inherit;color:var(--mixtouring-foreground);" />
-        <button id="btnParse" style="background:var(--mixtouring-muted);color:var(--mixtouring-foreground);border:none;border-radius:9999px;padding:10px 16px;font-size:13px;font-family:inherit;cursor:pointer;flex-shrink:0;">解析并规划</button>
-      </div>
+      </details>
+
+      <details id="moreConditions" style="margin-top:3px;">
+        <summary style="cursor:pointer;font-size:12px;color:var(--mixtouring-muted-foreground);padding:8px 0;">补充日期或具体限制（可稍后再说）</summary>
 
       <!-- 行程信息（v0.35.0 十轮 P0：往返/日期/人数不回退；字段优先于一句话提取） -->
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;">
@@ -94,6 +101,7 @@
         <label style="font-size:12px;color:var(--mixtouring-muted-foreground);">换乘（次） <input id="cnTransfers" type="number" min="0" max="2" step="1" placeholder="不限" style="display:block;margin-top:4px;width:90px;box-sizing:border-box;border:0.5px solid var(--mixtouring-border);border-radius:8px;padding:8px 10px;font-size:13.5px;font-family:inherit;" /></label>
       </div>
       <div style="font-size:11.5px;color:var(--mixtouring-muted-foreground);margin-top:8px;line-height:1.6;">可输入城市、机场、车站或景点；遇到重名地点会请你选择。</div>
+      </details>
     </div>
 
     <!-- 结果区：先展示走法，核查信息按需展开 -->
@@ -126,7 +134,7 @@
      * 状态：idle → planning → needs_confirm（地点候选确认卡，保留原输入与约束）→ results / blocked。
      * 对用户先呈现路线与取舍；服务能力诊断留在接口，不进入结果主路径。 */
     var AW_KIND = { city: '城市', airport: '机场', station: '车站', poi: '景点' };
-    var AW_MODE = { plane: '航班', rail: '铁路' };
+    var AW_MODE = { plane: '航班', rail: '铁路', road: '公路客运' };
     var lastRequest = null; /* {text} 或 {origin,destination}，含 constraints——确认与重放共用 */
     var confirmedPlaces = {}, activePlan = null, activeCandidate = null, activeNights = 0;
     var revisions = [], pendingRestore = null;
@@ -188,6 +196,9 @@
         activePlan = res.data;
         activeCandidate = null; activeNights = 0;
         renderUnified(res.data);
+        if (res.data.candidates.length) requestAnimationFrame(function () {
+          resultArea.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
         if (pendingRestore && res.data.candidates.length === 0 && !res.data.route) {
           /* 开放地点首次规划只返回确认卡（无候选无 route）：保留待恢复目标，确认后二次规划再匹配 */
           renderUnified(res.data);
@@ -208,7 +219,7 @@
               return modesOk && hubOk;
             });
             if (eq.length) {
-              MT.toast('已匹配原走法（按当前供给重新规划）；开放地点已重新确认');
+              MT.toast('已按当前线索匹配原走法；班期仍待查询');
               openJourney(eq[0].id, restore.nights, false);
             } else {
               var oldDesc = (restore.label || '原走法') + (wantHub ? '（经 ' + wantHub + '）' : '') + (restore.nights ? '，含停留 ' + restore.nights + ' 晚' : '');
@@ -319,7 +330,8 @@
 
     function candidateTitle(c) {
       return c.variant === 'plane' ? '直达航班' : c.variant === 'rail' ? '直达铁路' :
-        c.kind === 'direct' ? '直达方向' : c.kind === 'one_transfer' ? '经停一座城市' : '铁路＋航班';
+        c.kind === 'direct' ? '直达方向' : c.kind === 'one_transfer' ? '经停一座城市' :
+          c.kind === 'discovered' ? '沿途探索' : '铁路＋航班';
     }
 
     /* 十一轮 P1：解析意图回填到仍为空的行程信息控件（已有用户显式输入不覆盖）——
@@ -388,10 +400,11 @@
           return (i ? ' → ' : '') + placeLabel(leg.from, leg.from_kind);
         }).join('') + ' → ' + placeLabel(c.legs[c.legs.length - 1].to, c.legs[c.legs.length - 1].to_kind) + '</div>';
         html += '<div style="font-size:12px;color:var(--mixtouring-muted-foreground);margin-top:4px;">' + c.legs.map(function (leg) {
-          return MT.esc(AW_MODE[leg.mode_guess] || '方式待查');
+          return MT.esc(AW_MODE[leg.mode_guess] || '方式待查') + (leg.via ? '（途经' + MT.esc(leg.via) + '）' : '');
         }).join(' → ') + '</div>';
         if (c.why_explore) html += '<div style="margin-top:9px;font-size:12.5px;line-height:1.65;">推荐理由：' + MT.esc(c.why_explore.split('；')[0]) + '</div>';
         var tradeoff = c.kind === 'direct' ? '不用换乘，行程组织更简单' :
+          c.kind === 'discovered' ? '可以沿途停留；各段衔接与跨境流程需核查' :
           c.kind === 'mixed' ? '增加铁路与航班接驳，可选择在中转城市停留' : '多一次换乘，可选择在中转城市停留';
         html += '<div style="margin-top:4px;font-size:12px;color:var(--mixtouring-muted-foreground);line-height:1.65;">主要取舍：' + tradeoff + '</div>';
         html += '<button type="button" class="btnJourney" data-candidate="' + MT.esc(c.id) + '" style="margin-top:12px;min-height:44px;padding:10px 18px;border:0;border-radius:10px;background:var(--mixtouring-primary);color:#fff;font-family:inherit;cursor:pointer;">' +
@@ -414,6 +427,11 @@
           html += '<div style="margin-top:8px;font-size:11.5px;color:var(--mixtouring-muted-foreground);">铁路依据：' + MT.esc(c.basis.corridor || '') +
             '（' + MT.esc(c.basis.evidence || '') + '；取样 ' + MT.esc(String(c.basis.sampled_at || '').slice(0, 10)) + '，来源复核期限 ' + MT.esc(c.basis.review_by || '') + '——复核期限非运营有效期，命中仍只是待验证假设）' +
             ' <a href="' + MT.esc(src) + '" target="_blank" rel="noopener" style="color:#1E7F45;">来源 ›</a></div>';
+        }
+        if (c.basis && c.basis.rule === 'search-discovery' && Array.isArray(c.basis.sources)) {
+          html += '<div style="margin-top:8px;font-size:11.5px;line-height:1.7;">发现线索：' + c.basis.sources.map(function (s) {
+            return '<a href="' + MT.esc(s.link) + '" target="_blank" rel="noopener" style="color:#1E7F45;margin-right:10px;">' + MT.esc(s.title) + ' ›</a>';
+          }).join('') + '</div>';
         }
         /* 详细依据仅在用户主动展开时出现；推荐理由已在卡片正面呈现。 */
         html += '<div style="margin-top:10px;font-size:12px;line-height:1.7;">' + MT.esc(c.explanation) + '</div>';
@@ -444,7 +462,9 @@
         html += '</details></div>';
       });
 
-      if ((data.explorations || []).length) {
+      if ((data.explorations || []).length && !(data.candidates || []).some(function (c) {
+        return c.kind === 'discovered' && (c.legs || []).some(function (leg) { return leg.mode_guess === 'road'; });
+      })) {
         html += '<div style="margin-top:12px;padding:14px 16px;border-radius:14px;background:rgba(161,98,7,0.06);border:0.5px solid rgba(161,98,7,0.25);">' +
           '<div style="font-size:13px;">也可探索铁路与陆路接驳</div>' +
           '<div style="font-size:12px;color:var(--mixtouring-muted-foreground);margin-top:6px;line-height:1.7;">可沿铁路枢纽与陆路口岸继续寻找组合走法。</div></div>';

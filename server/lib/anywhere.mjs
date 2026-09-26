@@ -20,6 +20,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { ANYWHERE_PLANNER_VERSION } from './versions.mjs';
+import { discoverRoutes } from './route-discovery.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -513,6 +514,7 @@ function newLeg(seq, fromPlace, toPlace, modeGuess) {
     seq,
     from: fromPlace.name, from_kind: fromPlace.kind,
     to: toPlace.name, to_kind: toPlace.kind,
+    from_country: fromPlace.country || null, to_country: toPlace.country || null,
     via: null,
     mode_guess: modeGuess, /* 假设的交通方式（guess：待取证确认，非事实） */
     evidence_state: 'explore', /* explore | source_lead（P0-2：搜索线索，非取证） */
@@ -523,6 +525,8 @@ function newLeg(seq, fromPlace, toPlace, modeGuess) {
       ? railManualCheck(fromPlace.country, toPlace.country)
       : modeGuess === 'plane'
         ? '到航司官网/平台核对该段航班'
+        : modeGuess === 'road'
+          ? '到客运站或运营方核对该方向班线、口岸与当期班期'
         : '到平台核对该段班期'
   };
 }
@@ -535,7 +539,7 @@ function geoCityName(place) {
 
 const HUB_SOURCE_LABEL = { 'rule:geo': '按地理顺路筛选（确定性估算，非班期事实）', 'llm': '由 AI 从已收录城市中提名（待验证假设）' };
 
-export const KIND_LABEL = { direct: '直达', one_transfer: '一次中转', mixed: '混合交通' };
+export const KIND_LABEL = { direct: '直达', one_transfer: '一次中转', mixed: '混合交通', discovered: '沿途探索' };
 export const DIRECT_VARIANT_LABEL = { plane: '直达航班假设', rail: '直达铁路假设' };
 
 /* ---------- v0.33.0（八轮评审）：直达铁路判定 = 负向粗筛 + 正向依据 ----------
@@ -823,6 +827,13 @@ function buildTradeoffs(c) {
     mk('风险', '无中转衔接风险', '无衔接风险；班期待取证', 'structural');
     return t;
   }
+  if (c.kind === 'discovered') {
+    mk('时间', '单段直达，总时长即段时长', '各段时长、实际换乘与停留时间待按班期核查', 'structural');
+    mk('费用', '需要先查询直达方向的当期票价作为基准', '需逐段查询交通、接驳和可能的过夜费用，再与直达同口径比较', 'structural');
+    mk('体验', '一次到达，无换乘', '可沿途停留；各段是否同车经过或需换乘待查', 'qualitative');
+    mk('风险', '无中转衔接风险', '可能存在衔接风险，具体换乘与口岸流程待核查；脆弱段见本卡「脆弱段与备选」', 'qualitative');
+    return t;
+  }
   mk('时间', '单段直达，总时长即段时长', '两段时长加衔接余量；是否反而更快待取证（部分方向中转总时长更短）', 'structural');
   mk('费用', '需要先查询直达方向的当期票价作为基准', '需要查询两段票价及联程/分段出票形式（未知哪种更省——这正是取证比较的核心）；另查中转是否有过夜等附加成本', 'structural');
   mk('体验', '一次到达，无换乘', '多一次换乘（行李搬运/候转）；经停枢纽可顺路体验', 'qualitative');
@@ -863,7 +874,7 @@ function buildFragileLegs(c, o, d, ctx) {
       const others = otherRouteCards.filter((r) => r.id !== c.id);
       const diffHub = others.filter((r) => r.hub && r.hub !== (c.legs[1] ? c.legs[1].from : null) && r.hasBasis);
       const sameHub = others.filter((r) => r.hub && r.hub === (c.legs[1] ? c.legs[1].from : null));
-      if (diffHub.length) fallbacks.push('或参考其它枢纽方向：' + diffHub.map((r) => r.hub).join('、') + '（各自卡内已标注连接依据）');
+      if (diffHub.length) fallbacks.push('或参考其它枢纽方向：' + [...new Set(diffHub.map((r) => r.hub))].join('、') + '（各自卡内已标注连接依据）');
       else if (sameHub.length) fallbacks.push('同结果页还有同枢纽的另一种方式组合卡，可对照查看');
       if (hasExplorations) fallbacks.push('或参考本结果页的铁路/陆路方向探索提示（泛化方向参考，非已标注枢纽走法）');
       fallbacks.push('该段核实成立后，本方案的衔接假设才升级');
@@ -984,6 +995,31 @@ export function buildCandidateSkeletons(o, d, constraints, llmHints = {}) {
     degradations.push('混合交通骨架需要「起点→枢纽」铁路依据与「枢纽→目的地」航空依据双齐的中转城市，当前不可用：该骨架未生成');
   }
 
+  /* 搜索先发现走廊，模型按来源组合城市；路段方式仍为猜测，逐段再查。 */
+  const existingStops = new Set(candidates.filter((c) => c.legs.length > 1)
+    .map((c) => c.legs.slice(0, -1).map((leg) => leg.to).join('→')));
+  for (const route of (llmHints.discovered_routes || [])) {
+    if (!Array.isArray(route.stops) || !Array.isArray(route.modes) || route.modes.length !== route.stops.length + 1 ||
+      !Array.isArray(route.sources) || !route.sources.length) continue;
+    const signature = route.stops.join('→');
+    if (existingStops.has(signature)) continue;
+    existingStops.add(signature);
+    const nodes = [o, ...route.stops.map(hubNode), d];
+    const legs = nodes.slice(0, -1).map((node, i) => newLeg(i + 1, node, nodes[i + 1], route.modes[i] === 'unknown' ? null : route.modes[i]));
+    if (Array.isArray(route.via) && route.via.length) legs[legs.length - 1].via = route.via.join('、');
+    candidates.push({
+      id: 'cand-discovered-' + candidates.length, kind: 'discovered', hypothesis: true,
+      transfers: route.stops.length, builder: 'search+llm',
+      basis: { rule: 'search-discovery', sources: route.sources }, legs,
+      explanation: '搜索资料提示可经' + route.stops.join('、') + '方向探索；逐段交通、实际换乘与日期衔接仍需确认',
+      why_explore: '经' + route.stops.join('、') + '方向可比较沿途体验与直达的取舍；路线依据见详情',
+      uncertain_leg: nodes.slice(0, -1).map((node, i) => segUncertain(node, nodes[i + 1])).join('；'),
+      next_checks: ['核实各段客运连接与实际换乘点', '按本次日期核对班期、口岸流程和衔接时间']
+    });
+  }
+  const priority = { direct: 0, discovered: 1, one_transfer: 2, mixed: 3 };
+  candidates.sort((a, b) => priority[a.kind] - priority[b.kind]);
+
   /* 约束应用：换乘次数可直接校验（结构事实）；预算/中转时长/夜间到达需取证到数字或时刻才能评估——如实说明 */
   if (constraints.max_transfers != null) {
     const kept = candidates.filter((c2) => c2.transfers <= constraints.max_transfers);
@@ -1007,11 +1043,12 @@ export function buildCandidateSkeletons(o, d, constraints, llmHints = {}) {
     hasDirectCard: candidates.some((c) => c.kind === 'direct'),
     hasExplorations: explorations.length > 0,
     otherRouteCards: candidates
-      .filter((c) => c.kind === 'one_transfer' || c.kind === 'mixed')
+      .filter((c) => c.kind === 'one_transfer' || c.kind === 'mixed' || c.kind === 'discovered')
       .map((c) => ({
         id: c.id,
         hub: c.legs[1] ? c.legs[1].from : null,
-        hasBasis: !!(c.basis && Array.isArray(c.basis.whys) && c.basis.whys.some((w) => w.leg || (w.scope && w.scope !== 'llm'))),
+        hasBasis: !!(c.basis && ((Array.isArray(c.basis.whys) && c.basis.whys.some((w) => w.leg || (w.scope && w.scope !== 'llm'))) ||
+          (c.basis.rule === 'search-discovery' && Array.isArray(c.basis.sources) && c.basis.sources.length))),
         modes: c.legs.map((l) => l.mode_guess).join('+')
       }))
   };
@@ -1037,7 +1074,8 @@ function candidateTitle(c) {
 /* ---------- 逐段搜索线索（P0-2：source_lead ≠ 取证；相关性门槛；失败保持探索态） ---------- */
 
 function searchQueryFor(leg) {
-  const modeWord = leg.mode_guess === 'rail' ? '火车' : leg.mode_guess === 'plane' ? '航班' : '交通';
+  const modeWord = leg.mode_guess === 'rail' ? '火车' : leg.mode_guess === 'plane' ? '航班' :
+    leg.mode_guess === 'road' ? '公路客运' : '交通';
   return leg.from + ' 到 ' + leg.to + ' ' + modeWord + ' 怎么走';
 }
 
@@ -1050,6 +1088,8 @@ export function resultRelevance(r, leg) {
     ? /火车|铁路|高铁|动车|train|rail/
     : leg.mode_guess === 'plane'
       ? /航班|飞机|直飞|air\s|airline|flight|fly/
+      : leg.mode_guess === 'road'
+        ? /客运|班车|大巴|公路|汽车|bus|coach/
       : null;
   return {
     from_hit: !!from && hay.includes(from),
@@ -1251,9 +1291,15 @@ export async function planAnywhere(input, deps = {}) {
 
   const route = { route_type: routeTypeOf(o, d) };
 
+  const wsReady = webSearchConfigured(env).configured;
+  const searchFn = deps.searchWeb !== undefined ? deps.searchWeb : searchWebDefault;
+  const discovery = wsReady && searchFn
+    ? await discoverRoutes(o, d, { searchFn, modelFn: callJson, useCache: deps.searchWeb === undefined && deps.callJson === undefined })
+    : { routes: [], searched: false, leads: 0 };
+
   /* LLM 中转提名（geo 覆盖不到时才需要；一次调用覆盖两类骨架；清单校验在 buildCandidateSkeletons 消费点） */
   const llmHints = {};
-  if (!isDomesticPair(o, d) || !(geoCityName(o) && geoCityName(d))) {
+  if (!discovery.routes.length && (!isDomesticPair(o, d) || !(geoCityName(o) && geoCityName(d)))) {
     const hubOut = await callJson({
       schema_prompt: llmHubPrompt(JSON.stringify(cityNames), o.name, d.name),
       user: '为 ' + o.name + ' → ' + d.name + ' 提名中转城市',
@@ -1265,15 +1311,15 @@ export async function planAnywhere(input, deps = {}) {
     }
   }
 
+  llmHints.discovered_routes = discovery.routes;
   const built = buildCandidateSkeletons(o, d, constraints, llmHints);
   degradations.push(...built.degradations);
 
   /* 逐段搜索线索：只在 web_search 已配置时进行；状态在取证后读取（如实反映本次调用结果，P1-4） */
-  const wsReady = webSearchConfigured(env).configured;
   let leadStat = { leads: 0 };
   if (wsReady) {
-    leadStat = await verifyLegs(built.candidates, deps.searchWeb !== undefined ? deps.searchWeb : searchWebDefault);
-    if (!leadStat.leads) {
+    leadStat = await verifyLegs(built.candidates, searchFn);
+    if (!leadStat.leads && !discovery.leads) {
       const wsStateNow = deps.webSearchStatus ? deps.webSearchStatus() : webSearchStatusDefault();
       degradations.push('联网检索未取得相关线索（web_search 最近状态：' + (wsStateNow.status || 'unknown') +
         '）：全部段保持探索态（未取证，不模拟证据）');

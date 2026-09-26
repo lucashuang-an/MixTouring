@@ -1,0 +1,44 @@
+{
+  "_meta": {
+    "说明": "公开来源的交通走廊线索，仅用于路线探索。许可和历史开通资料均不代表当前日期有班次；按目的方向索引，可服务不同出发地。",
+    "更新日期": "2026-09-27"
+  },
+  "corridors": [
+    {
+      "destination": "阿拉木图",
+      "gateway": "伊宁",
+      "waypoints": ["霍尔果斯"],
+      "title": "伊宁—霍尔果斯—阿拉木图国际道路客运班线经营许可",
+      "content": "新疆交通运输厅公示伊宁经霍尔果斯至阿拉木图的国际道路客运班线经营许可。许可是走廊依据，具体出行日期的客运班期需重新查询。",
+      "link": "https://jtyst.xinjiang.gov.cn/xjjtysj/qtwgfw/202408/fc30c01606204d138386ace899ce6be5.shtml",
+      "date": "2024-07-26"
+    },
+    {
+      "destination": "阿拉木图",
+      "gateway": "乌鲁木齐",
+      "waypoints": ["霍尔果斯"],
+      "title": "乌鲁木齐经霍尔果斯至阿拉木图国际道路客运班线开通",
+      "content": "新疆交通运输厅报道乌鲁木齐经霍尔果斯至阿拉木图的国际道路客运线路开通。历史开通信息不保证本次日期的班次。",
+      "link": "https://jtyst.xinjiang.gov.cn/xjjtysj/jtyw/202311/68952f89120b4986a185884df0464d75.shtml",
+      "date": "2023-11-03"
+    },
+    {
+      "destination": "阿拉木图",
+      "gateway": "塔城",
+      "waypoints": ["巴克图"],
+      "title": "塔城—巴克图—阿拉木图国际道路客运班线经营许可",
+      "content": "新疆交通运输厅公示塔城经巴克图至阿拉木图的国际道路客运班线经营许可。许可不保证已经运营或本次日期有班次。",
+      "link": "https://jtyst.xinjiang.gov.cn/xjjtysj/qtwgfw/202408/fc30c01606204d138386ace899ce6be5.shtml",
+      "date": "2024-07-26"
+    },
+    {
+      "destination": "比什凯克",
+      "gateway": "喀什",
+      "waypoints": ["吐尔尕特"],
+      "title": "喀什经吐尔尕特至比什凯克国际道路客运班线运营报道",
+      "content": "新疆交通运输厅报道喀什经吐尔尕特口岸至比什凯克的国际客运班线更新车辆并运营。出行日期班次仍须向客运站确认。",
+      "link": "https://jtyst.xinjiang.gov.cn/xjjtysj/mtkjt/202606/87600e3686f2444483d7525401890b56.shtml",
+      "date": "2026-06-10"
+    }
+  ]
+}
