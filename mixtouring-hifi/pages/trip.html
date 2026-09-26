@@ -93,10 +93,10 @@
         </label>
         <label style="font-size:12px;color:var(--mixtouring-muted-foreground);">换乘（次） <input id="cnTransfers" type="number" min="0" max="2" step="1" placeholder="不限" style="display:block;margin-top:4px;width:90px;box-sizing:border-box;border:0.5px solid var(--mixtouring-border);border-radius:8px;padding:8px 10px;font-size:13.5px;font-family:inherit;" /></label>
       </div>
-      <div style="font-size:11.5px;color:var(--mixtouring-muted-foreground);margin-top:8px;line-height:1.6;">可输入城市、机场、车站或景点。遇到重名地点会请你选择；路线先供探索，班期、票价与衔接需要逐段核查。</div>
+      <div style="font-size:11.5px;color:var(--mixtouring-muted-foreground);margin-top:8px;line-height:1.6;">可输入城市、机场、车站或景点；遇到重名地点会请你选择。</div>
     </div>
 
-    <!-- 结果区（v0.34.0 统一主入口：假设候选 / 搜索线索 / 陆路探索 / 已取证样本 分层呈现） -->
+    <!-- 结果区：先展示走法，核查信息按需展开 -->
     <div id="resultArea" style="margin-top:18px;"></div>
   </main>
 
@@ -122,13 +122,11 @@
         .then(function (r) { return r.json(); });
     }
 
-    /* ---------- v0.34.0 统一主入口：两字段与一句话进同一状态机（/api/anywhere/plan） ----------
+    /* ---------- 统一主入口：两字段与一句话进同一状态机（/api/anywhere/plan） ----------
      * 状态：idle → planning → needs_confirm（地点候选确认卡，保留原输入与约束）→ results / blocked。
-     * 结果分层：带正向 basis 的假设候选卡 / 段级搜索线索 / 铁路陆路探索提示 / 已取证样本（词典 OD 命中 G0 fixture 时）。
-     * 降级：LLM（引擎标注）、OSM/Photon（通道不可用提示）、web_search（配置与最近状态如实展示）——均不把「暂无数据」写成「没有路线」。 */
+     * 对用户先呈现路线与取舍；服务能力诊断留在接口，不进入结果主路径。 */
     var AW_KIND = { city: '城市', airport: '机场', station: '车站', poi: '景点' };
-    var AW_MODE = { plane: '航班（假设）', rail: '铁路（假设）' };
-    var AW_BUILDER = { 'rule': '交通方向假设', 'rule:hub': '经交通枢纽探索', 'rule:geo': '顺路城市方向（地理估算）', 'llm': 'AI 提名方向（待核）' };
+    var AW_MODE = { plane: '航班', rail: '铁路' };
     var lastRequest = null; /* {text} 或 {origin,destination}，含 constraints——确认与重放共用 */
     var confirmedPlaces = {}, activePlan = null, activeCandidate = null, activeNights = 0;
     var revisions = [], pendingRestore = null;
@@ -320,8 +318,8 @@
     }
 
     function candidateTitle(c) {
-      return c.variant === 'plane' ? '直达航班假设' : c.variant === 'rail' ? '直达铁路假设' :
-        c.kind === 'direct' ? '直达假设' : c.kind === 'one_transfer' ? '一次中转假设' : '混合交通假设';
+      return c.variant === 'plane' ? '直达航班' : c.variant === 'rail' ? '直达铁路' :
+        c.kind === 'direct' ? '直达方向' : c.kind === 'one_transfer' ? '经停一座城市' : '铁路＋航班';
     }
 
     /* 十一轮 P1：解析意图回填到仍为空的行程信息控件（已有用户显式输入不覆盖）——
@@ -348,14 +346,10 @@
       document.getElementById('cnNight').value = resolvedConstraints.night_arrival || '';
       document.getElementById('cnTransfers').value = resolvedConstraints.max_transfers == null ? '' : resolvedConstraints.max_transfers;
       var html = '<div class="detail-card" style="background:var(--mixtouring-card);border-radius:20px;padding:20px;box-shadow:var(--shadow-card-soft);">';
-      var routeLabel = data.route ? (data.route.route_type === 'domestic' ? '国内路线' : '国际路线') : '路线待确认';
       html += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">' +
         '<h2 style="font-size:17px;margin:0;">' + placeLabel(data.intent.origin || '（待确认）', data.intent.origin_place && data.intent.origin_place.kind) +
-        ' → ' + placeLabel(data.intent.destination || '（待确认）', data.intent.destination_place && data.intent.destination_place.kind) + '</h2>' +
-        '<span style="font-size:11.5px;padding:4px 12px;border-radius:9999px;background:rgba(200,106,75,0.08);color:#A8543A;">' +
-        (data.candidates.length ? '候选一律为待验证假设 · 不含未取证数字' : '暂未生成走法 · 请先确认地点与条件') + '</span></div>';
-      html += '<div style="font-size:12px;color:var(--mixtouring-muted-foreground);margin-top:4px;">' + MT.esc(routeLabel) +
-        (data.candidates.length ? ' · 先看走法，再逐段核实班期与费用' : ' · 确认地点与条件后再生成走法') + '</div>';
+        ' → ' + placeLabel(data.intent.destination || '（待确认）', data.intent.destination_place && data.intent.destination_place.kind) + '</h2></div>';
+      if (data.candidates.length) html += '<p style="font-size:12px;color:var(--mixtouring-muted-foreground);margin:8px 0 0;line-height:1.6;">以下是值得探索的走法。班次、价格和衔接请在决定出行前查询。</p>';
       if (data.intent.constraint_chips && data.intent.constraint_chips.length) {
         html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">' +
           data.intent.constraint_chips.map(function (c) {
@@ -388,20 +382,25 @@
 
       data.candidates.forEach(function (c) {
         html += '<div class="detail-card" style="background:var(--mixtouring-card);border-radius:16px;padding:16px;box-shadow:var(--shadow-card-soft);margin-top:12px;">';
-        html += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">' +
-          '<div style="font-size:13.5px;">' + MT.esc(candidateTitle(c)) +
-          ' <span style="font-size:12px;color:var(--mixtouring-muted-foreground);">· 换乘 ' + c.transfers + ' 次</span></div>' +
-          '<span style="font-size:11.5px;color:var(--mixtouring-muted-foreground);">' + MT.esc(AW_BUILDER[c.builder] || c.builder) + '</span></div>';
-        html += '<button type="button" class="btnJourney" data-candidate="' + MT.esc(c.id) + '" style="margin-top:10px;min-height:44px;padding:10px 18px;border:0;border-radius:10px;background:var(--mixtouring-primary);color:#fff;font-family:inherit;cursor:pointer;">查看探索详情与核验清单</button>';
+        html += '<div style="font-size:15px;">' + MT.esc(candidateTitle(c)) + '</div>';
+        html += '<div style="font-size:13px;margin-top:7px;line-height:1.6;">' + c.legs.map(function (leg, i) {
+          return (i ? ' → ' : '') + placeLabel(leg.from, leg.from_kind);
+        }).join('') + ' → ' + placeLabel(c.legs[c.legs.length - 1].to, c.legs[c.legs.length - 1].to_kind) + '</div>';
+        html += '<div style="font-size:12px;color:var(--mixtouring-muted-foreground);margin-top:4px;">' + c.legs.map(function (leg) {
+          return MT.esc(AW_MODE[leg.mode_guess] || '方式待查');
+        }).join(' → ') + '</div>';
+        if (c.why_explore) html += '<div style="margin-top:9px;font-size:12.5px;line-height:1.65;">推荐理由：' + MT.esc(c.why_explore.split('；')[0]) + '</div>';
+        var tradeoff = c.kind === 'direct' ? '不用换乘，行程组织更简单' :
+          c.kind === 'mixed' ? '增加铁路与航班接驳，可选择在中转城市停留' : '多一次换乘，可选择在中转城市停留';
+        html += '<div style="margin-top:4px;font-size:12px;color:var(--mixtouring-muted-foreground);line-height:1.65;">主要取舍：' + tradeoff + '</div>';
+        html += '<button type="button" class="btnJourney" data-candidate="' + MT.esc(c.id) + '" style="margin-top:12px;min-height:44px;padding:10px 18px;border:0;border-radius:10px;background:var(--mixtouring-primary);color:#fff;font-family:inherit;cursor:pointer;">' +
+          (c.kind === 'direct' ? '查看走法详情' : '查看详情与停留选择') + '</button>';
+        html += '<details style="margin-top:10px;font-size:12px;color:var(--mixtouring-muted-foreground);"><summary style="cursor:pointer;min-height:28px;">查看路线依据与待查项</summary>';
         c.legs.forEach(function (leg) {
           var lead = leg.evidence_state === 'source_lead';
           html += '<div style="margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--mixtouring-muted);">' +
             '<div style="font-size:12.5px;">第 ' + leg.seq + ' 段 · ' + placeLabel(leg.from, leg.from_kind) + ' → ' + placeLabel(leg.to, leg.to_kind) +
-            ' <span style="font-size:11.5px;color:var(--mixtouring-muted-foreground);">' + MT.esc(AW_MODE[leg.mode_guess] || '班期待取证') + '</span></div>' +
-            '<div style="margin-top:4px;font-size:11.5px;">' +
-            (lead
-              ? '<span style="color:#A16207;">搜索线索 · 与该段两端及方式相关（非班期核验，不是取证）</span>'
-              : '<span style="color:#A16207;">探索态 · 未取证（不展示任何班期/价格）</span>') + '</div>' +
+            ' <span style="font-size:11.5px;color:var(--mixtouring-muted-foreground);">' + MT.esc(AW_MODE[leg.mode_guess] || '方式待查') + '</span></div>' +
             (lead ? '<div style="margin-top:4px;">' + leg.sources.map(function (s) {
               return '<a href="' + MT.esc(s.link) + '" target="_blank" rel="noopener" style="font-size:11.5px;color:#1E7F45;margin-right:10px;">' + MT.esc(s.title) + ' ›</a>';
             }).join('') + '</div>' : '') +
@@ -415,9 +414,8 @@
             '（' + MT.esc(c.basis.evidence || '') + '；取样 ' + MT.esc(String(c.basis.sampled_at || '').slice(0, 10)) + '，来源复核期限 ' + MT.esc(c.basis.review_by || '') + '——复核期限非运营有效期，命中仍只是待验证假设）' +
             ' <a href="' + MT.esc(src) + '" target="_blank" rel="noopener" style="color:#1E7F45;">来源 ›</a></div>';
         }
-        html += '<div style="margin-top:10px;font-size:12px;color:var(--mixtouring-muted-foreground);line-height:1.7;">' + MT.esc(c.explanation) + '</div>';
-        /* G2.6 推荐三件套：为什么值得探索 / 哪段最不确定 / 下一步查什么 */
-        if (c.why_explore) html += '<div style="margin-top:8px;font-size:12px;line-height:1.7;"><span style="color:#1E7F45;">为什么值得探索：</span>' + MT.esc(c.why_explore) + '</div>';
+        /* 详细依据仅在用户主动展开时出现；推荐理由已在卡片正面呈现。 */
+        html += '<div style="margin-top:10px;font-size:12px;line-height:1.7;">' + MT.esc(c.explanation) + '</div>';
         if (c.uncertain_leg) html += '<div style="margin-top:4px;font-size:12px;line-height:1.7;"><span style="color:#A16207;">待核路段：</span>' + MT.esc(c.uncertain_leg) + '</div>';
         if (c.next_checks && c.next_checks.length) html += '<div style="margin-top:4px;font-size:12px;line-height:1.7;"><span style="color:var(--mixtouring-ring);">下一步：</span>' + c.next_checks.map(function (n) { return MT.esc(n); }).join('；') + '</div>';
         /* G3 首段：相对直达取舍（时间/费用/体验/风险；structural=结构事实，qualitative=定性判断） */
@@ -442,35 +440,24 @@
                 '<br><span style="color:var(--mixtouring-muted-foreground);">备选：</span>' + fl.fallbacks.map(function (fb) { return MT.esc(fb); }).join('；') + '</div>';
             }).join('') + '</div>';
         }
-        html += '</div>';
+        html += '</details></div>';
       });
 
-      (data.explorations || []).forEach(function (e) {
+      if ((data.explorations || []).length) {
         html += '<div style="margin-top:12px;padding:14px 16px;border-radius:14px;background:rgba(161,98,7,0.06);border:0.5px solid rgba(161,98,7,0.25);">' +
-          '<div style="font-size:13px;color:#A16207;">铁路/陆路方向探索（非直达假设）</div>' +
-          '<div style="font-size:12px;color:var(--mixtouring-muted-foreground);margin-top:6px;line-height:1.7;">' + MT.esc(e.note || '') + '</div></div>';
-      });
+          '<div style="font-size:13px;">也可探索铁路与陆路接驳</div>' +
+          '<div style="font-size:12px;color:var(--mixtouring-muted-foreground);margin-top:6px;line-height:1.7;">可沿铁路枢纽与陆路口岸继续寻找组合走法。</div></div>';
+      }
       (data.constraint_notes || []).forEach(function (n) {
         html += '<div style="margin-top:8px;font-size:12px;color:#A16207;">· ' + MT.esc(n) + '</div>';
       });
-      (data.degradations || []).forEach(function (n) {
-        html += '<div style="margin-top:8px;font-size:12px;color:#A16207;">⚠ ' + MT.esc(n) + '</div>';
-      });
-      if (data.web_search) {
-        html += '<div style="margin-top:8px;font-size:11.5px;color:var(--mixtouring-muted-foreground);">联网搜索：' +
-          (data.web_search.configured ? '已配置（最近状态 ' + MT.esc(data.web_search.status) + '，配额不足时段保持探索态）' : '未配置（全部段保持探索态）') + '</div>';
+      var placeCandidates = data.place_candidates || {};
+      if (!data.candidates.length && !((placeCandidates.origin || []).length || (placeCandidates.destination || []).length)) {
+        var placeUnavailable = (data.degradations || []).some(function (n) { return /核验通道不可用|未找到可核验/.test(n); });
+        html += '<div style="margin-top:12px;font-size:12.5px;color:#A16207;line-height:1.7;">' +
+          (placeUnavailable ? '地点暂时无法确认，请补充国家或地区后重试。' : '暂时没有找到可参考的走法，请调整地点或条件后重试。') + '</div>';
       }
-      if (data.next_steps && data.next_steps.length) {
-        html += '<div style="margin-top:10px;font-size:12.5px;color:var(--mixtouring-muted-foreground);line-height:1.7;">下一步：' +
-          data.next_steps.map(function (n) { return MT.esc(n); }).join('；') + '</div>';
-      }
-      html += '<div style="margin-top:10px;font-size:11.5px;color:var(--mixtouring-muted-foreground);line-height:1.6;">' +
-        (data.candidates.length
-          ? '所有走法均为探索假设（国际路线的铁路卡需已知线路依据，无依据只给陆路方向探索）；可选停留和住宿费用仍待核验。可在走法详情保存私人探索草案，保存不代表已核验可执行。'
-          : '当前没有可展示的走法；请按上方提示确认地点或修改条件。') +
-        'MixTouring 不提供购票服务。</div>';
       html += '<div id="journeyArea" style="margin-top:14px;"></div>';
-      html += '<div id="sampleArea" style="margin-top:14px;"></div>';
       html += '</div>';
       resultArea.innerHTML = html;
       renderRevisionBar();
@@ -498,7 +485,6 @@
       document.querySelectorAll('.btnJourney').forEach(function (btn) {
         btn.addEventListener('click', function () { openJourney(btn.getAttribute('data-candidate'), 0, true); });
       });
-      loadSample(data);
     }
 
     /* G3：只通过服务端 plan_id 取详情，修改后重新规划；版本只保存本次会话的输入与选择。 */
@@ -574,7 +560,7 @@
       return html + legs.map(function (leg) {
         return '<div style="padding:11px 13px;border-radius:12px;background:var(--mixtouring-muted);margin-top:7px;font-size:12.5px;line-height:1.7;">' +
           MT.esc(leg.from) + ' → ' + MT.esc(leg.to) + ' · ' + MT.esc(AW_MODE[leg.mode_guess] || '方式待查') +
-          '<div style="font-size:11.5px;color:#A16207;">' + (leg.evidence_state === 'source_lead' ? '仅有搜索线索，班期待核' : '探索假设，班期待核') + '</div></div>';
+          '</div>';
       }).join('');
     }
     function renderJourney(detail) {
@@ -582,31 +568,32 @@
       if (!box) return;
       var html = '<section class="detail-card" style="background:var(--mixtouring-card);border-radius:18px;padding:20px;box-shadow:var(--shadow-card-soft);">' +
         '<button id="btnBackCandidates" type="button" style="min-height:44px;padding:8px 0;border:0;background:none;color:var(--mixtouring-ring);font:inherit;font-size:12.5px;cursor:pointer;">‹ 返回走法候选</button>' +
-        '<h3 style="font-size:17px;margin:0;">这条走法的探索详情</h3>' +
-        '<p style="font-size:12px;color:#A16207;line-height:1.6;">完整路线结构仍是探索草案；没有当期班期、衔接、票价或可执行保证。</p>';
+        '<h3 style="font-size:17px;margin:0;">走法详情</h3>' +
+        '<p style="font-size:12px;color:var(--mixtouring-muted-foreground);line-height:1.6;">当前展示路线结构；出行前请查询各段班次、价格与接驳。</p>';
       html += journeyLegsHtml(detail.outbound, '去程 · ' + (detail.outbound_window ? MT.esc(detail.outbound_window) : '日期待补'));
       if (detail.trip_type === 'round_trip') {
         html += journeyLegsHtml(detail.inbound, '返程 · ' + (detail.return_window ? MT.esc(detail.return_window) : '日期待补'));
-        html += '<p style="font-size:11.5px;color:var(--mixtouring-muted-foreground);">' + MT.esc(detail.return_note) + '</p>';
+        html += '<p style="font-size:11.5px;color:var(--mixtouring-muted-foreground);">返程请单独查询班次，不能沿用去程结果。</p>';
       }
       if (detail.candidate_kind !== 'direct') {
         html += '<div style="margin-top:14px;font-size:12.5px;">路上多玩一座城市（可选）</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">' +
           [0, 1, 2].map(function (n) { return '<button type="button" class="btnStay" data-nights="' + n + '" style="min-height:44px;padding:8px 14px;border:1px solid var(--mixtouring-border);border-radius:10px;background:' + (n === activeNights ? 'var(--mixtouring-primary);color:#fff;' : '#fff;color:var(--mixtouring-foreground);') + 'font-family:inherit;cursor:pointer;">' + (n ? '停 ' + n + ' 晚' : '不安排停留') + '</button>'; }).join('') + '</div>';
       }
-      if (detail.stopover) html += '<p style="font-size:12.5px;color:#A16207;line-height:1.7;">在 ' + MT.esc(detail.stopover.city) + ' 停 ' + detail.stopover.nights + ' 晚；后半程、单人住宿和返程均需按实际日期核查。当前无法计算新增费用或确认衔接。</p>';
-      html += '<div style="margin-top:14px;padding:12px;background:var(--mixtouring-muted);border-radius:12px;font-size:12px;line-height:1.7;">费用：已核总额未知。待查：' + detail.cost.unknown_items.map(MT.esc).join('；') + '</div>';
-      html += '<h4 style="font-size:14px;margin:18px 0 8px;">逐段核验清单</h4>' + detail.checklist.map(function (row) {
+      if (detail.stopover) html += '<p style="font-size:12.5px;line-height:1.7;">在 ' + MT.esc(detail.stopover.city) + ' 停 ' + detail.stopover.nights + ' 晚。住宿与后续交通可在确定停留日期后查询。</p>';
+      html += '<details style="margin-top:14px;padding:12px;background:var(--mixtouring-muted);border-radius:12px;font-size:12px;line-height:1.7;"><summary style="cursor:pointer;min-height:28px;">查看费用与逐段待查项</summary>';
+      html += '<div style="margin-top:8px;">费用待查：' + detail.cost.unknown_items.map(MT.esc).join('；') + '</div>';
+      html += '<h4 style="font-size:14px;margin:18px 0 8px;">逐段待查项</h4>' + detail.checklist.map(function (row) {
         return '<div style="padding:9px 0;border-bottom:1px solid var(--mixtouring-border);font-size:12px;line-height:1.7;">' +
           (row.direction === 'outbound' ? '去程' : '返程') + ' · ' + MT.esc(row.segment) +
           '<div style="color:#A16207;">待核：' + row.missing.map(MT.esc).join('、') + '</div>' +
           '<div style="color:var(--mixtouring-muted-foreground);">' + MT.esc(row.manual_check) + '</div></div>';
-      }).join('');
+      }).join('') + '</details>';
       /* 卡 A：保存到我的行程（私人草案）——恢复时重新规划，不把快照当事实 */
       var cand = activePlan.candidates.find(function (c) { return c.id === activeCandidate; });
       var draftName = (activePlan.intent.origin || '') + ' → ' + (activePlan.intent.destination || '');
       html += '<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--mixtouring-border);">' +
         '<button id="btnSaveDraft" type="button" style="min-height:44px;padding:10px 18px;background:none;border:1px solid var(--mixtouring-ring);border-radius:10px;font-family:inherit;font-size:13px;color:var(--mixtouring-ring);cursor:pointer;">保存到我的行程（私人草案）</button>' +
-        '<div id="draftSaveNote" style="font-size:11.5px;color:var(--mixtouring-muted-foreground);margin-top:8px;line-height:1.6;">草案仅保存在本浏览器（清理浏览器数据可能丢失）；恢复时会重新规划并重新确认开放地点，不把保存时的走法当已核事实。</div></div>';
+        '<div id="draftSaveNote" style="font-size:11.5px;color:var(--mixtouring-muted-foreground);margin-top:8px;line-height:1.6;">草案保存在当前浏览器；恢复时会按当前条件重新规划。</div></div>';
       html += '<div style="margin-top:16px;"><label style="font-size:12px;">用一句话修改本次条件<input id="editPrompt" type="text" placeholder="例如：不要夜间到达，最多换一次；或在中转城市停两晚" style="display:block;width:100%;box-sizing:border-box;margin-top:6px;padding:10px;border:1px solid var(--mixtouring-border);border-radius:10px;font:inherit;" /></label>' +
         '<button id="btnApplyEdit" type="button" style="margin-top:9px;min-height:44px;padding:9px 16px;background:var(--mixtouring-primary);color:#fff;border:0;border-radius:10px;font-family:inherit;cursor:pointer;">重新规划并核对</button> ' +
         '<button id="btnEditForm" type="button" style="min-height:44px;padding:9px 16px;background:var(--mixtouring-muted);border:0;border-radius:10px;font-family:inherit;cursor:pointer;">修改上方条件</button></div>';
@@ -656,97 +643,6 @@
       });
     }
 
-    /* ---------- 已取证样本层：两端均为词典城市时后台查询 G0 fixture / 国内样本库 ---------- */
-    var STATE_LABEL = {
-      explore: ['探索态', '这条路线还没有已取证样本'],
-      historical: ['历史参考', '样本为真实来源但未绑定本次出行日期'],
-      dated_partial: ['部分核验', '部分段已绑定指定日期证据，仍有缺口'],
-      dated_verified: ['指定日期可核验', '双向证据齐备（仍需到原平台确认余票）'],
-      stale: ['样本已过期', '证据超过有效期，请重新查询'],
-      unsupported: ['暂不支持', '查询不合法或超出覆盖范围']
-    };
-    function stateBadge(state) {
-      var s = STATE_LABEL[state] || [state, ''];
-      var color = state === 'dated_verified' ? '#1E7F45' : state === 'stale' || state === 'unsupported' ? '#A16207' : '#A8543A';
-      return '<span style="font-size:12px;padding:4px 12px;border-radius:9999px;background:rgba(200,106,75,0.08);color:' + color + ';">证据状态 · ' + MT.esc(s[0]) + '</span>' +
-        '<div style="font-size:12px;color:var(--mixtouring-muted-foreground);margin-top:6px;">' + MT.esc(s[1]) + '</div>';
-    }
-    function evidenceLine(seg) {
-      var sampled = seg.sampled_at ? '取样于 ' + MT.esc(String(seg.sampled_at).slice(0, 10)) : '<span style="color:#A16207;">取样时间待核验</span>';
-      var valid = seg.valid_for_date ? '适用于 ' + MT.esc(seg.valid_for_date) : '<span style="color:#A16207;">适用日期待核验</span>';
-      return sampled + ' · ' + valid;
-    }
-    function loadSample(data) {
-      var o = data.intent.origin_place, d = data.intent.destination_place;
-      var box = document.getElementById('sampleArea');
-      if (!box || !o || !d || o.dynamic || d.dynamic) return; /* 动态地点无词典 fixture，不假装有样本 */
-      if (data.route.route_type === 'domestic') {
-        box.innerHTML = '<div style="padding:14px 16px;border-radius:14px;background:var(--mixtouring-muted);font-size:12.5px;line-height:1.7;">' +
-          '这条国内路线有历史样本库（真实来源、历史/样本口径参考）。' +
-          '<a href="results.html?' + new URLSearchParams({ from: o.name, to: d.name, source: 'trip' }).toString() + '" target="_blank" rel="noopener" style="color:#1E7F45;">另开国内历史参考 ›</a></div>';
-        return;
-      }
-      post('/api/trip/search', { origin: o.name, destination: d.name, trip_type: data.intent.trip_type || 'pending', outbound_window: data.intent.outbound_window || null, return_window: data.intent.return_window || null, traveler_count: data.intent.traveler_count || 1, currency: 'CNY' }).then(function (res) {
-        if (res.code !== 0 || !res.data || !res.data.strategies.length) return; /* 无 fixture：静默不加层（上文假设层已完整） */
-        renderSample(res.data);
-      }).catch(function () { /* 样本层失败不影响假设层 */ });
-    }
-    var lastSampleQuery = null, lastSampleStrategyId = null;
-    function renderSample(data) {
-      var box = document.getElementById('sampleArea');
-      if (!box) return;
-      var html = '<div style="padding:16px;border-radius:16px;background:var(--mixtouring-muted);margin-top:4px;">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">' +
-        '<div style="font-size:13.5px;">已取证样本参考（真实班期证据，独立于上方假设层）</div>' + stateBadge(data.evidence_state) + '</div>';
-      var st = data.strategies[0];
-      lastSampleQuery = data.query;
-      lastSampleStrategyId = st.id || null;
-      st.structure.forEach(function (seg) {
-        var depTz = seg.depart_time_zone ? MT.esc(seg.depart_time_zone) : '<span style="color:#A16207;">出发时区待核验</span>';
-        var arrTz = seg.arrive_time_zone ? MT.esc(seg.arrive_time_zone) : '<span style="color:#A16207;">抵达时区待核验</span>';
-        var depDate = seg.depart_date ? MT.esc(seg.depart_date) : '<span style="color:#A16207;">日期待核验</span>';
-        var arrDate = seg.arrive_date ? MT.esc(seg.arrive_date) : '<span style="color:#A16207;">日期待核验</span>';
-        var crossDay = seg.arrive_date && seg.depart_date && seg.arrive_date !== seg.depart_date;
-        var crossMark = crossDay ? ' <span style="color:#A16207;">（' + (seg.arrive_date > seg.depart_date ? '跨日' : '跨时区') + '到达）</span>' : '';
-        html += '<div style="margin-top:12px;padding:12px 14px;border-radius:12px;background:var(--mixtouring-card);">' +
-          '<div style="font-size:13px;">' + (seg.direction === 'outbound' ? '去程' : '返程') +
-          (seg.service_no ? ' · <strong>' + MT.esc(seg.service_no) + '</strong>' : ' · <span style="color:#A16207;">班次待核验</span>') + '</div>' +
-          '<div style="font-size:12.5px;color:var(--mixtouring-muted-foreground);margin-top:4px;">' + MT.esc(seg.origin_terminal) + ' → ' + MT.esc(seg.destination_terminal) + '</div>' +
-          '<div style="font-size:12.5px;margin-top:4px;">' + depDate + ' ' + MT.esc(seg.depart_local) + '（' + depTz + '）→ ' + arrDate + ' ' + MT.esc(seg.arrive_local) + '（' + arrTz + '）' + crossMark + '</div>' +
-          '<div style="font-size:11.5px;color:var(--mixtouring-muted-foreground);margin-top:4px;">' + evidenceLine(seg) + '</div>' +
-          (seg.source_url && /^https:/.test(seg.source_url) ? '<a href="' + MT.esc(seg.source_url) + '" target="_blank" rel="noopener" style="font-size:11.5px;color:#1E7F45;">来源 ›</a>' : '<span style="font-size:11.5px;color:#A16207;">来源待核验</span>') +
-          '</div>';
-      });
-      if (st.price_samples && st.price_samples.length) {
-        html += '<div style="margin-top:12px;font-size:12px;color:var(--mixtouring-muted-foreground);">价格样本（非当日可购报价）：' +
-          st.price_samples.map(function (p) { return MT.esc(String(p.amount) + ' ' + p.currency + '（' + p.scope + '，样本日 ' + (p.sampled_at || '').slice(0, 10) + '）'); }).join('；') + '</div>';
-      }
-      if (st.cost_breakdown && st.cost_breakdown.unknown_costs && st.cost_breakdown.unknown_costs.length) {
-        html += '<div style="margin-top:10px;font-size:12px;color:#A16207;">待核验费用：' +
-          st.cost_breakdown.unknown_costs.map(function (u) { return MT.esc(u.item); }).join('、') + '</div>';
-      }
-      (st.warnings || []).forEach(function (w) {
-        html += '<div style="margin-top:8px;font-size:12px;color:#A16207;">⚠ ' + MT.esc(w) + '</div>';
-      });
-      html += '<div style="margin-top:10px;font-size:11.5px;color:var(--mixtouring-muted-foreground);">样本为部分核验/历史口径；完整往返比较需按样本日期窗补充返程后重新核验。</div>';
-      html += '<button id="btnChecklist" style="margin-top:12px;background:none;border:0.5px solid var(--mixtouring-border);border-radius:10px;padding:9px 16px;font-size:12.5px;font-family:inherit;cursor:pointer;color:var(--mixtouring-ring);">展开逐段核验清单</button>';
-      html += '<div id="checklistBox" style="margin-top:10px;"></div></div>';
-      box.innerHTML = html;
-      var btn = document.getElementById('btnChecklist');
-      if (btn) btn.addEventListener('click', function () {
-        post('/api/trip/checklist', { query: lastSampleQuery, strategy_id: lastSampleStrategyId }).then(function (res) {
-          var cbox = document.getElementById('checklistBox');
-          if (res.code !== 0) { cbox.innerHTML = '<div style="font-size:12.5px;color:#A16207;">' + MT.esc(res.msg || '核验清单获取失败，请重新检索') + '</div>'; return; }
-          cbox.innerHTML = res.data.checklist.map(function (r) {
-            return '<div style="padding:10px 12px;border-radius:12px;background:var(--mixtouring-card);margin-bottom:8px;">' +
-              '<div style="font-size:12.5px;">' + (r.direction === 'outbound' ? '去程' : '返程') + (r.service_no ? ' · ' + MT.esc(r.service_no) : '') + ' · ' + MT.esc(r.segment) + '</div>' +
-              '<div style="font-size:11.5px;color:var(--mixtouring-muted-foreground);margin-top:4px;">' + MT.esc(r.local_times) + ' · ' + MT.esc(r.query_entry) + '</div>' +
-              (r.missing.length ? '<div style="font-size:11.5px;color:#A16207;margin-top:4px;">待核：' + r.missing.map(MT.esc).join('、') + '</div>' : '<div style="font-size:11.5px;color:#1E7F45;margin-top:4px;">段信息齐备（仍需到原平台确认）</div>') +
-              '</div>';
-          }).join('') + '<div style="font-size:11.5px;color:var(--mixtouring-muted-foreground);">' + MT.esc(res.data.note) + '</div>';
-        });
-      });
-    }
   })();  </script>
 </body>
 </html>
