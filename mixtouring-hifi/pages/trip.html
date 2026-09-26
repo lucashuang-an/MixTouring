@@ -194,9 +194,28 @@
           var restore = pendingRestore; pendingRestore = null;
           if (restore.candidate_id && res.data.candidates.some(function (c) { return c.id === restore.candidate_id; })) {
             openJourney(restore.candidate_id, restore.nights, !!restore.record);
-          } else {
-            if (restore.record) recordRevision(null, 0);
-            if (restore.candidate_id) MT.toast('修改后原走法不再符合条件，请从当前候选中重新选择');
+          } else if (restore.draft_id && restore.ver) {
+            /* 二十二轮 P1-1：草案恢复——按走法结构（段数/方式序列/枢纽）匹配等价候选，匹配则恢复停留；无等价保留旧摘要提示重选 */
+            var legSig = function (c) { return c.legs.map(function (l) { return l.mode_guess; }).join('+'); };
+            var wantHub = restore.hub;
+            var eq = res.data.candidates.filter(function (c) {
+              return c.kind !== 'direct' && c.legs.length > 1 &&
+                (!wantHub || c.legs[1].from === wantHub) &&
+                (restore.modes ? legSig(c) === restore.modes : true);
+            });
+            if (eq.length) {
+              MT.toast('已匹配原走法（按当前供给重新规划）；开放地点已重新确认');
+              openJourney(eq[0].id, restore.nights, false);
+            } else {
+              var oldDesc = (restore.label || '原走法') + (wantHub ? '（经 ' + wantHub + '）' : '') + (restore.nights ? '，含停留 ' + restore.nights + ' 晚' : '');
+              var noteBox = document.getElementById('journeyArea');
+              if (noteBox) noteBox.innerHTML = '<div class="detail-card" style="border:1px solid #A16207;border-radius:14px;padding:14px;margin-top:12px;">' +
+                '<div style="font-size:13px;color:#A16207;">原走法待重新查</div>' +
+                '<div style="font-size:12px;color:var(--mixtouring-muted-foreground);line-height:1.7;margin-top:6px;">草案「' + MT.esc(oldDesc) + '」在当前供给下没有等价候选。上方为当前可探索的走法，请重新选择；核实后原走法方向仍可另行探索。</div></div>';
+              MT.toast('原走法暂无等价候选：请从当前走法中重新选择');
+            }
+          } else if (restore.candidate_id) {
+            MT.toast('修改后原走法不再符合条件，请从当前候选中重新选择');
           }
         }
       }).catch(function () { pendingRestore = null; resultArea.innerHTML = ''; MT.toast('规划服务不可用'); });
@@ -246,6 +265,12 @@
         MT.toast('草案缺少起终点信息，请手动输入');
         return;
       }
+      /* 二十二轮 P1-1：恢复目标=草案 ID/版本 + 原走法结构（hub/mode 序列）+ 停留晚数；
+       * 规划完成后按结构匹配等价候选自动打开详情并恢复停留；无等价候选保留旧摘要提示重选 */
+      pendingRestore = {
+        draft_id: q.get('draft'), ver: q.get('ver'),
+        hub: q.get('hub'), label: q.get('clabel'), nights: Number(q.get('nights')) || 0, modes: q.get('modes') || ''
+      };
       MT.toast('已从草案回填，正在重新规划（开放地点须重新确认）');
       requestPlan();
     })();
@@ -589,7 +614,7 @@
           travel: collectTravel(), constraints: collectConstraints(),
           place_names: { origin: activePlan.intent.origin_place ? activePlan.intent.origin_place.name : null, destination: activePlan.intent.destination_place ? activePlan.intent.destination_place.name : null },
           confirmed_note: { origin: activePlan.intent.origin_place && activePlan.intent.origin_place.dynamic ? '当时为开放地点确认（恢复须重新核验确认）' : null, destination: activePlan.intent.destination_place && activePlan.intent.destination_place.dynamic ? '当时为开放地点确认（恢复须重新核验确认）' : null },
-          candidate: { id: activeCandidate, label: cand2 ? candidateTitle(cand2) : '待重新选择走法', kind: cand2 ? cand2.kind : null, hub: cand2 && cand2.legs.length > 1 ? cand2.legs[1].from : null },
+          candidate: { id: activeCandidate, label: cand2 ? candidateTitle(cand2) : '待重新选择走法', kind: cand2 ? cand2.kind : null, hub: cand2 && cand2.legs.length > 1 ? cand2.legs[1].from : null, modes: cand2 ? cand2.legs.map(function (l) { return l.mode_guess; }).join('+') : '' },
           nights: activeNights, engine: activePlan.intent.parse_engine
         };
         var res = MTDrafts.save(name2, snapshot);
