@@ -136,6 +136,62 @@ const snap = (over = {}) => Object.assign({
   ok(ln.drafts.length === 1 && ln.corrupted_ids.length === 1, 'P2 反例：null 快照草案隔离，好草案仍显示（列表不抛错）');
 }
 
+/* ---------- 二十四轮：混合好坏版本保留、旧版身份稳定 ---------- */
+{
+  const valid = (name, nights, vid) => ({
+    id: name, name, created_at: 'x', updated_at: 'x',
+    versions: [{ ...(vid ? { vid } : {}), version: 1,
+      snapshot: { request: { origin: '北京', destination: '喀什' }, nights }, saved_at: 'x' }]
+  });
+  const env = makeEnv({ preset: { 'mt:drafts': JSON.stringify({
+    d1: valid('d1', 1), d2: valid('d2', 2), d3: valid('d3', 3, 'v1')
+  }) } });
+  const listed = env.MTDrafts.list();
+  const identities = listed.drafts.map((d) => d.versions[0].vid);
+  ok(new Set(identities).size === 3 && identities.every(Boolean),
+    '二十四轮：多份旧草案迁移后，跨草案 vid 唯一');
+  ok(listed.drafts.every((d) => env.MTDrafts.get(d.id).versions[0].vid === d.versions[0].vid),
+    '二十四轮：list/get 对同一旧版本返回相同 vid');
+  const persisted = env.ls.getItem('mt:drafts');
+  const reloaded = makeEnv({ preset: { 'mt:drafts': persisted } });
+  ok(reloaded.MTDrafts.list().drafts.every((d) =>
+    listed.drafts.find((old) => old.id === d.id).versions[0].vid === d.versions[0].vid),
+  '二十四轮：迁移写回后刷新，旧版本 vid 不变');
+  const before = reloaded.MTDrafts.get('d2').versions[0];
+  reloaded.MTDrafts.save('d2', snap({ nights: 4 }));
+  const after = reloaded.MTDrafts.get('d2');
+  ok(after.versions.some((v) => v.vid === before.vid && v.snapshot.nights === 2) &&
+    new Set(reloaded.MTDrafts.list().drafts.flatMap((d) => d.versions.map((v) => v.vid))).size === 4,
+  '二十四轮：追加新版后旧版仍按原 vid 精确恢复，全部 vid 唯一');
+  const blocked = makeEnv({ quotaExceeded: true, preset: { 'mt:drafts': JSON.stringify({ d1: valid('d1', 1), d2: valid('d2', 2) }) } });
+  const blockedRaw = blocked.ls.getItem('mt:drafts');
+  const blockedList = blocked.MTDrafts.list();
+  ok(blockedList.drafts.every((d) => blocked.MTDrafts.get(d.id).versions[0].vid === d.versions[0].vid) &&
+    blocked.ls.getItem('mt:drafts') === blockedRaw && blocked.MTDrafts.save('d1', snap()).reason === 'write_failed',
+  '二十四轮：迁移写入受限时读取身份仍稳定，原文不变且保存如实失败');
+}
+{
+  const mixed = { id: 'mixed', name: '部分损坏', created_at: 'x', updated_at: 'x', versions: [
+    { version: 1, snapshot: { request: { origin: '北京', destination: '喀什' }, nights: 2 }, saved_at: 'x' },
+    { version: 2, snapshot: null, saved_at: 'x' }
+  ] };
+  const bad = { id: 'bad', name: '全损坏', versions: [{ version: 1, snapshot: null, saved_at: 'x' }] };
+  const env = makeEnv({ preset: { 'mt:drafts': JSON.stringify({ mixed, bad }) } });
+  const shown = env.MTDrafts.list();
+  ok(shown.drafts.length === 1 && shown.drafts[0].corrupted_version_count === 1 &&
+    shown.drafts[0].versions[0].snapshot.nights === 2 && shown.corrupted_ids.join() === 'bad',
+  '二十四轮：混合好坏版本只隔离坏版本，好版本仍可恢复');
+  const rawBeforePurge = JSON.parse(env.ls.getItem('mt:drafts'));
+  ok(rawBeforePurge.mixed.versions.length === 2 && rawBeforePurge.mixed.versions[1].snapshot === null,
+    '二十四轮：迁移不静默删除损坏版本原文');
+  const purged = env.MTDrafts.purgeCorrupted();
+  const rawAfterPurge = JSON.parse(env.ls.getItem('mt:drafts'));
+  ok(purged.ok && purged.removed.join() === 'bad' &&
+    rawAfterPurge.mixed.versions.length === 2 &&
+    env.MTDrafts.get('mixed').versions[0].snapshot.nights === 2,
+  '二十四轮：清理只删除全损坏条目，混合草案与好版本保留');
+}
+
 /* ---------- 失败场景：坏快照入参 / 存储拒写 ---------- */
 {
   const { MTDrafts } = makeEnv();

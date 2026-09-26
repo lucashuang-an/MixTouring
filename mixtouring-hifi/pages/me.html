@@ -256,7 +256,7 @@
       }
       if (res.store_corrupted) {
         var raw = localStorage.getItem(MTDrafts.DRAFT_KEY);
-        html += '<div class="detail-card p-4" style="border:1px solid #A8543A;"><div style="font-size:13px;color:#A8543A;">本地草案存储数据损坏，为保护原数据已暂停读写。</div>' +
+        html += '<div class="detail-card p-4" style="border:1px solid #A8543A;"><div id="corruptStatus" style="font-size:13px;color:#A8543A;">本地草案存储数据损坏，为保护原数据已暂停读写。</div>' +
           '<div style="font-size:12px;color:var(--mixtouring-muted-foreground,#7C8089);margin-top:6px;line-height:1.7;">第一步：先复制/导出下方原文备份（清空前始终可见）。</div>' +
           '<textarea id="corruptBackup" readonly style="width:100%;height:90px;margin-top:6px;font-family:monospace;font-size:11px;box-sizing:border-box;"></textarea>' +
           '<button type="button" id="btnSelectBackup" style="min-height:40px;margin-top:6px;padding:7px 14px;border:1px solid var(--mixtouring-border,#E5E7EB);border-radius:9px;background:#fff;font-family:inherit;font-size:12px;cursor:pointer;">全选备份文本</button>' +
@@ -265,16 +265,25 @@
         wrap.innerHTML = html;
         var backupEl = document.getElementById('corruptBackup');
         if (raw != null) backupEl.value = raw; /* 用 value 赋值，不经 innerHTML，防 </textarea> 破坏结构 */
-        document.getElementById('btnSelectBackup').addEventListener('click', function () { backupEl.select(); try { document.execCommand('copy'); MT.toast('备份已复制'); } catch (e) {} });
+        document.getElementById('btnSelectBackup').addEventListener('click', function () {
+          backupEl.select();
+          var copied = false;
+          try { copied = document.execCommand('copy'); } catch (e) {}
+          MT.toast(copied ? '备份已复制，请保存到本机' : '备份文本已选中，请手动复制保存');
+        });
         document.getElementById('btnResetStore').addEventListener('click', function () {
           if (!confirm('确认已备份？清空后草案存储将被移除（备份文本仍在页面上）。')) return;
           var res2 = MTDrafts.resetAll();
           var note = document.createElement('div');
           note.style.cssText = 'font-size:12px;margin-top:8px;line-height:1.7;';
-          if (res2.ok) note.innerHTML = '已清空。上方备份文本仍可复制，可据此人工恢复。';
+          if (res2.ok) {
+            document.getElementById('corruptStatus').textContent = '本地草案存储已清空。';
+            document.getElementById('btnResetStore').disabled = true;
+            document.getElementById('btnResetStore').textContent = '已清空';
+            note.textContent = '上方备份文本仍可复制，可据此人工恢复。刷新或离开本页前请保存副本。';
+          }
           else note.textContent = '清空失败（' + res2.reason + '），请稍后重试。';
           wrap.appendChild(note);
-          renderDrafts();
         });
         return;
       }
@@ -297,6 +306,7 @@
           '<div style="font-size:14px;font-weight:500;">' + MT.esc(d.name) + '</div>' +
           '<div style="font-size:11px;color:var(--mixtouring-muted-foreground,#7C8089);">更新于 ' + MT.esc(String(d.updated_at || '').slice(0, 10)) + '</div></div>' +
           '<div style="font-size:12px;color:var(--mixtouring-muted-foreground,#7C8089);margin-top:4px;line-height:1.7;">' + MT.esc(summary.join(' · ')) + ' · ' + d.versions.length + ' 个版本</div>' +
+          (d.corrupted_version_count ? '<div style="font-size:11.5px;color:#A16207;margin-top:4px;">另有 ' + d.corrupted_version_count + ' 个版本损坏，原始记录已保留；其他版本仍可恢复。</div>' : '') +
           '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">' +
           '<button type="button" class="btnDraftOpen" data-id="' + MT.esc(d.id) + '" style="min-height:40px;padding:8px 14px;border:1px solid var(--mixtouring-ring,#C86A4B);border-radius:9px;background:#fff;color:var(--mixtouring-ring,#C86A4B);font-family:inherit;font-size:12.5px;cursor:pointer;">版本与恢复</button>' +
           '<button type="button" class="btnDraftRename" data-id="' + MT.esc(d.id) + '" style="min-height:40px;padding:8px 14px;border:1px solid var(--mixtouring-border,#E5E7EB);border-radius:9px;background:#fff;font-family:inherit;font-size:12.5px;cursor:pointer;">重命名</button>' +
