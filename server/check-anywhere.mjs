@@ -681,7 +681,7 @@ const NO_DIGIT_RE = /\d/;
     '编排：web_search 已配置时逐段挂相关线索（source_lead）');
   ok(r6.web_search && r6.web_search.configured === true && r6.web_search.status === 'quota_exhausted',
     'P1-4：规划响应如实带 web_search 配置与最近真实状态（configured ≠ available）');
-  ok(r6.planner_version === 'v0.43.1', '编排：anywhere 版本号对齐 v0.43.1');
+  ok(r6.planner_version === 'v0.43.3', '编排：anywhere 版本号对齐 v0.43.3');
 
   const r7 = await planAnywhere({ text: '想去新疆最西边那座古城玩' },
     { callJson: async () => ({ origin: '北京', destination: '喀什' }), env: {}, osmSearch: async () => [] });
@@ -736,6 +736,13 @@ const NO_DIGIT_RE = /\d/;
     modelFn: async () => ({ routes: [{ stops: ['银川'], modes: ['plane', 'road'], source_ids: [1] }] })
   });
   ok(noRoad.routes.length === 0, '发现守门：风景内容不支持跨境公路客运连接');
+  for (const [hub, content] of [['大连', '北京 大连 喀什 大巴客运'], ['银川', '北京 银川 喀什 公路货运物流 汽车托运']]) {
+    const unsafe = await discoverRoutes(resolvePlace('北京'), resolvePlace('喀什'), {
+      searchFn: async () => [{ title: content, content, link: 'https://example.org/negative' }],
+      modelFn: async () => ({ routes: [{ stops: [hub], modes: ['plane', 'road'], source_ids: [1] }] })
+    });
+    ok(unsafe.routes.length === 0, '发现守门：拒绝反向绕行或货运误作客运：' + hub);
+  }
 }
 
 console.log(fail === 0

@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { loadPlaces } from './trip-service.mjs';
+import { assessRoute } from '../../pipeline/lib/geo-skill.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const GEO = JSON.parse(readFileSync(join(ROOT, 'pipeline/data/cities-geo.json'), 'utf8')).cities;
@@ -79,13 +80,30 @@ export async function discoverRoutes(origin, destination, { searchFn, modelFn, u
     const stops = trimmed.filter((name) => !via.includes(name));
     if (!Array.isArray(stops) || !stops.length || stops.length > 3 || new Set(stops).size !== stops.length ||
       stops.some((name) => !mentions.includes(name))) continue;
-    const modes = proposal.modes;
+    const modes = Array.isArray(proposal.modes) ? [...proposal.modes] : proposal.modes;
     if (!Array.isArray(modes) || modes.length !== stops.length + 1 || modes.some((mode) => !MODES.has(mode))) continue;
     const ids = Array.isArray(proposal.source_ids) ? proposal.source_ids : [];
     const support = leads.filter((r) => ids.includes(r.id) && stops.some((s) => leadText(r).includes(s)));
     const finalConnection = support.some((r) => leadText(r).includes(stops[stops.length - 1]) &&
       leadText(r).includes(destination.name));
     if (!finalConnection || stops.some((s) => !support.some((r) => leadText(r).includes(s)))) continue;
+    /* 搜索提出的绕行尚无经过评审的体验理由，先拦截反向或过度绕行；策展灵感另走结构复用。 */
+    if (assessRoute(origin.name, destination.name, stops).verdict === 'non_mainstream') continue;
+    const nodes = [origin.name, ...stops, destination.name];
+    const modeWords = { plane: /航班|航空|飞机|机场|flight|airport/i, rail: /客运|列车|火车|高铁|铁路|train|rail/i,
+      road: /客运|班车|大巴|长途汽车|bus|coach/i };
+    let unsupportedRoad = false;
+    modes.forEach((mode, i) => {
+      if (mode === 'unknown') return;
+      const supported = support.some((r) => {
+        const body = leadText(r);
+        return body.includes(nodes[i]) && body.includes(nodes[i + 1]) && modeWords[mode].test(body) &&
+          !/物流|货运|货车|货物|托运|freight|cargo/i.test(body);
+      });
+      if (!supported && mode === 'road') unsupportedRoad = true;
+      else if (!supported) modes[i] = 'unknown';
+    });
+    if (unsupportedRoad) continue;
     if (modes[modes.length - 1] === 'road' && !support.some((r) => {
       const body = leadText(r);
       return body.includes(stops[stops.length - 1]) && body.includes(destination.name) &&

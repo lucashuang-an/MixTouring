@@ -304,7 +304,7 @@ async function main() {
   const caps = await (await fetch(BASE + '/api/capabilities')).json();
   if (caps.code === 0 && typeof caps.data.web_search_configured === 'boolean' &&
     ['available', 'quota_exhausted', 'timeout', 'error', 'unknown'].includes(caps.data.web_search_status) &&
-    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.43.1') {
+    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.43.3') {
     console.log('✓ /api/capabilities P1-4：configured 与最近真实状态分开（web_search_configured=' +
       caps.data.web_search_configured + ', status=' + caps.data.web_search_status + '），版本拆分对齐');
   } else { failed++; console.error('✗ /api/capabilities 形状异常：' + JSON.stringify(caps).slice(0, 200)); }
@@ -366,6 +366,17 @@ async function main() {
     console.log('✓ /api/anywhere/plan one_way + 返程窗 → 返程清空 + 纠正提示（无「单程＋返程日期」矛盾）');
   } else { failed++; console.error('✗ /api/anywhere/plan 单程仍带返程窗：' + JSON.stringify(ttA).slice(0, 200)); }
 
+  const inspirations = await (await fetch(BASE + '/api/inspirations')).json();
+  const streamResponse = await fetch(BASE + '/api/anywhere/plan', { method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ origin: '北京', destination: '喀什', inspiration_id: 'tpl-001', progressive: true }) });
+  const events = (await streamResponse.text()).trim().split('\n').map((line) => JSON.parse(line));
+  const structured = events.at(-1)?.data?.candidates.find((c) => c.inspiration_id === 'tpl-001');
+  if (inspirations.data?.length === 9 && events[0]?.phase === 'base' && events.at(-1)?.phase === 'complete' && structured?.legs.length === 3) {
+    const detail = await (await fetch(BASE + '/api/anywhere/journey', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ plan_id: events.at(-1).data.plan_id, candidate_id: structured.id, stopover_nights: 2 }) })).json();
+    if (detail.code === 0 && detail.data.stopover.city === '银川' && detail.data.cost.known_total === null) console.log('✓ 渐进接口输出两阶段且灵感结构可接详情，旧价不继承');
+    else { failed++; console.error('✗ 渐进灵感详情契约不一致'); }
+  } else { failed++; console.error('✗ 路线灵感或渐进输出契约不一致'); }
   console.log(failed ? `\n✗ ${failed} 项不一致` : '\n✓ 全部接口与 mock.js 派生结果一致');
   process.exit(failed ? 1 : 0);
 }

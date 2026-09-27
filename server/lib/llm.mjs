@@ -61,11 +61,12 @@ function searchText(value) {
     })[entity] || (entity === '&nbsp;' ? ' ' : entity)).replace(/\s+/g, ' ').trim();
 }
 
-async function searchPublicIndex(query, limit, timeoutMs) {
+async function searchPublicIndex(query, limit, timeoutMs, signal) {
   if (Date.now() < PUBLIC_SEARCH_RETRY_AT) return null;
   try {
     const url = 'https://www.so.com/s?' + new URLSearchParams({ q: String(query).slice(0, 100) });
-    const res = await fetch(url, { signal: AbortSignal.timeout(Math.min(timeoutMs, 8000)) });
+    const timeout = AbortSignal.timeout(Math.min(timeoutMs, 8000));
+    const res = await fetch(url, { signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
     if (!res.ok || !/html/i.test(res.headers.get('content-type') || '')) return null;
     const html = (await res.text()).slice(0, 600000);
     if (html.includes('<title>访问异常页面</title>')) {
@@ -95,10 +96,10 @@ async function searchPublicIndex(query, limit, timeoutMs) {
 /** 最近一次 searchWeb 真实调用的状态（浅拷贝，不泄露凭据）；从未调用过为 unknown */
 export function webSearchStatus() { return { ...SEARCH_STATE }; }
 
-export async function searchWeb(query, { limit = 5, timeoutMs = 30000 } = {}) {
+export async function searchWeb(query, { limit = 5, timeoutMs = 30000, signal } = {}) {
   if (!llmConfigured()) return null;
   if (Date.now() < SEARCH_QUOTA_UNTIL) {
-    const fallback = await searchPublicIndex(query, limit, timeoutMs);
+    const fallback = await searchPublicIndex(query, limit, timeoutMs, signal);
     markSearch(fallback ? 'available' : 'quota_exhausted', fallback ? 'public-search' : null);
     return fallback;
   }
@@ -110,7 +111,7 @@ export async function searchWeb(query, { limit = 5, timeoutMs = 30000 } = {}) {
         search_engine: process.env.LLM_SEARCH_ENGINE || 'search_std',
         search_query: String(query).slice(0, 100)
       }),
-      signal: AbortSignal.timeout(timeoutMs)
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs)
     });
     if (!res.ok) {
       markSearch(res.status === 429 ? 'quota_exhausted' : 'error');
@@ -128,7 +129,7 @@ export async function searchWeb(query, { limit = 5, timeoutMs = 30000 } = {}) {
   } catch (err) {
     if (err && err.message === 'search HTTP 429') {
       SEARCH_QUOTA_UNTIL = Date.now() + 10 * 60 * 1000;
-      const fallback = await searchPublicIndex(query, limit, timeoutMs);
+      const fallback = await searchPublicIndex(query, limit, timeoutMs, signal);
       if (fallback) {
         markSearch('available', 'public-search');
         return fallback;
@@ -174,7 +175,7 @@ export async function callJson(opts) {
         authorization: `Bearer ${KEY}`
       },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(opts.timeoutMs || 30000)
+      signal: opts.signal ? AbortSignal.any([opts.signal, AbortSignal.timeout(opts.timeoutMs || 30000)]) : AbortSignal.timeout(opts.timeoutMs || 30000)
     });
     if (!res.ok) throw new Error('LLM HTTP ' + res.status);
     const resBody = await res.json();

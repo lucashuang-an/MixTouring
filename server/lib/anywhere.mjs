@@ -21,6 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { ANYWHERE_PLANNER_VERSION } from './versions.mjs';
 import { discoverRoutes } from './route-discovery.mjs';
+import { inspirationFor, inspirationRoute } from './inspirations.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -145,7 +146,7 @@ function sanitizeConstraints(raw) {
   if (Number.isFinite(l) && l > 0 && l <= 48) c.max_layover_hours = Math.round(l * 10) / 10;
   if (raw.night_arrival === 'avoid' || raw.night_arrival === 'allow') c.night_arrival = raw.night_arrival;
   const tr = Number(raw.max_transfers);
-  if (Number.isInteger(tr) && tr >= 0 && tr <= 2) c.max_transfers = tr;
+  if (raw.max_transfers != null && Number.isInteger(tr) && tr >= 0 && tr <= 2) c.max_transfers = tr;
   return c;
 }
 
@@ -197,6 +198,7 @@ function sanitizeIntentFields(raw) {
   if (['pending', 'round_trip', 'one_way'].includes(raw.trip_type)) out.trip_type = raw.trip_type;
   if (isValidWindow(raw.outbound_window)) out.outbound_window = raw.outbound_window;
   if (isValidWindow(raw.return_window)) out.return_window = raw.return_window;
+  if (isValidWindow(raw.arrival_window)) out.arrival_window = raw.arrival_window;
   const n = Number(raw.traveler_count);
   if (Number.isInteger(n) && n >= 1 && n <= 9) out.traveler_count = n;
   return out;
@@ -217,7 +219,7 @@ export function buildTravelIntent(text, explicit, nowMs = Date.now()) {
   const finalIntent = {
     trip_type: exp.trip_type || fields.trip_type || 'pending',
     outbound_window: exp.outbound_window || fields.outbound_window || null,
-    arrival_window: fields.arrival_window || null,
+    arrival_window: exp.arrival_window || fields.arrival_window || null,
     return_window: exp.return_window || retFromText,
     traveler_count: exp.traveler_count ?? traveler ?? 1
   };
@@ -996,26 +998,31 @@ export function buildCandidateSkeletons(o, d, constraints, llmHints = {}) {
   }
 
   /* 搜索先发现走廊，模型按来源组合城市；路段方式仍为猜测，逐段再查。 */
-  const existingStops = new Set(candidates.filter((c) => c.legs.length > 1)
-    .map((c) => c.legs.slice(0, -1).map((leg) => leg.to).join('→')));
+  const routeSignature = (stops, modes, via) => JSON.stringify([stops, modes.map((m) => m || 'unknown'), via || '']);
+  const existingStops = new Map(candidates.filter((c) => c.legs.length > 1)
+    .map((c) => [routeSignature(c.legs.slice(0, -1).map((leg) => leg.to), c.legs.map((l) => l.mode_guess), c.legs.at(-1).via), c]));
   for (const route of (llmHints.discovered_routes || [])) {
     if (!Array.isArray(route.stops) || !Array.isArray(route.modes) || route.modes.length !== route.stops.length + 1 ||
       !Array.isArray(route.sources) || !route.sources.length) continue;
-    const signature = route.stops.join('→');
-    if (existingStops.has(signature)) continue;
-    existingStops.add(signature);
+    const signature = routeSignature(route.stops, route.modes, (route.via || []).join('、'));
+    if (existingStops.has(signature)) {
+      if (route.inspiration_id) existingStops.get(signature).inspiration_id = route.inspiration_id;
+      continue;
+    }
     const nodes = [o, ...route.stops.map(hubNode), d];
     const legs = nodes.slice(0, -1).map((node, i) => newLeg(i + 1, node, nodes[i + 1], route.modes[i] === 'unknown' ? null : route.modes[i]));
     if (Array.isArray(route.via) && route.via.length) legs[legs.length - 1].via = route.via.join('、');
     candidates.push({
       id: 'cand-discovered-' + candidates.length, kind: 'discovered', hypothesis: true,
       transfers: route.stops.length, builder: 'search+llm',
-      basis: { rule: 'search-discovery', sources: route.sources }, legs,
-      explanation: '搜索资料提示可经' + route.stops.join('、') + '方向探索；逐段交通、实际换乘与日期衔接仍需确认',
+      basis: { rule: route.inspiration_id ? 'curated-inspiration' : 'search-discovery', sources: route.sources }, legs,
+      ...(route.inspiration_id ? { inspiration_id: route.inspiration_id } : {}),
+      explanation: (route.inspiration_id ? '所选路线灵感保留经' : '搜索资料提示可经') + route.stops.join('、') + '方向探索；逐段交通、实际换乘与日期衔接仍需确认',
       why_explore: '经' + route.stops.join('、') + '方向可比较沿途体验与直达的取舍；路线依据见详情',
       uncertain_leg: nodes.slice(0, -1).map((node, i) => segUncertain(node, nodes[i + 1])).join('；'),
       next_checks: ['核实各段客运连接与实际换乘点', '按本次日期核对班期、口岸流程和衔接时间']
     });
+    existingStops.set(signature, candidates[candidates.length - 1]);
   }
   const priority = { direct: 0, discovered: 1, one_transfer: 2, mixed: 3 };
   candidates.sort((a, b) => priority[a.kind] - priority[b.kind]);
@@ -1290,11 +1297,22 @@ export async function planAnywhere(input, deps = {}) {
   }
 
   const route = { route_type: routeTypeOf(o, d) };
+  const inspiration = input.inspiration_id ? inspirationFor(input.inspiration_id, o.name, d.name) : null;
+  const inspiredRoutes = inspiration ? [inspirationRoute(inspiration)] : [];
+
+  /* 先输出可用的规则方向，真实检索随后补充；所有快照使用同一份地点与意图。 */
+  const baseline = deps.onProgress ? buildCandidateSkeletons(o, d, constraints, { discovered_routes: inspiredRoutes }) : null;
+  if (baseline) deps.onProgress({
+    intent, route, needs_confirmation: travel.needs, place_candidates,
+    candidates: baseline.candidates, constraint_notes: baseline.constraint_notes,
+    degradations: baseline.degradations, explorations: baseline.explorations,
+    next_steps: [], planner_version: ANYWHERE_VERSION
+  });
 
   const wsReady = webSearchConfigured(env).configured;
   const searchFn = deps.searchWeb !== undefined ? deps.searchWeb : searchWebDefault;
   const discovery = wsReady && searchFn
-    ? await discoverRoutes(o, d, { searchFn, modelFn: callJson, useCache: deps.searchWeb === undefined && deps.callJson === undefined })
+    ? await discoverRoutes(o, d, { searchFn, modelFn: callJson, useCache: deps.useDiscoveryCache ?? (deps.searchWeb === undefined && deps.callJson === undefined) })
     : { routes: [], searched: false, leads: 0 };
 
   /* LLM 中转提名（geo 覆盖不到时才需要；一次调用覆盖两类骨架；清单校验在 buildCandidateSkeletons 消费点） */
@@ -1311,8 +1329,15 @@ export async function planAnywhere(input, deps = {}) {
     }
   }
 
-  llmHints.discovered_routes = discovery.routes;
+  llmHints.discovered_routes = [...inspiredRoutes, ...discovery.routes];
   const built = buildCandidateSkeletons(o, d, constraints, llmHints);
+  if (baseline) {
+    const key = (c) => JSON.stringify(c.legs.map((l) => [l.from, l.to, l.mode_guess, l.via || '']));
+    const keys = new Set(built.candidates.map(key));
+    for (const candidate of baseline.candidates) {
+      if (!keys.has(key(candidate))) built.candidates.push({ ...candidate, id: 'cand-retained-' + built.candidates.length });
+    }
+  }
   degradations.push(...built.degradations);
 
   /* 逐段搜索线索：只在 web_search 已配置时进行；状态在取证后读取（如实反映本次调用结果，P1-4） */

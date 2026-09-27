@@ -1,0 +1,29 @@
+/* 桌面端保持对话与路线并列；窄屏按阅读顺序排列。 */
+.trip-page .planning-workspace { min-width: 0; }
+.trip-page #planStatus { font-size: 13px; line-height: 1.7; color: #68514B; margin-top: 12px; }
+.trip-page #guideArea { background: #fff; border: 1px solid var(--mixtouring-border); border-radius: 18px; padding: 20px; margin-top: 18px; box-sizing: border-box; font-size: 13px; line-height: 1.7; }
+.trip-page #guideArea[hidden] { display: none; }
+.trip-page #guideArea h2 { font-size: 17px; font-weight: 400; margin: 0 0 14px; }
+.trip-page .guide-message { border-radius: 12px; padding: 10px 12px; background: #F4F5F7; margin: 0 0 9px; overflow-wrap: anywhere; }
+.trip-page .guide-user { background: #F8EEE9; margin-left: 18px; }
+.trip-page .guide-summary { color: #68514B; padding: 10px 0; border-bottom: 1px solid #E8E9EB; }
+.trip-page .guide-question { margin: 16px 0 10px; }
+.trip-page #guideArea button { cursor: pointer; border: 1px solid #D7D9DE; background: #fff; border-radius: 10px; min-height: 44px; padding: 9px 12px; font: inherit; color: #303238; }
+.trip-page #guideArea button:hover { border-color: #C86A4B; }
+.trip-page #guideArea button:disabled { cursor: default; opacity: .45; }
+.trip-page .guide-choices { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.trip-page #guideArea .guide-primary { background: #111; color: #fff; border-color: #111; }
+.trip-page #guideArea .guide-skip { border: none; color: #626873; }
+.trip-page #guideArea label { display: block; margin-top: 16px; }
+.trip-page #guideForm { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.trip-page #guideInput, .trip-page #guideMissingInput { box-sizing: border-box; width: 100%; border: 1px solid #D7D9DE; border-radius: 10px; min-height: 44px; padding: 10px; font: inherit; }
+.trip-page .guide-tools { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.trip-page .guide-tools button { font-size: 12px !important; }
+.trip-page .guide-confirm { border-left: 2px solid #C86A4B; padding-left: 12px; }
+.trip-page .guide-confirm button { margin: 10px 6px 0 0; }
+.trip-page .preference-note { color: #82503F; font-size: 12px; margin-top: 6px; }
+@media (min-width: 1150px) {
+  body.trip-page .trip-shell { max-width: 1400px; }
+  .trip-page .planning-workspace:has(#guideArea:not([hidden])) { display: grid; grid-template-columns: minmax(290px, .85fr) minmax(0, 1.6fr); gap: 22px; align-items: start; }
+  .trip-page #guideArea { position: sticky; top: 20px; max-height: calc(100vh - 40px); overflow: auto; }
+}
