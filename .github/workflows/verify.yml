@@ -35,3 +35,9 @@ jobs:
         run: node server/calibrate-routes.mjs
       - name: G4 私人草案存储层测试（check-drafts.mjs）
         run: node server/check-drafts.mjs
+      - name: 对话引导与探索详情回归
+        run: |
+          node server/check-guide.mjs
+          node server/check-journey.mjs
+          node server/check-progressive.mjs
+          node server/check-inspirations.mjs

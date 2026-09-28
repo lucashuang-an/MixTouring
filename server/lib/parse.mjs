@@ -21,6 +21,7 @@ const FESTIVAL = new Map([
   ['中秋', null], // 农历浮动
   ['端午', null], // 农历浮动
 ]);
+const DATE_RANGE_RE = /(?:国庆(?:节)?\s*\d{1,2}|\d{1,2}\s*月\s*\d{1,2})\s*(?:日|号)?\s*[-~～—至到]\s*\d{1,2}\s*(?:日|号)/;
 
 /* 起终点连接词：出现在城市前的介词，用于区分 from/to 的位置语义 */
 const FROM_MARK = ['从', '自', '由', '在', '从.', '自.'];
@@ -45,13 +46,15 @@ function fmtDate(d) {
 
 /** 返回 { value: 'YYYY/M/D'|null, note?: string } */
 function parseDateRule(text) {
+  /* 单日字段无法承载「国庆1-3号」；交给行程窗口解析，避免误读为 1 月 3 日。 */
+  if (DATE_RANGE_RE.test(text)) return { value: null, note: '日期范围需按窗口理解' };
   // 显式 M/D 或 M月D日（避免吞掉路径里的斜杠——自然语言场景可接受）
   let m = text.match(/(\d{1,2})\s*月\s*(\d{1,2})\s*日/);
   let day, month;
   if (m) { month = +m[1]; day = +m[2]; }
   else {
     m = text.match(/(?:^|[^0-9])(\d{1,2})[/-](\d{1,2})(?!\d)/);
-    if (m) { month = +m[1]; day = +m[2]; }
+    if (m && text[m.index + m[0].length] !== '号') { month = +m[1]; day = +m[2]; }
   }
   if (month && day && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
     const d = iso(month, day);
@@ -175,7 +178,7 @@ export async function parseTrip(text, cities) {
   if (llmOut && typeof llmOut === 'object') {
     const from = llmOut.from && cities.includes(llmOut.from) ? llmOut.from : null;
     const to = llmOut.to && cities.includes(llmOut.to) ? llmOut.to : null;
-    let date = /^\d{4}\/\d{1,2}\/\d{1,2}$/.test(llmOut.date) ? llmOut.date : null;
+    let date = !DATE_RANGE_RE.test(q) && /^\d{4}\/\d{1,2}\/\d{1,2}$/.test(llmOut.date) ? llmOut.date : null;
     /* 代码层兜底：LLM 无视「不得早于今天」返回过去日期时，顺延年份直到不早于今天（防幻觉） */
     if (date) {
       const d = new Date(+date.slice(0, 4), +date.split('/')[1] - 1, +date.split('/')[2]);

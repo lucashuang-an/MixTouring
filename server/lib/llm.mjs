@@ -9,6 +9,7 @@
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { searchVolc } from './search-volc.mjs';
 
 const DEFAULT_BASE = 'https://api.openai.com/v1';
 const DEFAULT_MODEL = 'gpt-4o-mini';
@@ -51,13 +52,67 @@ function logUsage(kind, usage, model) {
  * capabilities 据此如实报告——配置成功不等于可用（智谱 429 余额不足期间 configured=true 但不可用）。
  * @returns {Promise<Array|null>} [{ title, link, content, media, date }]；失败 null */
 let SEARCH_STATE = { status: 'unknown', at: null };
-function markSearch(status) { SEARCH_STATE = { status, at: new Date().toISOString() }; }
+let SEARCH_QUOTA_UNTIL = 0;
+let PUBLIC_SEARCH_RETRY_AT = 0;
+function markSearch(status, provider = null) { SEARCH_STATE = { status, provider, at: new Date().toISOString() }; }
+
+function searchText(value) {
+  return String(value || '').replace(/<[^>]+>/g, '').replace(/&(?:amp|nbsp|lt|gt|quot|apos|#39|#x27);/g, (entity) => ({
+      '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&apos;': "'", '&#39;': "'", '&#x27;': "'"
+    })[entity] || (entity === '&nbsp;' ? ' ' : entity)).replace(/\s+/g, ' ').trim();
+}
+
+async function searchPublicIndex(query, limit, timeoutMs, signal) {
+  if (Date.now() < PUBLIC_SEARCH_RETRY_AT) return null;
+  try {
+    const url = 'https://www.so.com/s?' + new URLSearchParams({ q: String(query).slice(0, 100) });
+    const timeout = AbortSignal.timeout(Math.min(timeoutMs, 8000));
+    const res = await fetch(url, { signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
+    if (!res.ok || !/html/i.test(res.headers.get('content-type') || '')) return null;
+    const html = (await res.text()).slice(0, 600000);
+    if (html.includes('<title>访问异常页面</title>')) {
+      PUBLIC_SEARCH_RETRY_AT = Date.now() + 5 * 60 * 1000;
+      return null;
+    }
+    const blocks = html.split(/<li\s+class=["']res-list["']/i).slice(1, 16);
+    const results = blocks.map((block) => {
+      const head = block.match(/<h3\s+class=["']res-title["'][^>]*>([\s\S]*?)<\/h3>/i)?.[1] || '';
+      const directUrl = head.match(/data-mdurl=["']([^"']+)["']/i)?.[1] || '';
+      const summary = block.match(/<span\s+class=["']res-list-summary["'][^>]*>([\s\S]*?)<\/span>/i)?.[1] || '';
+      return {
+        title: searchText(head).slice(0, 120), link: searchText(directUrl),
+        content: searchText(summary).slice(0, 300), media: 'public-search', date: null
+      };
+    }).filter((r) => /^https:\/\//i.test(r.link) && r.title);
+    const seen = new Set();
+    const unique = results.filter((r) => !seen.has(r.link) && seen.add(r.link)).slice(0, limit);
+    if (!unique.length) PUBLIC_SEARCH_RETRY_AT = Date.now() + 5 * 60 * 1000;
+    return unique.length ? unique : null;
+  } catch (err) {
+    console.error('✗ 公开搜索备用通道失败：' + err.message);
+    return null;
+  }
+}
 
 /** 最近一次 searchWeb 真实调用的状态（浅拷贝，不泄露凭据）；从未调用过为 unknown */
 export function webSearchStatus() { return { ...SEARCH_STATE }; }
 
-export async function searchWeb(query, { limit = 5, timeoutMs = 30000 } = {}) {
+export async function searchWeb(query, { limit = 5, timeoutMs = 30000, signal } = {}) {
+  if (process.env.VOLC_SEARCH_API_KEY) {
+    const outcome = await searchVolc(query, {
+      key: process.env.VOLC_SEARCH_API_KEY,
+      model: process.env.VOLC_SEARCH_MODEL || 'doubao-seed-2-1-lite-260915',
+      limit, timeoutMs, signal
+    });
+    markSearch(outcome.status, 'volc-search');
+    return outcome.results;
+  }
   if (!llmConfigured()) return null;
+  if (Date.now() < SEARCH_QUOTA_UNTIL) {
+    const fallback = await searchPublicIndex(query, limit, timeoutMs, signal);
+    markSearch(fallback ? 'available' : 'quota_exhausted', fallback ? 'public-search' : null);
+    return fallback;
+  }
   try {
     const res = await fetch(`${BASE}/web_search`, {
       method: 'POST',
@@ -66,14 +121,14 @@ export async function searchWeb(query, { limit = 5, timeoutMs = 30000 } = {}) {
         search_engine: process.env.LLM_SEARCH_ENGINE || 'search_std',
         search_query: String(query).slice(0, 100)
       }),
-      signal: AbortSignal.timeout(timeoutMs)
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs)
     });
     if (!res.ok) {
       markSearch(res.status === 429 ? 'quota_exhausted' : 'error');
       throw new Error('search HTTP ' + res.status);
     }
     const body = await res.json();
-    markSearch('available');
+    markSearch('available', 'zhipu');
     return (body.search_result || []).slice(0, limit).map((r) => ({
       title: r.title || '',
       link: r.link || '',
@@ -82,6 +137,14 @@ export async function searchWeb(query, { limit = 5, timeoutMs = 30000 } = {}) {
       date: r.publish_date || null
     }));
   } catch (err) {
+    if (err && err.message === 'search HTTP 429') {
+      SEARCH_QUOTA_UNTIL = Date.now() + 10 * 60 * 1000;
+      const fallback = await searchPublicIndex(query, limit, timeoutMs, signal);
+      if (fallback) {
+        markSearch('available', 'public-search');
+        return fallback;
+      }
+    }
     if (!(err && err.message && err.message.startsWith('search HTTP'))) {
       markSearch(err && (err.name === 'TimeoutError' || err.name === 'AbortError') ? 'timeout' : 'error');
     }
@@ -122,7 +185,7 @@ export async function callJson(opts) {
         authorization: `Bearer ${KEY}`
       },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(opts.timeoutMs || 30000)
+      signal: opts.signal ? AbortSignal.any([opts.signal, AbortSignal.timeout(opts.timeoutMs || 30000)]) : AbortSignal.timeout(opts.timeoutMs || 30000)
     });
     if (!res.ok) throw new Error('LLM HTTP ' + res.status);
     const resBody = await res.json();

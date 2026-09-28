@@ -13,6 +13,8 @@ import {
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { discoverRoutes } from './lib/route-discovery.mjs';
+import { buildJourneyDetail } from './lib/journey.mjs';
 
 let fail = 0;
 let total = 0;
@@ -429,6 +431,36 @@ const NO_DIGIT_RE = /\d/;
     'P0：国庆假期宽窗提取（' + rt.intent.outbound_window + '）');
   ok(rt.intent.return_window === '2026-10-07 ~ 2026-10-07',
     'P0：返程日期提取「10月7日回来」→ 2026-10-07 单日窗（代码计算年份）');
+  const explicitOut = buildTravelIntent('国庆附近从北京去阿拉木图，一个人往返，10月3日出发，10月10日回来', null, new Date('2026-09-26T00:00:00+08:00').getTime());
+  ok(explicitOut.intent.outbound_window === '2026-10-03 ~ 2026-10-03' &&
+    explicitOut.intent.return_window === '2026-10-10 ~ 2026-10-10',
+    '卡 C：明确去程日覆盖国庆宽窗，返程日保持独立');
+  const returnOnly = buildTravelIntent('国庆附近从北京去阿拉木图，10月7日回来', null, new Date('2026-09-26T00:00:00+08:00').getTime());
+  ok(returnOnly.intent.outbound_window === '2026-09-27 ~ 2026-10-07' &&
+    returnOnly.intent.return_window === '2026-10-07 ~ 2026-10-07',
+    '卡 C：仅有返程明确日期时仍保留国庆去程宽窗');
+  const explicitUi = buildTravelIntent('国庆附近从北京去阿拉木图，10月3日出发，10月10日回来',
+    { trip_type: 'round_trip', outbound_window: '2026-10-02 ~ 2026-10-04' }, new Date('2026-09-26T00:00:00+08:00').getTime());
+  ok(explicitUi.intent.outbound_window === '2026-10-02 ~ 2026-10-04', '卡 C：用户显式日期窗仍优先于文本明确日期');
+  const explicitYear = buildTravelIntent('2027年10月3日出发，2027年10月10日回来，往返', null, new Date('2026-09-26T00:00:00+08:00').getTime());
+  ok(explicitYear.intent.outbound_window === '2027-10-03 ~ 2027-10-03' &&
+    explicitYear.intent.return_window === '2027-10-10 ~ 2027-10-10',
+    '卡 C：写明年份的去返日期均按原年份保留');
+  const arrivalRange = buildTravelIntent('北京去阿拉木图，国庆1-3号之间到就可以', null, new Date('2026-09-26T00:00:00+08:00').getTime());
+  ok(arrivalRange.intent.arrival_window === '2026-10-01 ~ 2026-10-03' &&
+    arrivalRange.intent.outbound_window == null && arrivalRange.needs.some((n) => n.includes('到达时间')),
+    '截图回归：国庆1-3号按到达窗理解，去程出发日保持待定');
+  const arrivalWithDeparture = buildTravelIntent('国庆1-3号之间到，9月30日出发', null, new Date('2026-09-26T00:00:00+08:00').getTime());
+  ok(arrivalWithDeparture.intent.arrival_window === '2026-10-01 ~ 2026-10-03' &&
+    arrivalWithDeparture.intent.outbound_window === '2026-09-30 ~ 2026-09-30',
+    '到达窗与另写的出发日分别保留');
+  const liveRoute = await planAnywhere({ text: '国庆附近从北京去阿拉木图，一个人往返，10月3日出发，10月10日回来' }, NO_LLM);
+  ok(/^\d{4}-10-03 ~ \d{4}-10-03$/.test(liveRoute.intent.outbound_window || ''),
+    '卡 C：真实规划路径回填明确去程日，而非假期宽窗');
+  const arrivalRoute = await planAnywhere({ text: '北京去阿拉木图，国庆1-3号之间到就可以' }, NO_LLM);
+  ok(/^\d{4}-10-01 ~ \d{4}-10-03$/.test(arrivalRoute.intent.arrival_window || '') &&
+    arrivalRoute.intent.outbound_window == null && arrivalRoute.intent.parse_engine === 'dict',
+    '真实规划路径：国庆到达窗保留，去程窗不再出现次年1月3日');
   /* 塔什干确认流（有候选路径）：消歧与重新规划后意图字段保留 */
   const osmT = [{ display_name: 'Tashkent, 乌兹别克斯坦', country: 'UZ', lat: '41.31', lon: '69.28', type: 'city', category: 'place', osm_type: 'relation', osm_id: '2369842', url: 'https://www.openstreetmap.org/relation/2369842' }];
   const p1 = await planAnywhere({ text: '国庆附近从北京去塔什干，10月7日回来，2个人' }, {
@@ -623,8 +655,9 @@ const NO_DIGIT_RE = /\d/;
 /* ---------- planAnywhere 编排（注入桩，无网络无 key） ---------- */
 {
   const r1 = await planAnywhere({ text: '从北京去喀什' }, NO_LLM);
-  ok(r1.intent.parse_engine === 'dict' && r1.route.route_type === 'domestic' && r1.candidates.length === 3,
-    '编排：一句话国内 OD 词典解析 + 三骨架');
+  ok(r1.intent.parse_engine === 'dict' && r1.route.route_type === 'domestic' && r1.candidates.length >= 3 &&
+    r1.candidates.some((c) => c.basis?.rule === 'historical-inspiration'),
+    '编排：一句话国内 OD 词典解析、基础骨架与历史结构参考');
   ok(r1.degradations.some((x) => x.includes('web_search 未配置')), '编排：web_search 不可用 → 明确降级为探索态');
 
   const r2 = await planAnywhere({ text: '从北京首都机场去喀纳斯，预算5000元' }, NO_LLM);
@@ -645,15 +678,17 @@ const NO_DIGIT_RE = /\d/;
   const r6 = await planAnywhere({ origin: '北京', destination: '喀什' },
     { callJson: async () => null, env: fakeEnv, osmSearch: async () => [], webSearchStatus: () => ({ status: 'quota_exhausted' }),
       searchWeb: async () => [{ title: '北京 喀什 乌鲁木齐 航班 火车 铁路 高铁', link: 'https://e.com/x', content: '北京 乌鲁木齐 喀什' }] });
-  ok(r6.candidates.flatMap((c) => c.legs).every((l) => l.evidence_state === 'source_lead'),
-    '编排：web_search 已配置时逐段挂相关线索（source_lead）');
+  ok(r6.candidates.filter((c) => c.basis?.rule !== 'historical-inspiration')
+    .flatMap((c) => c.legs).every((l) => l.evidence_state === 'source_lead') &&
+    r6.candidates.some((c) => c.basis?.rule === 'historical-inspiration'),
+    '编排：搜索线索只归属实际命中的路段，历史结构独立标注');
   ok(r6.web_search && r6.web_search.configured === true && r6.web_search.status === 'quota_exhausted',
     'P1-4：规划响应如实带 web_search 配置与最近真实状态（configured ≠ available）');
-  ok(r6.planner_version === 'v0.42.5', '编排：anywhere 版本号对齐 v0.42.5');
+  ok(r6.planner_version === 'v0.43.5', '编排：anywhere 版本号对齐 v0.43.5');
 
   const r7 = await planAnywhere({ text: '想去新疆最西边那座古城玩' },
     { callJson: async () => ({ origin: '北京', destination: '喀什' }), env: {}, osmSearch: async () => [] });
-  ok(r7.intent.parse_engine === 'llm' && r7.candidates.length === 3,
+  ok(r7.intent.parse_engine === 'llm' && r7.candidates.length >= 3,
     '编排：词典扫描无命中、LLM 清单内补全 → engine=llm');
 
   ok(KIND_LABEL.direct === '直达' && KIND_LABEL.mixed === '混合交通', '常量：骨架类型标签');
@@ -662,6 +697,70 @@ const NO_DIGIT_RE = /\d/;
     osmKind({ type: 'city', category: 'place' }) === 'city' &&
     osmKind({ type: 'attraction', category: 'tourism' }) === 'poi',
     'OSM 类型映射：aerodrome/station/city/attraction → 四类 kind');
+}
+
+/* 搜索改变候选集合：模型仅能组合来源提到的地点，国庆日期仍不能变成班次事实。 */
+{
+  const sources = [
+    { title: '伊宁 霍尔果斯 阿拉木图 国际公路客运', content: '伊宁经霍尔果斯前往阿拉木图的客运方向', link: 'https://example.org/corridor' },
+    { title: '北京 伊宁 航班方向', content: '北京到伊宁航班方向', link: 'https://example.org/access' }
+  ];
+  const searchFn = async () => sources;
+  const modelFn = async () => ({ routes: [{ stops: ['伊宁'], modes: ['plane', 'road'], source_ids: [1, 2] }] });
+  const found = await discoverRoutes(resolvePlace('北京'), resolvePlace('阿拉木图'), { searchFn, modelFn });
+  ok(found.routes.some((x) => x.stops[0] === '伊宁' && x.sources.some((s) => s.link.startsWith('https://jtyst.xinjiang.gov.cn/'))),
+    '搜索与模型：有客运走廊线索时发现伊宁方向，保留来源');
+  const plan = await planAnywhere({ origin: '北京', destination: '阿拉木图' }, {
+    env: { LLM_API_KEY: 'test', LLM_BASE_URL: 'https://open.bigmodel.cn/api/paas/v4' },
+    searchWeb: searchFn, callJson: modelFn, webSearchStatus: () => ({ status: 'available' })
+  });
+  const route = plan.candidates.find((c) => c.kind === 'discovered');
+  ok(route && route.legs.map((leg) => leg.from).join('→') === '北京→伊宁' && route.legs[1].to === '阿拉木图' &&
+    route.legs[1].mode_guess === 'road' && route.hypothesis === true,
+    '编排：搜索新节点进入本次候选，公路段仍为探索假设');
+  const detail = route && buildJourneyDetail(plan, route.id, 1);
+  ok(detail && detail.stopover.city === '伊宁' && detail.checklist[1].missing.includes('出入境条件') &&
+    detail.outbound.every((leg) => !leg.service_no && !leg.price_sample),
+    '详情：伊宁停留与跨境清单可用，无虚构班次和价格');
+  const newSearchRoute = await discoverRoutes(resolvePlace('北京'), resolvePlace('喀什'), {
+    searchFn: async () => [{ title: '北京 银川 喀什 铁路航班走法', content: '北京经银川前往喀什的铁路与航班组合', link: 'https://example.org/route' }],
+    modelFn: async () => ({ routes: [{ stops: ['银川'], modes: ['rail', 'plane'], source_ids: [1] }] })
+  });
+  ok(newSearchRoute.routes.length === 1 && newSearchRoute.routes[0].stops[0] === '银川' &&
+    newSearchRoute.routes[0].sources[0].link === 'https://example.org/route',
+    '搜索扩线：词典外旧骨架的来源城市可由搜索加模型生成');
+  const blocked = await discoverRoutes(resolvePlace('北京'), resolvePlace('喀什'), {
+    searchFn: async () => [{ title: '北京 银川 喀什 交通', content: '北京 银川 喀什', link: 'https://example.org/other' }],
+    modelFn: async () => ({ routes: [{ stops: ['火星'], modes: ['plane', 'road'], source_ids: [1] }] })
+  });
+  ok(blocked.routes.length === 0, '发现守门：模型提名未在来源和地点库中的节点被拒绝');
+  const noRoad = await discoverRoutes(resolvePlace('北京'), resolvePlace('喀什'), {
+    searchFn: async () => [{ title: '银川 喀什 风景', content: '银川 喀什 旅行摄影', link: 'https://example.org/photo' }],
+    modelFn: async () => ({ routes: [{ stops: ['银川'], modes: ['plane', 'road'], source_ids: [1] }] })
+  });
+  ok(noRoad.routes.length === 0, '发现守门：风景内容不支持跨境公路客运连接');
+  for (const [hub, content] of [['大连', '北京 大连 喀什 大巴客运'], ['银川', '北京 银川 喀什 公路货运物流 汽车托运']]) {
+    const unsafe = await discoverRoutes(resolvePlace('北京'), resolvePlace('喀什'), {
+      searchFn: async () => [{ title: content, content, link: 'https://example.org/negative' }],
+      modelFn: async () => ({ routes: [{ stops: [hub], modes: ['plane', 'road'], source_ids: [1] }] })
+    });
+    ok(unsafe.routes.length === 0, '发现守门：拒绝反向绕行或货运误作客运：' + hub);
+  }
+  const crossBorder = async (hub) => discoverRoutes(resolvePlace('北京'), resolvePlace('阿拉木图'), {
+    searchFn: async () => [{ title: `北京 ${hub} 阿拉木图 国际客运班线`,
+      content: `${hub} 阿拉木图 公路客运班线`, link: 'https://example.org/cross-border' }],
+    modelFn: async () => ({ routes: [{ stops: [hub], modes: ['unknown', 'road'], source_ids: [1] }] })
+  });
+  ok(!(await crossBorder('大连')).routes.some((r) => r.stops.includes('大连')),
+    '国际发现守门：有关键词也不能保留反向绕行的大连');
+  ok((await crossBorder('伊宁')).routes.some((r) => r.stops.includes('伊宁')),
+    '国际发现守门：保留顺路且有客运线索的伊宁');
+  const backtrack = await discoverRoutes(resolvePlace('北京'), resolvePlace('喀什'), {
+    searchFn: async () => [{ title: '北京 兰州 银川 喀什 铁路线路',
+      content: '北京经兰州银川前往喀什铁路方向', link: 'https://example.org/backtrack' }],
+    modelFn: async () => ({ routes: [{ stops: ['兰州', '银川'], modes: ['rail', 'rail', 'rail'], source_ids: [1] }] })
+  });
+  ok(!backtrack.routes.some((r) => r.stops.join('→') === '兰州→银川'), '多节点守门：拒绝途经城市顺序折返');
 }
 
 console.log(fail === 0

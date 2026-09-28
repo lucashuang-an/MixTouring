@@ -18,14 +18,14 @@ function checklistRow(leg, direction, plan) {
   const countryOf = (name) => {
     if (name === plan.intent.origin_place?.name) return plan.intent.origin_place.country;
     if (name === plan.intent.destination_place?.name) return plan.intent.destination_place.country;
-    return resolvePlace(name)?.country || null;
+    return resolvePlace(name)?.country || (name === leg.from ? leg.from_country : leg.to_country) || null;
   };
   const fromCountry = countryOf(leg.from), toCountry = countryOf(leg.to);
   const missing = ['指定日期班次与当地起落时间', '当期价格及行李／退改口径', '站点接驳'];
   if (fromCountry && toCountry && fromCountry !== toCountry) missing.push('出入境条件');
   return {
     direction,
-    segment: `${leg.from} → ${leg.to}`,
+    segment: `${leg.from} → ${leg.to}` + (leg.via ? `（途经${leg.via}）` : ''),
     mode_guess: leg.mode_guess || null,
     evidence_state: leg.evidence_state || 'explore',
     search_leads: leg.evidence_state === 'source_lead' ? (leg.sources || []) : [],
@@ -42,7 +42,7 @@ export function buildJourneyDetail(plan, candidateId, stopoverNights = 0) {
   const candidate = plan.candidates.find((c) => c.id === candidateId);
   if (!candidate) throw new Error('走法不在本次规划中，请重新选择');
   const outbound = candidate.legs.map((leg) => ({ ...leg }));
-  const stopCity = candidate.kind !== 'direct' && outbound.length === 2 ? outbound[0].to : null;
+  const stopCity = candidate.kind !== 'direct' && outbound.length >= 2 ? outbound[0].to : null;
   if (nights && !stopCity) throw new Error('这条走法没有中途城市，无法安排停留');
 
   const roundTrip = plan.intent.trip_type === 'round_trip';
@@ -91,4 +91,14 @@ export function journeyDetailFromPlanId(planId, candidateId, stopoverNights = 0,
     throw new Error('规划已失效，请重新规划');
   }
   return buildJourneyDetail(entry.plan, candidateId, stopoverNights);
+}
+
+/** 对话追问只读取服务端保存的本次规划，避免采纳浏览器提交的候选事实。 */
+export function guidePlanFromId(planId, now = Date.now()) {
+  const entry = plans.get(planId);
+  if (!entry || entry.expires_at <= now) {
+    if (entry) plans.delete(planId);
+    return null;
+  }
+  return entry.plan;
 }

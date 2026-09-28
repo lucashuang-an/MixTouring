@@ -17,7 +17,9 @@ import {
   detectReversal, buildCostBreakdown, canClaimCheaper,
   evidenceState, legFreshness, nextVersion
 } from './lib/trip.mjs';
-import { extractIntentFields, parseTripIntent, searchTripStrategies, buildVerificationChecklist, resolveRoute, findPlace, capabilities } from './lib/trip-service.mjs';
+import { extractIntentFields, parseTripIntent, searchTripStrategies, buildVerificationChecklist, resolveRoute, findPlace, capabilities, webSearchConfigured } from './lib/trip-service.mjs';
+import { parseVolcSearch } from './lib/search-volc.mjs';
+import { parseTripRule } from './lib/parse.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 let fail = 0;
@@ -206,12 +208,11 @@ const [F_OUT, F_IN] = FIXTURE.dated_legs.map((l) => ({ ...l, baggage_terms: { ca
   ok(validateTripQuery(Q).length === 0, 'G0 基线查询合法');
 }
 
-/* ---------- v0.29.3 时区转义回归（三轮评审 P2 收尾：恶意时区字符串不得进入 HTML） ---------- */
+/* ---------- 结果页呈现边界与通用转义回归 ---------- */
 {
-  /* 静态断言：trip.html 段卡时区渲染必须走 MT.esc（防止未来改动回退） */
   const tripSrc = readFileSync(join(root, 'mixtouring-hifi/pages/trip.html'), 'utf8');
-  ok(tripSrc.includes('depTz = seg.depart_time_zone ? MT.esc(seg.depart_time_zone)'), '转义回归：出发时区渲染走 MT.esc');
-  ok(tripSrc.includes('arrTz = seg.arrive_time_zone ? MT.esc(seg.arrive_time_zone)'), '转义回归：抵达时区渲染走 MT.esc');
+  ok(!tripSrc.includes('sampleArea') && !tripSrc.includes('loadSample('), '结果页不自动混排过期历史样本');
+  ok(!tripSrc.includes('web_search') && !tripSrc.includes('outbound:plane'), '结果页不暴露服务诊断或内部费用字段');
   /* 行为断言：与 app.js 的 MT.esc 同逻辑（转义后不含原始 payload） */
   const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   const evil = '<img src=x onerror=alert(1)>';
@@ -245,6 +246,23 @@ const [F_OUT, F_IN] = FIXTURE.dated_legs.map((l) => ({ ...l, baggage_terms: { ca
   ok(near.outbound_window === '2026-09-27 ~ 2026-10-07', `C2 国庆附近 → 假期宽窗（实际 ${near.outbound_window}），不收缩为 10/01`);
   const nearNextYear = extractIntentFields('国庆附近出发', new Date('2026-10-20').getTime());
   ok(nearNextYear.outbound_window === '2027-09-27 ~ 2027-10-07', 'C2 已过 10/7 → 次年窗口');
+  const nearExact = extractIntentFields('国庆附近从北京去阿拉木图，10月3日出发，10月10日回来', NOW);
+  ok(nearExact.outbound_window === '2026-10-03 ~ 2026-10-03', '卡 C：明确去程日优先于国庆宽窗，不把返程日当去程');
+  const nearReturnOnly = extractIntentFields('国庆附近从北京去阿拉木图，10月7日回来', NOW);
+  ok(nearReturnOnly.outbound_window === '2026-09-27 ~ 2026-10-07', '卡 C：仅有返程日时保留国庆宽窗');
+  const holidayArrival = extractIntentFields('北京去阿拉木图，国庆1-3号之间到就可以', NOW);
+  ok(holidayArrival.arrival_window === '2026-10-01 ~ 2026-10-03' && !holidayArrival.outbound_window,
+    '国庆1-3号之间到 → 10月1-3日到达窗，不冒充去程出发日');
+  const holidayDeparture = extractIntentFields('国庆1-3号之间出发', NOW);
+  ok(holidayDeparture.outbound_window === '2026-10-01 ~ 2026-10-03' && !holidayDeparture.arrival_window,
+    '国庆1-3号之间出发 → 10月1-3日去程窗');
+  ok(extractIntentFields('国庆1号到3号之间到', NOW).arrival_window === '2026-10-01 ~ 2026-10-03',
+    '国庆1号到3号同样识别为到达范围');
+  ok(extractIntentFields('10月1-3号之间到达', NOW).arrival_window === '2026-10-01 ~ 2026-10-03' &&
+    extractIntentFields('10月3日到达', NOW).arrival_window === '2026-10-03 ~ 2026-10-03',
+    '写明月份的范围与单日到达也不误作出发日');
+  ok(parseTripRule('北京去阿拉木图，国庆1-3号之间到就可以', ['北京', '阿拉木图']).date === null,
+    '旧单日解析器不把国庆日期范围误读为1月3日');
 
   /* R16 复审①：parseTripIntent 合并 Trip 城市词典——真实城市源识别阿拉木图（规则版确定性） */
   const tripCities = JSON.parse(readFileSync(join(root, 'pipeline/data/trips/trip-cities.json'), 'utf8')).cities;
@@ -256,6 +274,12 @@ const [F_OUT, F_IN] = FIXTURE.dated_legs.map((l) => ({ ...l, baggage_terms: { ca
   /* 明确「10 月 1 日」输入 → 单日窗（不误伤精确意图） */
   const exact = await parseTripIntent('10月1日从北京去阿拉木图', ['北京'], tripCities, NOW);
   ok(exact.query.outbound_window === '2026-10-01 ~ 2026-10-01', `C1 明确日期 → 单日窗（实际 ${exact.query.outbound_window}）`);
+  const arrivalOnly = await parseTripIntent('北京去阿拉木图，国庆1-3号之间到就可以', ['北京'], tripCities, NOW);
+  ok(arrivalOnly.query.outbound_window == null, 'Trip 入口不会把到达窗或1月3日写入去程出发窗');
+  const exactWithHoliday = await parseTripIntent('国庆附近从北京去阿拉木图，10月3日出发，10月10日回来', ['北京'], tripCities, NOW);
+  ok(exactWithHoliday.query.outbound_window === '2026-10-03 ~ 2026-10-03' &&
+    !exactWithHoliday.needs_confirmation.some((n) => n.includes('已按假期窗口预填')),
+    '卡 C：Trip 意图也保留明确去程日，不误提示预填假期宽窗');
   /* 未知城市仍待确认（不编造） */
   const unknownCity = await parseTripIntent('从北京去乌兰巴托', ['北京'], tripCities, NOW);
   ok(unknownCity.query.destination === null && unknownCity.needs_confirmation.some((n) => n.includes('目的地')), 'C1 未知城市保持待确认（trip 词典外不编造）');
@@ -282,7 +306,18 @@ const [F_OUT, F_IN] = FIXTURE.dated_legs.map((l) => ({ ...l, baggage_terms: { ca
   ok(capabilities(true, true, 'quota_exhausted').web_search_status === 'quota_exhausted' &&
     capabilities(true, true, 'quota_exhausted').web_search_configured === true, 'P1-4：配置成功但状态如实为 quota_exhausted');
   ok(capabilities(true, true).trip_planner_version === 'v0.29.1' &&
-    capabilities(true, true).anywhere_planner_version === 'v0.42.5', 'P1-4：版本拆分（trip/anywhere 各自对齐）');
+    capabilities(true, true).anywhere_planner_version === 'v0.43.5', 'P1-4：版本拆分（trip/anywhere 各自对齐）');
+  ok(webSearchConfigured({ VOLC_SEARCH_API_KEY: 'test' }).basis === 'volc-search', '火山搜索独立于问答密钥配置');
+  const cited = { status: 'completed', usage: { tool_usage: { web_search: 1 } }, output: [
+    { type: 'web_search_call', status: 'completed' },
+    { type: 'message', content: [{ annotations: [
+      { type: 'url_citation', title: '客运公告', url: 'https://example.org/notice', summary: '北京至阿拉木图客运连接', publish_time: '2026-09-20' },
+      { type: 'url_citation', title: '重复', url: 'https://example.org/notice' }
+    ] }] }
+  ] };
+  ok(parseVolcSearch(cited)?.length === 1 && parseVolcSearch(cited)?.[0].date === '2026-09-20', '火山搜索只采结构化引用并去重');
+  ok(parseVolcSearch({ ...cited, usage: { tool_usage: { web_search: 0 } } }) === null, '模型未实际搜索时不认引用');
+  ok(parseVolcSearch({ ...cited, status: 'incomplete' }) === null, '推理截断不认搜索结果');
 }
 
 /* ---------- v0.26.0 服务动作：策略检索（fixture 驱动 + 反向不反转） ---------- */

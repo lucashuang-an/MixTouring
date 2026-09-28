@@ -1,0 +1,431 @@
+{
+  "sampled_at": "2026-09-28T13:42:56.045Z",
+  "note": "真实通道回放，非班期核验；调用次数不等于费用，金额须结合供应商账单。",
+  "cases": [
+    {
+      "origin": "北京",
+      "destination": "阿拉木图",
+      "first_result_ms": 99,
+      "complete_ms": 25058,
+      "metrics": {
+        "model_calls": 1,
+        "search_calls": 2,
+        "first_result_ms": 8,
+        "elapsed_ms": 25008,
+        "budget_exhausted": true
+      },
+      "search": {
+        "configured": true,
+        "status": "timeout"
+      },
+      "cost_cny": null,
+      "candidates": [
+        {
+          "kind": "direct",
+          "legs": [
+            {
+              "from": "北京",
+              "to": "阿拉木图",
+              "mode": "plane",
+              "via": null
+            }
+          ],
+          "reason": "假设存在直达航班：班期与价格待逐段取证，未取证前不做任何比较",
+          "basis": {
+            "mode": "plane",
+            "rule": "intl-default",
+            "reason": "国际 OD 默认航班方向假设（是否成立待取证）"
+          }
+        },
+        {
+          "kind": "discovered",
+          "legs": [
+            {
+              "from": "北京",
+              "to": "伊宁",
+              "mode": null,
+              "via": null
+            },
+            {
+              "from": "伊宁",
+              "to": "阿拉木图",
+              "mode": "road",
+              "via": "霍尔果斯"
+            }
+          ],
+          "reason": "搜索资料提示可经伊宁方向探索；逐段交通、实际换乘与日期衔接仍需确认",
+          "basis": {
+            "rule": "search-discovery",
+            "sources": [
+              {
+                "title": "伊宁—霍尔果斯—阿拉木图国际道路客运班线经营许可",
+                "link": "https://jtyst.xinjiang.gov.cn/xjjtysj/qtwgfw/202408/fc30c01606204d138386ace899ce6be5.shtml",
+                "date": "2024-07-26"
+              }
+            ]
+          }
+        },
+        {
+          "kind": "discovered",
+          "legs": [
+            {
+              "from": "北京",
+              "to": "乌鲁木齐",
+              "mode": null,
+              "via": null
+            },
+            {
+              "from": "乌鲁木齐",
+              "to": "阿拉木图",
+              "mode": "road",
+              "via": "霍尔果斯"
+            }
+          ],
+          "reason": "搜索资料提示可经乌鲁木齐方向探索；逐段交通、实际换乘与日期衔接仍需确认",
+          "basis": {
+            "rule": "search-discovery",
+            "sources": [
+              {
+                "title": "乌鲁木齐经霍尔果斯至阿拉木图国际道路客运班线开通",
+                "link": "https://jtyst.xinjiang.gov.cn/xjjtysj/jtyw/202311/68952f89120b4986a185884df0464d75.shtml",
+                "date": "2023-11-03"
+              }
+            ]
+          }
+        },
+        {
+          "kind": "discovered",
+          "legs": [
+            {
+              "from": "北京",
+              "to": "塔城",
+              "mode": null,
+              "via": null
+            },
+            {
+              "from": "塔城",
+              "to": "阿拉木图",
+              "mode": "road",
+              "via": "巴克图"
+            }
+          ],
+          "reason": "搜索资料提示可经塔城方向探索；逐段交通、实际换乘与日期衔接仍需确认",
+          "basis": {
+            "rule": "search-discovery",
+            "sources": [
+              {
+                "title": "塔城—巴克图—阿拉木图国际道路客运班线经营许可",
+                "link": "https://jtyst.xinjiang.gov.cn/xjjtysj/qtwgfw/202408/fc30c01606204d138386ace899ce6be5.shtml",
+                "date": "2024-07-26"
+              }
+            ]
+          }
+        },
+        {
+          "kind": "one_transfer",
+          "legs": [
+            {
+              "from": "北京",
+              "to": "乌鲁木齐",
+              "mode": null,
+              "via": null
+            },
+            {
+              "from": "乌鲁木齐",
+              "to": "阿拉木图",
+              "mode": "plane",
+              "via": null
+            }
+          ],
+          "reason": "假设经「乌鲁木齐」一次中转：中转城市按枢纽作用与「枢纽→目的地」段连接依据筛选（依据见下，末段方式按可用连接选择），两段班期与衔接余量待逐段取证",
+          "basis": {
+            "rule": "hub-network",
+            "whys": [
+              {
+                "scope": "geo",
+                "leg": null,
+                "direction": null,
+                "text": "进疆交通门户，承接国内干线与跨境方向衔接——值得核查的枢纽方向"
+              },
+              {
+                "scope": "air",
+                "leg": "out",
+                "direction": "KZ",
+                "text": "乌鲁木齐→哈萨克斯坦方向为常见出境航空门户区位（具体航线待查）"
+              }
+            ]
+          }
+        },
+        {
+          "kind": "mixed",
+          "legs": [
+            {
+              "from": "北京",
+              "to": "乌鲁木齐",
+              "mode": "rail",
+              "via": null
+            },
+            {
+              "from": "乌鲁木齐",
+              "to": "阿拉木图",
+              "mode": "plane",
+              "via": null
+            }
+          ],
+          "reason": "假设先乘铁路到「乌鲁木齐」再飞往目的地的混合走法：中转城市按「起点→枢纽」铁路依据与「枢纽→目的地」航空依据分别筛选（依据见下），两段班期与衔接待逐段取证",
+          "basis": {
+            "rule": "hub-network",
+            "whys": [
+              {
+                "scope": "geo",
+                "leg": null,
+                "direction": null,
+                "text": "进疆交通门户，承接国内干线与跨境方向衔接——值得核查的枢纽方向"
+              },
+              {
+                "scope": "general",
+                "leg": "in",
+                "direction": "KZ",
+                "text": "起点→枢纽段：北京等内地城市→乌鲁木齐干线航空与铁路充足（跨境探索的常见衔接点，具体班期待查）"
+              },
+              {
+                "scope": "air",
+                "leg": "out",
+                "direction": "KZ",
+                "text": "枢纽→目的地段：乌鲁木齐→哈萨克斯坦方向为常见出境航空门户区位（具体航线待查）"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "origin": "上海",
+      "destination": "昆明",
+      "first_result_ms": 14,
+      "complete_ms": 25011,
+      "metrics": {
+        "model_calls": 1,
+        "search_calls": 2,
+        "first_result_ms": 5,
+        "elapsed_ms": 25007,
+        "budget_exhausted": true
+      },
+      "search": {
+        "configured": true,
+        "status": "available"
+      },
+      "cost_cny": null,
+      "candidates": [
+        {
+          "kind": "direct",
+          "legs": [
+            {
+              "from": "上海",
+              "to": "昆明",
+              "mode": null,
+              "via": null
+            }
+          ],
+          "reason": "假设存在直达航班或直达列车：具体班期待逐段取证",
+          "basis": {
+            "mode": "unknown",
+            "rule": "domestic-default",
+            "reason": "国内 OD 航空/铁路均可能，方式待取证确认"
+          }
+        },
+        {
+          "kind": "discovered",
+          "legs": [
+            {
+              "from": "上海",
+              "to": "贵阳",
+              "mode": "rail",
+              "via": null
+            },
+            {
+              "from": "贵阳",
+              "to": "昆明",
+              "mode": "rail",
+              "via": null
+            }
+          ],
+          "reason": "库内历史路线结构提示可经贵阳方向探索；逐段交通、实际换乘与日期衔接仍需确认",
+          "basis": {
+            "rule": "historical-inspiration",
+            "sources": [
+              {
+                "title": "库内历史路线结构，班期与费用不作当期依据",
+                "link": null
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "origin": "广州",
+      "destination": "比什凯克",
+      "first_result_ms": 9,
+      "complete_ms": 25013,
+      "metrics": {
+        "model_calls": 1,
+        "search_calls": 3,
+        "first_result_ms": 3,
+        "elapsed_ms": 25009,
+        "budget_exhausted": true
+      },
+      "search": {
+        "configured": true,
+        "status": "timeout"
+      },
+      "cost_cny": null,
+      "candidates": [
+        {
+          "kind": "direct",
+          "legs": [
+            {
+              "from": "广州",
+              "to": "比什凯克",
+              "mode": "plane",
+              "via": null
+            }
+          ],
+          "reason": "假设存在直达航班：班期与价格待逐段取证，未取证前不做任何比较",
+          "basis": {
+            "mode": "plane",
+            "rule": "intl-default",
+            "reason": "国际 OD 默认航班方向假设（是否成立待取证）"
+          }
+        },
+        {
+          "kind": "discovered",
+          "legs": [
+            {
+              "from": "广州",
+              "to": "喀什",
+              "mode": null,
+              "via": null
+            },
+            {
+              "from": "喀什",
+              "to": "比什凯克",
+              "mode": "road",
+              "via": null
+            }
+          ],
+          "reason": "搜索资料提示可经喀什方向探索；逐段交通、实际换乘与日期衔接仍需确认",
+          "basis": {
+            "rule": "search-discovery",
+            "sources": [
+              {
+                "title": "喀什经吐尔尕特至比什凯克国际道路客运班线运营报道",
+                "link": "https://jtyst.xinjiang.gov.cn/xjjtysj/mtkjt/202606/87600e3686f2444483d7525401890b56.shtml",
+                "date": "2026-06-10"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "origin": "成都",
+      "destination": "拉萨",
+      "first_result_ms": 9,
+      "complete_ms": 25006,
+      "metrics": {
+        "model_calls": 1,
+        "search_calls": 2,
+        "first_result_ms": 3,
+        "elapsed_ms": 25002,
+        "budget_exhausted": true
+      },
+      "search": {
+        "configured": true,
+        "status": "available"
+      },
+      "cost_cny": null,
+      "candidates": [
+        {
+          "kind": "direct",
+          "legs": [
+            {
+              "from": "成都",
+              "to": "拉萨",
+              "mode": null,
+              "via": null
+            }
+          ],
+          "reason": "假设存在直达航班或直达列车：具体班期待逐段取证",
+          "basis": {
+            "mode": "unknown",
+            "rule": "domestic-default",
+            "reason": "国内 OD 航空/铁路均可能，方式待取证确认"
+          }
+        },
+        {
+          "kind": "discovered",
+          "legs": [
+            {
+              "from": "成都",
+              "to": "西宁",
+              "mode": "rail",
+              "via": null
+            },
+            {
+              "from": "西宁",
+              "to": "拉萨",
+              "mode": "rail",
+              "via": null
+            }
+          ],
+          "reason": "库内历史路线结构提示可经西宁方向探索；逐段交通、实际换乘与日期衔接仍需确认",
+          "basis": {
+            "rule": "historical-inspiration",
+            "sources": [
+              {
+                "title": "库内历史路线结构，班期与费用不作当期依据",
+                "link": null
+              }
+            ]
+          }
+        },
+        {
+          "kind": "one_transfer",
+          "legs": [
+            {
+              "from": "成都",
+              "to": "西宁",
+              "mode": null,
+              "via": null
+            },
+            {
+              "from": "西宁",
+              "to": "拉萨",
+              "mode": "rail",
+              "via": null
+            }
+          ],
+          "reason": "假设经「西宁」一次中转：中转城市按顺路约束内的枢纽作用与「枢纽→目的地」段连接依据筛选（确定性估算，非班期事实），两段班期与衔接余量待逐段取证",
+          "basis": {
+            "rule": "rule:geo",
+            "whys": [
+              {
+                "scope": "geo",
+                "leg": null,
+                "direction": null,
+                "text": "地理顺路窗口内的枢纽城市（绕行比受控的确定性估算）"
+              },
+              {
+                "scope": "rail",
+                "leg": "out",
+                "direction": "拉萨",
+                "text": "枢纽→目的地段：西宁→拉萨为青藏铁路方向（班期待查）"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
