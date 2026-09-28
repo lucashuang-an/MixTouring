@@ -59,11 +59,13 @@ export async function discoverRoutes(origin, destination, { searchFn, modelFn, u
   const cached = useCache ? CACHE.get(key) : null;
   if (cached && cached.expires > Date.now()) return cached.value;
 
+  /* 查询词 2026-09-28 实测：堆砌方式词（经哪些城市 交通路线 飞机 铁路 公路）稳定 8s 超时且首条常为货运；
+   * 短自然词 5-7s 返回且以客运来源为主（高铁途经站/携程中转方案/领事馆客运班车须知/航司开航新闻）。 */
   const queries = [
-    `${origin.name} ${destination.name} 经哪些城市 交通路线 飞机 铁路 公路`,
+    `${origin.name} ${destination.name} 中转 途经 城市 路线`,
     origin.country === destination.country
       ? `${origin.name} ${destination.name} 途经城市 旅行路线 交通方式`
-      : `${origin.name} ${destination.name} 经口岸 客运 途经城市 旅行路线`
+      : `${origin.name} ${destination.name} 口岸 客运 路线`
   ];
   const batches = await Promise.all(queries.map((q) => searchFn(q, { limit: 6, timeoutMs: 8000 }).catch(() => null)));
   const seen = new Set();
@@ -92,7 +94,9 @@ export async function discoverRoutes(origin, destination, { searchFn, modelFn, u
     '{"routes":[{"stops":["城市"],"modes":["plane","road"],"source_ids":[1]}]}。' +
     '起点：' + origin.name + '；终点：' + destination.name + '；允许城市：' + JSON.stringify(mentions) +
     '；来源：' + JSON.stringify(leads.map(({ id, title, content }) => ({ id, title, content })));
-  const result = await modelFn({ schema_prompt: prompt, user: '按来源提出值得探索的走法', kind: 'route-discovery', timeoutMs: 20000 });
+  /* 组合上限 12s：渐进请求共享 25s 预算（搜索 ~6s + 组合 ≤12s + 逐段并行验证 ~6s）；
+   * 模型超时让位给逐段验证，候选由策展走廊与规则骨架兜底。 */
+  const result = await modelFn({ schema_prompt: prompt, user: '按来源提出值得探索的走法', kind: 'route-discovery', timeoutMs: 12000 });
   const routes = [];
   const signatures = new Set();
   for (const proposal of (Array.isArray(result?.routes) ? result.routes : []).slice(0, 4)) {

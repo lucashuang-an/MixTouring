@@ -49,7 +49,14 @@ export async function searchVolc(query, { key, model = 'doubao-seed-2-1-lite-260
       }),
       signal: signal ? AbortSignal.any([signal, timeout]) : timeout
     });
-    if (!res.ok) return { status: res.status === 429 ? 'quota_exhausted' : 'error', results: null };
+    if (!res.ok) {
+      /* 2026-09-28 实测：429 可能是账号「安全体验模式」用量上限（SetLimitExceeded，模型暂停，
+       * 需控制台调整）而非速率限流——记录错误码便于区分，两种都按额度类诚实降级（本轮停止重试）。 */
+      if (res.status === 429) {
+        try { console.error('✗ 火山搜索 429：' + String((await res.json())?.error?.code || '')); } catch { /* body 非预期时只报状态码 */ }
+      }
+      return { status: res.status === 429 ? 'quota_exhausted' : 'error', results: null };
+    }
     const results = parseVolcSearch(await res.json(), limit);
     return { status: results ? 'available' : 'error', results };
   } catch (err) {

@@ -1,22 +1,22 @@
 {
-  "sampled_at": "2026-09-28T13:42:56.045Z",
+  "sampled_at": "2026-09-28T15:39:53.459Z",
   "note": "真实通道回放，非班期核验；调用次数不等于费用，金额须结合供应商账单。",
   "cases": [
     {
       "origin": "北京",
       "destination": "阿拉木图",
-      "first_result_ms": 99,
-      "complete_ms": 25058,
+      "first_result_ms": 109,
+      "complete_ms": 16610,
       "metrics": {
         "model_calls": 1,
-        "search_calls": 2,
-        "first_result_ms": 8,
-        "elapsed_ms": 25008,
-        "budget_exhausted": true
+        "search_calls": 12,
+        "first_result_ms": 9,
+        "elapsed_ms": 16559,
+        "budget_exhausted": false
       },
       "search": {
         "configured": true,
-        "status": "timeout"
+        "status": "available"
       },
       "cost_cny": null,
       "candidates": [
@@ -43,14 +43,14 @@
             {
               "from": "北京",
               "to": "伊宁",
-              "mode": null,
+              "mode": "rail",
               "via": null
             },
             {
               "from": "伊宁",
               "to": "阿拉木图",
               "mode": "road",
-              "via": "霍尔果斯"
+              "via": null
             }
           ],
           "reason": "搜索资料提示可经伊宁方向探索；逐段交通、实际换乘与日期衔接仍需确认",
@@ -61,6 +61,50 @@
                 "title": "伊宁—霍尔果斯—阿拉木图国际道路客运班线经营许可",
                 "link": "https://jtyst.xinjiang.gov.cn/xjjtysj/qtwgfw/202408/fc30c01606204d138386ace899ce6be5.shtml",
                 "date": "2024-07-26"
+              },
+              {
+                "title": "【领事在身边】乘坐中哈间国际道路旅客班车往返阿拉木图市注意事项",
+                "link": "https://almaty.china-consulate.gov.cn/chn/lsfw/lqgk/202307/t20230710_11110566.htm",
+                "date": "2023年07月10日 12:12:00(CST) 星期一"
+              }
+            ]
+          }
+        },
+        {
+          "kind": "discovered",
+          "legs": [
+            {
+              "from": "北京",
+              "to": "乌鲁木齐",
+              "mode": null,
+              "via": null
+            },
+            {
+              "from": "乌鲁木齐",
+              "to": "伊宁",
+              "mode": null,
+              "via": null
+            },
+            {
+              "from": "伊宁",
+              "to": "阿拉木图",
+              "mode": "road",
+              "via": null
+            }
+          ],
+          "reason": "搜索资料提示可经乌鲁木齐、伊宁方向探索；逐段交通、实际换乘与日期衔接仍需确认",
+          "basis": {
+            "rule": "search-discovery",
+            "sources": [
+              {
+                "title": "乌鲁木齐经霍尔果斯至阿拉木图国际道路客运班线开通",
+                "link": "https://jtyst.xinjiang.gov.cn/xjjtysj/jtyw/202311/68952f89120b4986a185884df0464d75.shtml",
+                "date": "2023-11-03"
+              },
+              {
+                "title": "【领事在身边】乘坐中哈间国际道路旅客班车往返阿拉木图市注意事项",
+                "link": "https://almaty.china-consulate.gov.cn/chn/lsfw/lqgk/202307/t20230710_11110566.htm",
+                "date": "2023年07月10日 12:12:00(CST) 星期一"
               }
             ]
           }
@@ -202,14 +246,14 @@
     {
       "origin": "上海",
       "destination": "昆明",
-      "first_result_ms": 14,
-      "complete_ms": 25011,
+      "first_result_ms": 8,
+      "complete_ms": 6659,
       "metrics": {
         "model_calls": 1,
-        "search_calls": 2,
-        "first_result_ms": 5,
-        "elapsed_ms": 25007,
-        "budget_exhausted": true
+        "search_calls": 5,
+        "first_result_ms": 4,
+        "elapsed_ms": 6656,
+        "budget_exhausted": false
       },
       "search": {
         "configured": true,
@@ -266,18 +310,18 @@
     {
       "origin": "广州",
       "destination": "比什凯克",
-      "first_result_ms": 9,
-      "complete_ms": 25013,
+      "first_result_ms": 7,
+      "complete_ms": 14780,
       "metrics": {
         "model_calls": 1,
-        "search_calls": 3,
+        "search_calls": 5,
         "first_result_ms": 3,
-        "elapsed_ms": 25009,
-        "budget_exhausted": true
+        "elapsed_ms": 14777,
+        "budget_exhausted": false
       },
       "search": {
         "configured": true,
-        "status": "timeout"
+        "status": "available"
       },
       "cost_cny": null,
       "candidates": [
@@ -331,14 +375,14 @@
     {
       "origin": "成都",
       "destination": "拉萨",
-      "first_result_ms": 9,
-      "complete_ms": 25006,
+      "first_result_ms": 11,
+      "complete_ms": 13303,
       "metrics": {
         "model_calls": 1,
-        "search_calls": 2,
-        "first_result_ms": 3,
-        "elapsed_ms": 25002,
-        "budget_exhausted": true
+        "search_calls": 9,
+        "first_result_ms": 4,
+        "elapsed_ms": 13299,
+        "budget_exhausted": false
       },
       "search": {
         "configured": true,
@@ -391,6 +435,62 @@
           }
         },
         {
+          "kind": "discovered",
+          "legs": [
+            {
+              "from": "成都",
+              "to": "格尔木",
+              "mode": null,
+              "via": null
+            },
+            {
+              "from": "格尔木",
+              "to": "拉萨",
+              "mode": null,
+              "via": null
+            }
+          ],
+          "reason": "搜索资料提示可经格尔木方向探索；逐段交通、实际换乘与日期衔接仍需确认",
+          "basis": {
+            "rule": "search-discovery",
+            "sources": [
+              {
+                "title": "成都-拉萨 单程 2026-09-10 (共0车次)",
+                "link": "https://trains.ctrip.com/trainbooking/chengdu-lasa/dongche/",
+                "date": "2026年09月09日 17:31:43(CST) 星期三"
+              }
+            ]
+          }
+        },
+        {
+          "kind": "discovered",
+          "legs": [
+            {
+              "from": "成都",
+              "to": "西宁",
+              "mode": null,
+              "via": null
+            },
+            {
+              "from": "西宁",
+              "to": "拉萨",
+              "mode": null,
+              "via": null
+            }
+          ],
+          "reason": "搜索资料提示可经西宁方向探索；逐段交通、实际换乘与日期衔接仍需确认",
+          "basis": {
+            "rule": "search-discovery",
+            "sources": [
+              {
+                "title": "成都 - 拉萨",
+                "link": "https://m.ly.com/trainnin1/touch/#/list?startdatetime=2024-01-08&startcity=%E6%88%90%E9%83%BD&arrivecity=%E6%8B%89%E8%90%A8&refid=1266641015",
+                "date": "2024年01月08日 00:00:00(CST) 星期一"
+              }
+            ]
+          }
+        },
+        {
           "kind": "one_transfer",
           "legs": [
             {
@@ -423,6 +523,282 @@
                 "text": "枢纽→目的地段：西宁→拉萨为青藏铁路方向（班期待查）"
               }
             ]
+          }
+        }
+      ]
+    },
+    {
+      "origin": "哈尔滨",
+      "destination": "三亚",
+      "first_result_ms": 8,
+      "complete_ms": 15403,
+      "metrics": {
+        "model_calls": 1,
+        "search_calls": 7,
+        "first_result_ms": 4,
+        "elapsed_ms": 15399,
+        "budget_exhausted": false
+      },
+      "search": {
+        "configured": true,
+        "status": "available"
+      },
+      "cost_cny": null,
+      "candidates": [
+        {
+          "kind": "direct",
+          "legs": [
+            {
+              "from": "哈尔滨",
+              "to": "三亚",
+              "mode": null,
+              "via": null
+            }
+          ],
+          "reason": "假设存在直达航班或直达列车：具体班期待逐段取证",
+          "basis": {
+            "mode": "unknown",
+            "rule": "domestic-default",
+            "reason": "国内 OD 航空/铁路均可能，方式待取证确认"
+          }
+        },
+        {
+          "kind": "discovered",
+          "legs": [
+            {
+              "from": "哈尔滨",
+              "to": "海口",
+              "mode": "rail",
+              "via": null
+            },
+            {
+              "from": "海口",
+              "to": "三亚",
+              "mode": "rail",
+              "via": null
+            }
+          ],
+          "reason": "搜索资料提示可经海口方向探索；逐段交通、实际换乘与日期衔接仍需确认",
+          "basis": {
+            "rule": "search-discovery",
+            "sources": [
+              {
+                "title": "哈尔滨到三亚高铁查询-高铁票价-高铁时刻表-[携程]高铁票订票官网",
+                "link": "https://trains.ctrip.com/trainbooking/haerbin-sanya/gaotie/",
+                "date": "2026年09月28日 03:48:37(CST) 星期一"
+              }
+            ]
+          }
+        },
+        {
+          "kind": "discovered",
+          "legs": [
+            {
+              "from": "哈尔滨",
+              "to": "广州",
+              "mode": "rail",
+              "via": null
+            },
+            {
+              "from": "广州",
+              "to": "三亚",
+              "mode": "rail",
+              "via": null
+            }
+          ],
+          "reason": "搜索资料提示可经广州方向探索；逐段交通、实际换乘与日期衔接仍需确认",
+          "basis": {
+            "rule": "search-discovery",
+            "sources": [
+              {
+                "title": "哈尔滨到三亚火车票预订与代购-高铁票价,动车票价-高铁订票,动车订票网-携程火车票订购中心",
+                "link": "https://trains.ctrip.com/trainbooking/haerbin-sanya/",
+                "date": "2026年09月26日 18:51:57(CST) 星期六"
+              },
+              {
+                "title": "哈尔滨到三亚动车查询-动车票价-动车时刻表-[携程]火车票网上订票官网",
+                "link": "https://trains.ctrip.com/trainbooking/haerbin-sanya/dongche/",
+                "date": "2026年09月25日 14:13:20(CST) 星期五"
+              },
+              {
+                "title": "哈尔滨西到三亚火车票预订与代购-高铁票价,动车票价-高铁订票,动车订票网-携程火车票订购中心",
+                "link": "https://trains.ctrip.com/trainbooking/haerbinxi-sanya/",
+                "date": "2026年09月28日 13:34:23(CST) 星期一"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "origin": "北京",
+      "destination": "香港",
+      "first_result_ms": 9,
+      "complete_ms": 16025,
+      "metrics": {
+        "model_calls": 1,
+        "search_calls": 10,
+        "first_result_ms": 3,
+        "elapsed_ms": 16021,
+        "budget_exhausted": false
+      },
+      "search": {
+        "configured": true,
+        "status": "available"
+      },
+      "cost_cny": null,
+      "candidates": [
+        {
+          "kind": "direct",
+          "legs": [
+            {
+              "from": "北京",
+              "to": "香港",
+              "mode": "plane",
+              "via": null
+            }
+          ],
+          "reason": "假设存在直达航班：班期与价格待逐段取证，未取证前不做任何比较",
+          "basis": {
+            "mode": "plane",
+            "rule": "intl-default",
+            "reason": "国际 OD 默认航班方向假设（是否成立待取证）"
+          }
+        },
+        {
+          "kind": "direct",
+          "legs": [
+            {
+              "from": "北京",
+              "to": "香港",
+              "mode": "rail",
+              "via": null
+            }
+          ],
+          "reason": "假设存在直达铁路方案：已有已知线路依据（详见 basis），班期、口岸衔接与是否直达待逐段取证，与航班假设并存供核验",
+          "basis": {
+            "rule": "known-corridor",
+            "corridor": "京港高速铁路（经深圳口岸跨境）",
+            "evidence": "公开线路常识",
+            "evidence_grade": "public_line_knowledge",
+            "source_url": "https://zh.wikipedia.org/wiki/%E4%BA%AC%E6%B8%AF%E9%AB%98%E9%80%9F%E9%93%81%E8%B7%AF",
+            "sampled_at": "2026-09-22",
+            "review_by": "2027-03-22",
+            "corridor_status": "verified_knowledge",
+            "within_km": 1966,
+            "threshold_km": 4500
+          }
+        },
+        {
+          "kind": "discovered",
+          "legs": [
+            {
+              "from": "北京",
+              "to": "武汉",
+              "mode": "rail",
+              "via": null
+            },
+            {
+              "from": "武汉",
+              "to": "长沙",
+              "mode": "rail",
+              "via": null
+            },
+            {
+              "from": "长沙",
+              "to": "广州",
+              "mode": "rail",
+              "via": null
+            },
+            {
+              "from": "广州",
+              "to": "香港",
+              "mode": "rail",
+              "via": null
+            }
+          ],
+          "reason": "搜索资料提示可经武汉、长沙、广州方向探索；逐段交通、实际换乘与日期衔接仍需确认",
+          "basis": {
+            "rule": "search-discovery",
+            "sources": [
+              {
+                "title": "2026北京到香港高铁时刻表查询，从北京到香港高铁火车最新消息_车主手册",
+                "link": "https://m.icauto.com.cn/chuxing/gtr_47996.html",
+                "date": "2026年09月26日 14:36:00(CST) 星期六"
+              }
+            ]
+          }
+        },
+        {
+          "kind": "one_transfer",
+          "legs": [
+            {
+              "from": "北京",
+              "to": "广州",
+              "mode": null,
+              "via": null
+            },
+            {
+              "from": "广州",
+              "to": "香港",
+              "mode": "plane",
+              "via": null
+            }
+          ],
+          "reason": "假设经「广州」一次中转：中转城市按枢纽作用与「枢纽→目的地」段连接依据筛选（依据见下，末段方式按可用连接选择），两段班期与衔接余量待逐段取证",
+          "basis": {
+            "rule": "hub-network",
+            "whys": [
+              {
+                "scope": "geo",
+                "leg": null,
+                "direction": null,
+                "text": "华南综合枢纽"
+              },
+              {
+                "scope": "air",
+                "leg": "out",
+                "direction": "香港",
+                "text": "广州→香港方向存在航空衔接区位（具体航线待查）"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "origin": "上海",
+      "destination": "台北",
+      "first_result_ms": 9,
+      "complete_ms": 13243,
+      "metrics": {
+        "model_calls": 2,
+        "search_calls": 3,
+        "first_result_ms": 3,
+        "elapsed_ms": 13240,
+        "budget_exhausted": false
+      },
+      "search": {
+        "configured": true,
+        "status": "available"
+      },
+      "cost_cny": null,
+      "candidates": [
+        {
+          "kind": "direct",
+          "legs": [
+            {
+              "from": "上海",
+              "to": "台北",
+              "mode": "plane",
+              "via": null
+            }
+          ],
+          "reason": "假设存在直达航班：班期与价格待逐段取证，未取证前不做任何比较",
+          "basis": {
+            "mode": "plane",
+            "rule": "intl-default",
+            "reason": "国际 OD 默认航班方向假设（是否成立待取证）"
           }
         }
       ]

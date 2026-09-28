@@ -682,9 +682,14 @@ const NO_DIGIT_RE = /\d/;
     .flatMap((c) => c.legs).every((l) => l.evidence_state === 'source_lead') &&
     r6.candidates.some((c) => c.basis?.rule === 'historical-inspiration'),
     '编排：搜索线索只归属实际命中的路段，历史结构独立标注');
-  ok(r6.web_search && r6.web_search.configured === true && r6.web_search.status === 'quota_exhausted',
-    'P1-4：规划响应如实带 web_search 配置与最近真实状态（configured ≠ available）');
-  ok(r6.planner_version === 'v0.43.5', '编排：anywhere 版本号对齐 v0.43.5');
+  ok(r6.web_search && r6.web_search.configured === true && r6.web_search.status === 'available',
+    'P1-4：本请求取得过搜索结果 → 状态如实报 available（一次成功不被并行的另一次失败误报）');
+  const r6b = await planAnywhere({ origin: '北京', destination: '喀什' },
+    { callJson: async () => null, env: fakeEnv, osmSearch: async () => [], webSearchStatus: () => ({ status: 'timeout' }),
+      searchWeb: async () => null });
+  ok(r6b.web_search && r6b.web_search.status === 'timeout',
+    'P1-4：本请求全部搜索失败 → 透传最近失败原因（timeout），不谎报可用');
+  ok(r6.planner_version === 'v0.44.0', '编排：anywhere 版本号对齐 v0.44.0');
 
   const r7 = await planAnywhere({ text: '想去新疆最西边那座古城玩' },
     { callJson: async () => ({ origin: '北京', destination: '喀什' }), env: {}, osmSearch: async () => [] });
