@@ -1,22 +1,22 @@
 {
-  "sampled_at": "2026-09-27T13:07:51.480Z",
+  "sampled_at": "2026-09-28T13:42:56.045Z",
   "note": "真实通道回放，非班期核验；调用次数不等于费用，金额须结合供应商账单。",
   "cases": [
     {
       "origin": "北京",
       "destination": "阿拉木图",
-      "first_result_ms": 117,
-      "complete_ms": 7433,
+      "first_result_ms": 99,
+      "complete_ms": 25058,
       "metrics": {
         "model_calls": 1,
-        "search_calls": 10,
+        "search_calls": 2,
         "first_result_ms": 8,
-        "elapsed_ms": 7371,
-        "budget_exhausted": false
+        "elapsed_ms": 25008,
+        "budget_exhausted": true
       },
       "search": {
         "configured": true,
-        "status": "quota_exhausted"
+        "status": "timeout"
       },
       "cost_cny": null,
       "candidates": [
@@ -35,39 +35,6 @@
             "mode": "plane",
             "rule": "intl-default",
             "reason": "国际 OD 默认航班方向假设（是否成立待取证）"
-          }
-        },
-        {
-          "kind": "discovered",
-          "legs": [
-            {
-              "from": "北京",
-              "to": "塔城",
-              "mode": null,
-              "via": null
-            },
-            {
-              "from": "塔城",
-              "to": "阿拉木图",
-              "mode": "road",
-              "via": "巴克图"
-            }
-          ],
-          "reason": "搜索资料提示可经塔城方向探索；逐段交通、实际换乘与日期衔接仍需确认",
-          "basis": {
-            "rule": "search-discovery",
-            "sources": [
-              {
-                "title": "塔城—巴克图—阿拉木图国际道路客运班线经营许可",
-                "link": "https://jtyst.xinjiang.gov.cn/xjjtysj/qtwgfw/202408/fc30c01606204d138386ace899ce6be5.shtml",
-                "date": "2024-07-26"
-              },
-              {
-                "title": "塔城—阿拉木图国际客运班线开通了|塔城市|客运班线|巴克图口岸_手机网易网",
-                "link": "https://m.163.com/dy/article/JQU9N8LG0514R9KE.html",
-                "date": null
-              }
-            ]
           }
         },
         {
@@ -122,6 +89,34 @@
                 "title": "乌鲁木齐经霍尔果斯至阿拉木图国际道路客运班线开通",
                 "link": "https://jtyst.xinjiang.gov.cn/xjjtysj/jtyw/202311/68952f89120b4986a185884df0464d75.shtml",
                 "date": "2023-11-03"
+              }
+            ]
+          }
+        },
+        {
+          "kind": "discovered",
+          "legs": [
+            {
+              "from": "北京",
+              "to": "塔城",
+              "mode": null,
+              "via": null
+            },
+            {
+              "from": "塔城",
+              "to": "阿拉木图",
+              "mode": "road",
+              "via": "巴克图"
+            }
+          ],
+          "reason": "搜索资料提示可经塔城方向探索；逐段交通、实际换乘与日期衔接仍需确认",
+          "basis": {
+            "rule": "search-discovery",
+            "sources": [
+              {
+                "title": "塔城—巴克图—阿拉木图国际道路客运班线经营许可",
+                "link": "https://jtyst.xinjiang.gov.cn/xjjtysj/qtwgfw/202408/fc30c01606204d138386ace899ce6be5.shtml",
+                "date": "2024-07-26"
               }
             ]
           }
@@ -208,17 +203,17 @@
       "origin": "上海",
       "destination": "昆明",
       "first_result_ms": 14,
-      "complete_ms": 14,
+      "complete_ms": 25011,
       "metrics": {
-        "model_calls": 0,
-        "search_calls": 3,
-        "first_result_ms": 2,
-        "elapsed_ms": 3,
-        "budget_exhausted": false
+        "model_calls": 1,
+        "search_calls": 2,
+        "first_result_ms": 5,
+        "elapsed_ms": 25007,
+        "budget_exhausted": true
       },
       "search": {
         "configured": true,
-        "status": "quota_exhausted"
+        "status": "available"
       },
       "cost_cny": null,
       "candidates": [
@@ -238,24 +233,51 @@
             "rule": "domestic-default",
             "reason": "国内 OD 航空/铁路均可能，方式待取证确认"
           }
+        },
+        {
+          "kind": "discovered",
+          "legs": [
+            {
+              "from": "上海",
+              "to": "贵阳",
+              "mode": "rail",
+              "via": null
+            },
+            {
+              "from": "贵阳",
+              "to": "昆明",
+              "mode": "rail",
+              "via": null
+            }
+          ],
+          "reason": "库内历史路线结构提示可经贵阳方向探索；逐段交通、实际换乘与日期衔接仍需确认",
+          "basis": {
+            "rule": "historical-inspiration",
+            "sources": [
+              {
+                "title": "库内历史路线结构，班期与费用不作当期依据",
+                "link": null
+              }
+            ]
+          }
         }
       ]
     },
     {
       "origin": "广州",
       "destination": "比什凯克",
-      "first_result_ms": 3,
-      "complete_ms": 4032,
+      "first_result_ms": 9,
+      "complete_ms": 25013,
       "metrics": {
         "model_calls": 1,
-        "search_calls": 5,
-        "first_result_ms": 0,
-        "elapsed_ms": 4028,
-        "budget_exhausted": false
+        "search_calls": 3,
+        "first_result_ms": 3,
+        "elapsed_ms": 25009,
+        "budget_exhausted": true
       },
       "search": {
         "configured": true,
-        "status": "quota_exhausted"
+        "status": "timeout"
       },
       "cost_cny": null,
       "candidates": [
@@ -309,18 +331,18 @@
     {
       "origin": "成都",
       "destination": "拉萨",
-      "first_result_ms": 8,
-      "complete_ms": 8,
+      "first_result_ms": 9,
+      "complete_ms": 25006,
       "metrics": {
-        "model_calls": 0,
-        "search_calls": 5,
-        "first_result_ms": 1,
-        "elapsed_ms": 2,
-        "budget_exhausted": false
+        "model_calls": 1,
+        "search_calls": 2,
+        "first_result_ms": 3,
+        "elapsed_ms": 25002,
+        "budget_exhausted": true
       },
       "search": {
         "configured": true,
-        "status": "quota_exhausted"
+        "status": "available"
       },
       "cost_cny": null,
       "candidates": [
@@ -339,6 +361,33 @@
             "mode": "unknown",
             "rule": "domestic-default",
             "reason": "国内 OD 航空/铁路均可能，方式待取证确认"
+          }
+        },
+        {
+          "kind": "discovered",
+          "legs": [
+            {
+              "from": "成都",
+              "to": "西宁",
+              "mode": "rail",
+              "via": null
+            },
+            {
+              "from": "西宁",
+              "to": "拉萨",
+              "mode": "rail",
+              "via": null
+            }
+          ],
+          "reason": "库内历史路线结构提示可经西宁方向探索；逐段交通、实际换乘与日期衔接仍需确认",
+          "basis": {
+            "rule": "historical-inspiration",
+            "sources": [
+              {
+                "title": "库内历史路线结构，班期与费用不作当期依据",
+                "link": null
+              }
+            ]
           }
         },
         {

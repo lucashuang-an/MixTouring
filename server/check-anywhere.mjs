@@ -684,7 +684,7 @@ const NO_DIGIT_RE = /\d/;
     '编排：搜索线索只归属实际命中的路段，历史结构独立标注');
   ok(r6.web_search && r6.web_search.configured === true && r6.web_search.status === 'quota_exhausted',
     'P1-4：规划响应如实带 web_search 配置与最近真实状态（configured ≠ available）');
-  ok(r6.planner_version === 'v0.43.4', '编排：anywhere 版本号对齐 v0.43.4');
+  ok(r6.planner_version === 'v0.43.5', '编排：anywhere 版本号对齐 v0.43.5');
 
   const r7 = await planAnywhere({ text: '想去新疆最西边那座古城玩' },
     { callJson: async () => ({ origin: '北京', destination: '喀什' }), env: {}, osmSearch: async () => [] });

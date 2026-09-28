@@ -101,7 +101,8 @@ export function scanPlaceMentions(text) {
 
 const NIGHT_AVOID_RE = [
   /(?:不|别|不想|拒绝|避免|不接受)[^。！？，,]{0,6}(?:半夜|凌晨|夜间|夜里|红眼)[^。！？，,]{0,4}(?:到|到达|抵达|落地|航班)/,
-  /红眼(?:航班)?[^。！？，,]{0,4}(?:不|不想|拒绝)/
+  /红眼(?:航班)?[^。！？，,]{0,4}(?:不|不想|拒绝)/,
+  /(?:半夜|凌晨|夜间|夜里)(?:到|到达|抵达|落地)[^。！？，,]{0,4}(?:不要|不行|不接受|避免)/
 ];
 const NIGHT_ALLOW_RE = [
   /(?:可以|接受|能接受|无所谓|不介意|没关系)[^。！？，,]{0,6}(?:半夜|凌晨|夜间|夜里|红眼)/,
@@ -113,7 +114,7 @@ export function extractConstraints(text) {
   const t = String(text || '');
   const c = {};
   let m;
-  if ((m = t.match(/预算\s*(?:不超过|最多|约|大概|为)?\s*(\d{3,6})\s*(?:元|块|人民币|CNY)/i)) ||
+  if ((m = t.match(/预算\s*(?:不超过|最多|约|大概|为|改到|改成|调整到|提高到|降到)?\s*(\d{3,6})\s*(?:元|块|人民币|CNY)/i)) ||
       (m = t.match(/(\d{3,6})\s*(?:元|块)\s*(?:以内|之内|的?预算)/))) c.budget_max_cny = +m[1];
   if ((m = t.match(/(?:中转|转机)[^。！？，,]{0,10}?(?:不超过|最多|少于|短于)?\s*(\d{1,2}(?:\.\d)?)\s*个?小时/))) c.max_layover_hours = +m[1];
   if (NIGHT_AVOID_RE.some((re) => re.test(t))) c.night_arrival = 'avoid';
@@ -173,9 +174,9 @@ export function isValidWindow(s) {
  *  十二轮 P1：产出日期须过真实日历校验（Date 溢出回读一致）——2月31日/4月31日等不存在日期返回 null。 */
 export function extractReturnDate(text, nowMs = Date.now()) {
   const t = String(text || '');
-  const date = '(?:(?<year>20\\d{2})\\s*(?:年|[/-])\\s*)?(?<month>\\d{1,2})\\s*(?:月|[/-])\\s*(?<day>\\d{1,2})\\s*日?';
+  const date = '(?:(?<year>20\\d{2})\\s*(?:年|[/-])\\s*)?(?<month>\\d{1,2})\\s*(?:月|[/-])\\s*(?<day>\\d{1,2})\\s*(?:日|号)?';
   const m = t.match(new RegExp(date + '[^。！？，,]{0,8}?(?:回来|返回|回程|返程|回)')) ||
-    t.match(new RegExp('(?:回来|返回|回程|返程)[^。！？，,]{0,4}' + date));
+    t.match(new RegExp('(?:回来|返回|回程|返程)[^。！？，,]{0,4}?' + date));
   if (!m) return null;
   const month = Number(m.groups.month), day = Number(m.groups.day);
   if (!(month >= 1 && month <= 12 && day >= 1 && day <= 31)) return null;

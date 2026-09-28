@@ -9,6 +9,7 @@
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { searchVolc } from './search-volc.mjs';
 
 const DEFAULT_BASE = 'https://api.openai.com/v1';
 const DEFAULT_MODEL = 'gpt-4o-mini';
@@ -97,6 +98,15 @@ async function searchPublicIndex(query, limit, timeoutMs, signal) {
 export function webSearchStatus() { return { ...SEARCH_STATE }; }
 
 export async function searchWeb(query, { limit = 5, timeoutMs = 30000, signal } = {}) {
+  if (process.env.VOLC_SEARCH_API_KEY) {
+    const outcome = await searchVolc(query, {
+      key: process.env.VOLC_SEARCH_API_KEY,
+      model: process.env.VOLC_SEARCH_MODEL || 'doubao-seed-2-1-lite-260915',
+      limit, timeoutMs, signal
+    });
+    markSearch(outcome.status, 'volc-search');
+    return outcome.results;
+  }
   if (!llmConfigured()) return null;
   if (Date.now() < SEARCH_QUOTA_UNTIL) {
     const fallback = await searchPublicIndex(query, limit, timeoutMs, signal);

@@ -268,7 +268,7 @@
       }
       var seq = ++guideSequence;
       document.getElementById('planStatus').textContent = '正在理解你的补充…';
-      post('/api/anywhere/guide', { text: text }).then(function (res) {
+      post('/api/anywhere/guide', { text: text, plan_id: activePlan.plan_id, candidate_id: activeCandidate }).then(function (res) {
         if (seq !== guideSequence) return;
         document.getElementById('planStatus').textContent = '';
         if (res.code !== 0) throw new Error();

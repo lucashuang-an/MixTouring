@@ -50,6 +50,7 @@ export function resolveRoute(origin, destination) {
  * 兼容聊天模型的 key/base 不代表该端点可用。仅当配置了 key 且 base 指向智谱（或显式 WEB_SEARCH_AVAILABLE=1）时视为已配置。
  * 返回 {configured, basis}——布尔由调用方消费，不泄露任何凭据。 */
 export function webSearchConfigured(env = process.env) {
+  if (env.VOLC_SEARCH_API_KEY) return { configured: true, basis: 'volc-search' };
   const key = !!env.LLM_API_KEY;
   const base = env.LLM_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4';
   const zhipuBase = base.includes('bigmodel.cn');
@@ -78,7 +79,7 @@ const SOLO_RE = /一个人|独自|单独|solo/i;
 const PAIR_RE = /两个人|两人|双人|和朋友|和对象/;
 /* v0.26.3 复审②：「国庆附近/前后/期间」保留弹性假期区间，不得收缩为 10/01 单日 */
 const NEAR_HOLIDAY_RE = /国庆\s*(?:附近|前后|期间|那几天)/;
-const EXPLICIT_DATE_RE = /(?:(20\d{2})\s*(?:年|[/-])\s*)?(\d{1,2})\s*(?:月|[/-])\s*(\d{1,2})\s*日?/g;
+const EXPLICIT_DATE_RE = /(?:(20\d{2})\s*(?:年|[/-])\s*)?(\d{1,2})\s*(?:月|[/-])\s*(\d{1,2})\s*(?:日|号)?/g;
 const HOLIDAY_RANGE_RE = /(?:(20\d{2})\s*年\s*)?国庆(?:节)?\s*(\d{1,2})\s*(?:日|号)?\s*[-~～—至到]\s*(\d{1,2})\s*(?:日|号)/g;
 const MONTH_RANGE_RE = /(?:(20\d{2})\s*年\s*)?(\d{1,2})\s*月\s*(\d{1,2})\s*(?:日|号)?\s*[-~～—至到]\s*(\d{1,2})\s*(?:日|号)/g;
 
@@ -129,7 +130,7 @@ export function extractExplicitOutboundDate(text, nowMs = Date.now()) {
   for (const m of t.matchAll(EXPLICIT_DATE_RE)) {
     if (spans.some(([start, end]) => m.index < end && m.index + m[0].length > start)) continue;
     /* 「1-3号」缺月份时是日期范围，不是 1 月 3 日。 */
-    if (!m[1] && !m[0].includes('月') && t[m.index + m[0].length] === '号') { sawDate = true; continue; }
+    if (!m[1] && !m[0].includes('月') && m[0].endsWith('号')) { sawDate = true; continue; }
     sawDate = true;
     const before = t.slice(Math.max(0, m.index - 12), m.index).split(/[，,。！？；;]/).pop();
     const after = t.slice(m.index + m[0].length, m.index + m[0].length + 12).split(/[，,。！？；;]/)[0];

@@ -92,3 +92,13 @@ export function journeyDetailFromPlanId(planId, candidateId, stopoverNights = 0,
   }
   return buildJourneyDetail(entry.plan, candidateId, stopoverNights);
 }
+
+/** 对话追问只读取服务端保存的本次规划，避免采纳浏览器提交的候选事实。 */
+export function guidePlanFromId(planId, now = Date.now()) {
+  const entry = plans.get(planId);
+  if (!entry || entry.expires_at <= now) {
+    if (entry) plans.delete(planId);
+    return null;
+  }
+  return entry.plan;
+}

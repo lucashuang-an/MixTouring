@@ -18,7 +18,7 @@ import { addWish, listWishes, removeWish } from './lib/wishlist.mjs';
 import { llmConfigured, llmModel } from './lib/llm.mjs';
 import { parseTripIntent, searchTripStrategies, buildVerificationChecklist, resolveRoute, capabilities, webSearchConfigured } from './lib/trip-service.mjs';
 import { planAnywhere } from './lib/anywhere.mjs';
-import { registerJourneyPlan, journeyDetailFromPlanId } from './lib/journey.mjs';
+import { registerJourneyPlan, journeyDetailFromPlanId, guidePlanFromId } from './lib/journey.mjs';
 import { webSearchStatus } from './lib/llm.mjs';
 import { parseGuideTurn } from './lib/guide.mjs';
 import { progressivePlan } from './lib/progressive.mjs';
@@ -350,7 +350,7 @@ app.use(async (ctx, next) => {
   }
   if (path === '/api/anywhere/guide' && ctx.method === 'POST') {
     const body = await readBody(ctx) || {};
-    ctx.body = { code: 0, data: parseGuideTurn(body.text) };
+    ctx.body = { code: 0, data: parseGuideTurn(body.text, Date.now(), guidePlanFromId(body.plan_id), body.candidate_id) };
     return;
   }
 

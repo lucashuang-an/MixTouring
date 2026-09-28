@@ -17,7 +17,8 @@ import {
   detectReversal, buildCostBreakdown, canClaimCheaper,
   evidenceState, legFreshness, nextVersion
 } from './lib/trip.mjs';
-import { extractIntentFields, parseTripIntent, searchTripStrategies, buildVerificationChecklist, resolveRoute, findPlace, capabilities } from './lib/trip-service.mjs';
+import { extractIntentFields, parseTripIntent, searchTripStrategies, buildVerificationChecklist, resolveRoute, findPlace, capabilities, webSearchConfigured } from './lib/trip-service.mjs';
+import { parseVolcSearch } from './lib/search-volc.mjs';
 import { parseTripRule } from './lib/parse.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -305,7 +306,18 @@ const [F_OUT, F_IN] = FIXTURE.dated_legs.map((l) => ({ ...l, baggage_terms: { ca
   ok(capabilities(true, true, 'quota_exhausted').web_search_status === 'quota_exhausted' &&
     capabilities(true, true, 'quota_exhausted').web_search_configured === true, 'P1-4：配置成功但状态如实为 quota_exhausted');
   ok(capabilities(true, true).trip_planner_version === 'v0.29.1' &&
-    capabilities(true, true).anywhere_planner_version === 'v0.43.4', 'P1-4：版本拆分（trip/anywhere 各自对齐）');
+    capabilities(true, true).anywhere_planner_version === 'v0.43.5', 'P1-4：版本拆分（trip/anywhere 各自对齐）');
+  ok(webSearchConfigured({ VOLC_SEARCH_API_KEY: 'test' }).basis === 'volc-search', '火山搜索独立于问答密钥配置');
+  const cited = { status: 'completed', usage: { tool_usage: { web_search: 1 } }, output: [
+    { type: 'web_search_call', status: 'completed' },
+    { type: 'message', content: [{ annotations: [
+      { type: 'url_citation', title: '客运公告', url: 'https://example.org/notice', summary: '北京至阿拉木图客运连接', publish_time: '2026-09-20' },
+      { type: 'url_citation', title: '重复', url: 'https://example.org/notice' }
+    ] }] }
+  ] };
+  ok(parseVolcSearch(cited)?.length === 1 && parseVolcSearch(cited)?.[0].date === '2026-09-20', '火山搜索只采结构化引用并去重');
+  ok(parseVolcSearch({ ...cited, usage: { tool_usage: { web_search: 0 } } }) === null, '模型未实际搜索时不认引用');
+  ok(parseVolcSearch({ ...cited, status: 'incomplete' }) === null, '推理截断不认搜索结果');
 }
 
 /* ---------- v0.26.0 服务动作：策略检索（fixture 驱动 + 反向不反转） ---------- */

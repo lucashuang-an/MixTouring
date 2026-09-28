@@ -12,17 +12,19 @@
   }
   function parse(text) {
     var t = String(text || ''), patch = {}, notes = [];
-    if (/省心|少折腾|尽快到|优先直达|直接到|不想绕路/.test(t)) patch.pace = 'simple';
+    if (/省心|少折腾|尽快到|优先直达|直接到|不想绕路|只看直达|只要直达/.test(t)) patch.pace = 'simple';
+    if (/只看直达|只要直达/.test(t)) notes.push('当前会把直达方向排在前面，仍保留其他走法供比较。');
     if (/沿途|顺路玩|多玩|愿意停|可以停|想停|想绕/.test(t)) patch.pace = 'explore';
     if (/都看看|都可以|先看全部|取消偏好|重新比较/.test(t)) patch.pace = 'any';
     if (/(?:不坐|拒绝|不要坐|绝不坐|不能坐)(?:长途)?(?:大巴|客车|汽车|巴士)|不要公路/.test(t)) patch.road = 'exclude';
     else if (/少坐|不想.*(?:长途车|大巴)|优先.*(?:飞机|航班|铁路)/.test(t)) patch.road = 'prefer_other';
     else if (/(?:可以|愿意|接受).*?(?:公路|大巴|长途车)|取消.*(?:大巴|公路).*限制/.test(t)) patch.road = 'open';
-    var stay = t.match(/(?:停(?:留)?|住)\s*([一二两12])\s*晚/);
+    var stay = t.match(/(?:停(?:留)?|住|改成|改为|换成)\s*([一二两12])\s*晚/);
     if (stay) { patch.nights = { '一': 1, '二': 2, '两': 2, '1': 1, '2': 2 }[stay[1]]; patch.pace = 'explore'; }
-    if (/不停留|不安排停留|取消停留/.test(t)) patch.nights = 0;
+    if (/不停留|不安排停留|取消(?:中途)?停留/.test(t)) patch.nights = 0;
     if (/(?:不想|不要|不能|不愿).{0,4}(?:停|住).*?[一二两12]\s*晚/.test(t)) {
-      delete patch.nights; notes.push('我还不能确定你想停几晚，请点选确认。');
+      delete patch.nights; delete patch.pace;
+      notes.push('你不想停原来的晚数了。是取消中途停留，还是改成停一晚？请说清楚后再调整。');
     }
     if (/不想沿途|不愿停留|不想多玩/.test(t)) { patch.pace = 'simple'; delete patch.nights; }
     if (/停(?:留)?\s*[一二两12]\s*天/.test(t)) { patch.pace = 'explore'; notes.push('停留天数已看到，住宿晚数请在下一题确认。'); }
