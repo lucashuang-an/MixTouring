@@ -662,6 +662,7 @@
         var c = item.candidate;
         html += '<div class="detail-card mt-route-card" style="margin-top:12px;">';
         if (c.inspiration_id) html += '<p class="mt-route-label">从路线灵感继续探索</p>';
+        else if (c.basis && c.basis.rule === 'historical-inspiration') html += '<p class="mt-route-label">国内历史路线结构 · 班期与费用待查</p>';
         html += '<div style="font-size:15px;">' + MT.esc(candidateTitle(c)) + '</div>';
         if (item.reason) html += '<div class="preference-note">' + MT.esc(item.reason) + '</div>';
         html += '<div style="font-size:13px;margin-top:7px;line-height:1.6;">' + c.legs.map(function (leg, i) {
@@ -672,7 +673,8 @@
         }).join(' → ') + '</div>';
         if (c.why_explore) html += '<div style="margin-top:9px;font-size:12.5px;line-height:1.65;">推荐理由：' + MT.esc(c.why_explore.split('；')[0]) + '</div>';
         var tradeoff = c.kind === 'direct' ? '不用换乘，行程组织更简单' :
-          c.kind === 'discovered' ? '可以沿途停留；各段衔接与跨境流程需核查' :
+          c.kind === 'discovered' ? (data.route && data.route.route_type === 'international'
+            ? '可以沿途停留；各段衔接与跨境流程需核查' : '可以沿途停留；各段客运连接、班期与衔接需核查') :
           c.kind === 'mixed' ? '增加铁路与航班接驳，可选择在中转城市停留' : '多一次换乘，可选择在中转城市停留';
         html += '<div style="margin-top:4px;font-size:12px;color:var(--mixtouring-muted-foreground);line-height:1.65;">主要取舍：' + tradeoff + '</div>';
         html += '<button type="button" class="btnJourney" data-candidate="' + MT.esc(c.id) + '" style="margin-top:12px;min-height:44px;padding:10px 18px;border:0;border-radius:10px;background:var(--mixtouring-primary);color:#fff;font-family:inherit;cursor:pointer;">' +
@@ -696,8 +698,9 @@
             '（' + MT.esc(c.basis.evidence || '') + '；取样 ' + MT.esc(String(c.basis.sampled_at || '').slice(0, 10)) + '，来源复核期限 ' + MT.esc(c.basis.review_by || '') + '——复核期限非运营有效期，命中仍只是待验证假设）' +
             ' <a href="' + MT.esc(src) + '" target="_blank" rel="noopener" style="color:#1E7F45;">来源 ›</a></div>';
         }
-        if (c.basis && ['search-discovery', 'curated-inspiration'].includes(c.basis.rule) && Array.isArray(c.basis.sources)) {
-          html += '<div style="margin-top:8px;font-size:11.5px;line-height:1.7;">发现线索：' + c.basis.sources.map(function (s) {
+        if (c.basis && ['search-discovery', 'curated-inspiration', 'historical-inspiration'].includes(c.basis.rule) && Array.isArray(c.basis.sources)) {
+          html += '<div style="margin-top:8px;font-size:11.5px;line-height:1.7;">' +
+            (c.basis.rule === 'historical-inspiration' ? '历史结构参考：' : '发现线索：') + c.basis.sources.map(function (s) {
             if (!/^https:\/\//.test(s.link || '')) return '<span>' + MT.esc(s.title) + '</span>';
             return '<a href="' + MT.esc(s.link) + '" target="_blank" rel="noopener" style="color:#1E7F45;margin-right:10px;">' + MT.esc(s.title) + ' ›</a>';
           }).join('') + '</div>';

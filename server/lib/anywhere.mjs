@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { ANYWHERE_PLANNER_VERSION } from './versions.mjs';
 import { discoverRoutes } from './route-discovery.mjs';
-import { inspirationFor, inspirationRoute } from './inspirations.mjs';
+import { inspirationFor, inspirationRoute, listInspirations } from './inspirations.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -1012,12 +1012,14 @@ export function buildCandidateSkeletons(o, d, constraints, llmHints = {}) {
     const nodes = [o, ...route.stops.map(hubNode), d];
     const legs = nodes.slice(0, -1).map((node, i) => newLeg(i + 1, node, nodes[i + 1], route.modes[i] === 'unknown' ? null : route.modes[i]));
     if (Array.isArray(route.via) && route.via.length) legs[legs.length - 1].via = route.via.join('、');
+    const historical = route.origin === 'historical';
     candidates.push({
       id: 'cand-discovered-' + candidates.length, kind: 'discovered', hypothesis: true,
-      transfers: route.stops.length, builder: 'search+llm',
-      basis: { rule: route.inspiration_id ? 'curated-inspiration' : 'search-discovery', sources: route.sources }, legs,
+      transfers: route.stops.length, builder: historical ? 'historical-template' : route.inspiration_id ? 'curated-inspiration' : 'search+llm',
+      basis: { rule: historical ? 'historical-inspiration' : route.inspiration_id ? 'curated-inspiration' : 'search-discovery', sources: route.sources }, legs,
       ...(route.inspiration_id ? { inspiration_id: route.inspiration_id } : {}),
-      explanation: (route.inspiration_id ? '所选路线灵感保留经' : '搜索资料提示可经') + route.stops.join('、') + '方向探索；逐段交通、实际换乘与日期衔接仍需确认',
+      explanation: (historical ? '库内历史路线结构提示可经' : route.inspiration_id ? '所选路线灵感保留经' : '搜索资料提示可经') +
+        route.stops.join('、') + '方向探索；逐段交通、实际换乘与日期衔接仍需确认',
       why_explore: '经' + route.stops.join('、') + '方向可比较沿途体验与直达的取舍；路线依据见详情',
       uncertain_leg: nodes.slice(0, -1).map((node, i) => segUncertain(node, nodes[i + 1])).join('；'),
       next_checks: ['核实各段客运连接与实际换乘点', '按本次日期核对班期、口岸流程和衔接时间']
@@ -1298,7 +1300,12 @@ export async function planAnywhere(input, deps = {}) {
 
   const route = { route_type: routeTypeOf(o, d) };
   const inspiration = input.inspiration_id ? inspirationFor(input.inspiration_id, o.name, d.name) : null;
-  const inspiredRoutes = inspiration ? [inspirationRoute(inspiration)] : [];
+  const inspiredRoutes = inspiration ? [inspirationRoute(inspiration)] : listInspirations()
+    .filter((item) => item.scope === 'domestic' && item.from === o.name && item.to === d.name)
+    .map((item) => {
+      const { inspiration_id, ...shape } = inspirationRoute(item);
+      return { ...shape, origin: 'historical' };
+    });
 
   /* 先输出可用的规则方向，真实检索随后补充；所有快照使用同一份地点与意图。 */
   const baseline = deps.onProgress ? buildCandidateSkeletons(o, d, constraints, { discovered_routes: inspiredRoutes }) : null;

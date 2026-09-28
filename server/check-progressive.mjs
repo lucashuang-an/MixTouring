@@ -32,4 +32,12 @@ await progressivePlan({ origin: '北京', destination: '喀什' }, (_, phase) =>
   searchWeb: async () => { throw new Error('取消后不应调用搜索'); }, callJson: async () => null
 }, controller.signal);
 assert.deepEqual(cancelled, ['base']);
+let quotaCalls = 0;
+const quota = await progressivePlan({ origin: '北京', destination: '阿拉木图' }, () => {}, {
+  env: { LLM_API_KEY: 'test', WEB_SEARCH_AVAILABLE: '1' },
+  searchWeb: async () => { quotaCalls++; return null; },
+  searchStatus: () => ({ status: 'quota_exhausted' }), callJson: async () => null
+});
+assert.ok(quotaCalls <= 2, '额度不足后应停止本轮重复逐段搜索');
+assert.ok(quota.candidates.length, '额度不足后仍保留探索结果');
 console.log('✓ 渐进规划：首批结果、候选保留、详情、调用预算、超时与取消通过');

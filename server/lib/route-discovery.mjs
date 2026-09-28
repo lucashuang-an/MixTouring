@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { loadPlaces } from './trip-service.mjs';
-import { assessRoute } from '../../pipeline/lib/geo-skill.mjs';
+import { assessRoute, haversineKm, MAX_DETOUR_RATIO, CORRIDOR_T_MIN, CORRIDOR_T_MAX } from '../../pipeline/lib/geo-skill.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const GEO = JSON.parse(readFileSync(join(ROOT, 'pipeline/data/cities-geo.json'), 'utf8')).cities;
@@ -26,6 +26,30 @@ function cityMap() {
 
 function leadText(source) {
   return String(source.title || '') + ' ' + String(source.content || '');
+}
+
+function routeIsReasonable(origin, destination, stops, cities) {
+  const domestic = assessRoute(origin.name, destination.name, stops);
+  if (domestic.verdict === 'non_mainstream') return false;
+  const points = [origin, ...stops.map((s) => cities.get(s)), destination];
+  if (points.some((p) => !Number.isFinite(p?.lat) || !Number.isFinite(p?.lon ?? p?.lng))) return false;
+  const km = (a, b) => haversineKm(a.lat, a.lon ?? a.lng, b.lat, b.lon ?? b.lng);
+  const direct = km(origin, destination);
+  if (direct < 1) return false;
+  const chain = points.slice(0, -1).reduce((sum, p, i) => sum + km(p, points[i + 1]), 0);
+  if (chain / direct > MAX_DETOUR_RATIO) return false;
+  const lat0 = (origin.lat + destination.lat) / 2 * Math.PI / 180;
+  const originLon = origin.lon ?? origin.lng, destinationLon = destination.lon ?? destination.lng;
+  const dx = (destinationLon - originLon) * Math.cos(lat0), dy = destination.lat - origin.lat;
+  const len2 = dx * dx + dy * dy;
+  let previous = CORRIDOR_T_MIN;
+  return stops.every((name) => {
+    const p = cities.get(name), px = (p.lon ?? p.lng) - originLon, py = p.lat - origin.lat;
+    const t = (px * Math.cos(lat0) * dx + py * dy) / len2;
+    if (t < previous || t > CORRIDOR_T_MAX) return false;
+    previous = t;
+    return true;
+  });
 }
 
 /** 返回可进入探索层的路线节点；不会将搜索结果升级为当期班次。 */
@@ -88,7 +112,7 @@ export async function discoverRoutes(origin, destination, { searchFn, modelFn, u
       leadText(r).includes(destination.name));
     if (!finalConnection || stops.some((s) => !support.some((r) => leadText(r).includes(s)))) continue;
     /* 搜索提出的绕行尚无经过评审的体验理由，先拦截反向或过度绕行；策展灵感另走结构复用。 */
-    if (assessRoute(origin.name, destination.name, stops).verdict === 'non_mainstream') continue;
+    if (!routeIsReasonable(origin, destination, stops, cities)) continue;
     const nodes = [origin.name, ...stops, destination.name];
     const modeWords = { plane: /航班|航空|飞机|机场|flight|airport/i, rail: /客运|列车|火车|高铁|铁路|train|rail/i,
       road: /客运|班车|大巴|长途汽车|bus|coach/i };

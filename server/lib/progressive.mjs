@@ -1,6 +1,6 @@
 /* 在线探索预算与渐进输出；超时保留规则候选，客户端断开后停止后续调用。 */
 import { planAnywhere } from './anywhere.mjs';
-import { callJson, searchWeb } from './llm.mjs';
+import { callJson, searchWeb, webSearchStatus } from './llm.mjs';
 
 export async function progressivePlan(input, emit, deps = {}, signal) {
   const started = Date.now(), budgetMs = deps.budgetMs ?? 25000;
@@ -8,6 +8,7 @@ export async function progressivePlan(input, emit, deps = {}, signal) {
   const bounded = signal ? AbortSignal.any([signal, deadline]) : deadline;
   const counts = { model_calls: 0, search_calls: 0 };
   let firstMs = null;
+  let searchStopped = false;
   async function limited(kind, limit, fn, args) {
     if (bounded.aborted || counts[kind] >= limit) return null;
     counts[kind]++;
@@ -21,11 +22,18 @@ export async function progressivePlan(input, emit, deps = {}, signal) {
     finally { if (onAbort) bounded.removeEventListener('abort', onAbort); }
   }
   const model = deps.callJson || callJson, search = deps.searchWeb || searchWeb;
+  const searchStatus = deps.searchStatus || (deps.searchWeb ? null : webSearchStatus);
   const data = await planAnywhere(input, {
     ...deps,
     useDiscoveryCache: deps.useDiscoveryCache ?? (deps.callJson === undefined && deps.searchWeb === undefined),
     callJson: (opts) => limited('model_calls', 4, model, [{ ...opts, signal: bounded }]),
-    searchWeb: (query, opts = {}) => limited('search_calls', 10, search, [query, { ...opts, signal: bounded, timeoutMs: Math.min(opts.timeoutMs || 8000, 8000) }]),
+    searchWeb: async (query, opts = {}) => {
+      if (searchStopped) return null;
+      const found = await limited('search_calls', 10, search,
+        [query, { ...opts, signal: bounded, timeoutMs: Math.min(opts.timeoutMs || 8000, 8000) }]);
+      if (!found && searchStatus?.().status === 'quota_exhausted') searchStopped = true;
+      return found;
+    },
     onProgress: (base) => {
       if (signal?.aborted) return;
       firstMs = Date.now() - started;

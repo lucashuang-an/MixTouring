@@ -21,6 +21,12 @@ for (const item of items) {
   assert.equal(detail.stopover.city, item.stops[1]);
 }
 assert.equal(inspirationFor('tpl-001', '上海', '昆明'), null);
+const seeded = await planAnywhere({ origin: '上海', destination: '昆明' }, { env: {}, callJson: async () => null });
+const history = seeded.candidates.find((c) => c.basis?.rule === 'historical-inspiration');
+assert.ok(history, '普通一句话规划也有历史结构探索参考');
+assert.deepEqual(history.legs.map((l) => l.from).concat(history.legs.at(-1).to), ['上海', '贵阳', '昆明']);
+assert.equal(history.inspiration_id, undefined, '未经用户选择不得宣称所选灵感');
+assert.equal(buildJourneyDetail(seeded, history.id).cost.known_total, null);
 const capped = await planAnywhere({ origin: '北京', destination: '喀什', inspiration_id: 'tpl-001', constraints: { max_transfers: 0 } }, { env: {}, callJson: async () => null });
 assert.ok(capped.candidates.every((c) => c.transfers === 0), '灵感不越过用户明确限制');
 console.log('✓ 国内与国际灵感：结构、方式、证据边界、日期隔离、停留详情与硬约束通过');

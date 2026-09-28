@@ -655,8 +655,9 @@ const NO_DIGIT_RE = /\d/;
 /* ---------- planAnywhere 编排（注入桩，无网络无 key） ---------- */
 {
   const r1 = await planAnywhere({ text: '从北京去喀什' }, NO_LLM);
-  ok(r1.intent.parse_engine === 'dict' && r1.route.route_type === 'domestic' && r1.candidates.length === 3,
-    '编排：一句话国内 OD 词典解析 + 三骨架');
+  ok(r1.intent.parse_engine === 'dict' && r1.route.route_type === 'domestic' && r1.candidates.length >= 3 &&
+    r1.candidates.some((c) => c.basis?.rule === 'historical-inspiration'),
+    '编排：一句话国内 OD 词典解析、基础骨架与历史结构参考');
   ok(r1.degradations.some((x) => x.includes('web_search 未配置')), '编排：web_search 不可用 → 明确降级为探索态');
 
   const r2 = await planAnywhere({ text: '从北京首都机场去喀纳斯，预算5000元' }, NO_LLM);
@@ -677,15 +678,17 @@ const NO_DIGIT_RE = /\d/;
   const r6 = await planAnywhere({ origin: '北京', destination: '喀什' },
     { callJson: async () => null, env: fakeEnv, osmSearch: async () => [], webSearchStatus: () => ({ status: 'quota_exhausted' }),
       searchWeb: async () => [{ title: '北京 喀什 乌鲁木齐 航班 火车 铁路 高铁', link: 'https://e.com/x', content: '北京 乌鲁木齐 喀什' }] });
-  ok(r6.candidates.flatMap((c) => c.legs).every((l) => l.evidence_state === 'source_lead'),
-    '编排：web_search 已配置时逐段挂相关线索（source_lead）');
+  ok(r6.candidates.filter((c) => c.basis?.rule !== 'historical-inspiration')
+    .flatMap((c) => c.legs).every((l) => l.evidence_state === 'source_lead') &&
+    r6.candidates.some((c) => c.basis?.rule === 'historical-inspiration'),
+    '编排：搜索线索只归属实际命中的路段，历史结构独立标注');
   ok(r6.web_search && r6.web_search.configured === true && r6.web_search.status === 'quota_exhausted',
     'P1-4：规划响应如实带 web_search 配置与最近真实状态（configured ≠ available）');
-  ok(r6.planner_version === 'v0.43.3', '编排：anywhere 版本号对齐 v0.43.3');
+  ok(r6.planner_version === 'v0.43.4', '编排：anywhere 版本号对齐 v0.43.4');
 
   const r7 = await planAnywhere({ text: '想去新疆最西边那座古城玩' },
     { callJson: async () => ({ origin: '北京', destination: '喀什' }), env: {}, osmSearch: async () => [] });
-  ok(r7.intent.parse_engine === 'llm' && r7.candidates.length === 3,
+  ok(r7.intent.parse_engine === 'llm' && r7.candidates.length >= 3,
     '编排：词典扫描无命中、LLM 清单内补全 → engine=llm');
 
   ok(KIND_LABEL.direct === '直达' && KIND_LABEL.mixed === '混合交通', '常量：骨架类型标签');
@@ -743,6 +746,21 @@ const NO_DIGIT_RE = /\d/;
     });
     ok(unsafe.routes.length === 0, '发现守门：拒绝反向绕行或货运误作客运：' + hub);
   }
+  const crossBorder = async (hub) => discoverRoutes(resolvePlace('北京'), resolvePlace('阿拉木图'), {
+    searchFn: async () => [{ title: `北京 ${hub} 阿拉木图 国际客运班线`,
+      content: `${hub} 阿拉木图 公路客运班线`, link: 'https://example.org/cross-border' }],
+    modelFn: async () => ({ routes: [{ stops: [hub], modes: ['unknown', 'road'], source_ids: [1] }] })
+  });
+  ok(!(await crossBorder('大连')).routes.some((r) => r.stops.includes('大连')),
+    '国际发现守门：有关键词也不能保留反向绕行的大连');
+  ok((await crossBorder('伊宁')).routes.some((r) => r.stops.includes('伊宁')),
+    '国际发现守门：保留顺路且有客运线索的伊宁');
+  const backtrack = await discoverRoutes(resolvePlace('北京'), resolvePlace('喀什'), {
+    searchFn: async () => [{ title: '北京 兰州 银川 喀什 铁路线路',
+      content: '北京经兰州银川前往喀什铁路方向', link: 'https://example.org/backtrack' }],
+    modelFn: async () => ({ routes: [{ stops: ['兰州', '银川'], modes: ['rail', 'rail', 'rail'], source_ids: [1] }] })
+  });
+  ok(!backtrack.routes.some((r) => r.stops.join('→') === '兰州→银川'), '多节点守门：拒绝途经城市顺序折返');
 }
 
 console.log(fail === 0
