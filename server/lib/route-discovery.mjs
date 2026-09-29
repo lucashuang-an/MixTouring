@@ -28,6 +28,49 @@ function leadText(source) {
   return String(source.title || '') + ' ' + String(source.content || '');
 }
 
+/** 先判断短句的运营状态；交通词和地点共现不能抵消否定、筹备或未来计划。 */
+function serviceClauseUnavailable(clause) {
+  const excluded = /物流|货运|货车|货物|托运|freight|cargo|0\s*(?:车次|班次)|暂无|停运|停航|停飞|停驶|停班|停开|取消|中断|暂停|筹备|规划中/i;
+  const future = /(?:计划|将|拟|预计|即将|有意|延期|等待|尚待)[^。；;，,！!？?\n]*(?:新?开(?:通|行|航)?|复航|恢复|运营|运行|执飞|直飞)|待(?:开通|开行|开航|复航|运营)/;
+  /* 否定词后允许多个情态/状态修饰词，不再依赖固定字符距离；「不经停」不等同否定运营。 */
+  const denied = /(?:未|不|没有)(?:能|会|可|曾|再|予以|正式|实际|成功|如期|按期|获准|开始|正常|继续|完全|真正|直接|进行|持续|已经|暂时)*(?:开通|开行|开航|复航|恢复|运营|运行|执飞|直飞|通航)/;
+  return excluded.test(clause) || future.test(clause) || denied.test(clause);
+}
+
+/** 搜索摘要只作线索；只有同一短句明确连接两端且描述客运，才支持某段的方式。
+ * 泛查询／订票页标题即使含起终点与方式，也不能证明实际有该段服务。 */
+export function sourceLegConnectionExcerpt(source, from, to, mode) {
+  const modeWords = {
+    plane: /航班|航空|飞机|机场|直飞|flight|airline/i,
+    rail: /客运列车|列车|火车|高铁|动车|铁路|train|rail/i,
+    road: /道路客运|公路客运|客运班线|班车|大巴|长途汽车|bus|coach/i
+  };
+  if (!modeWords[mode] || !from || !to) return null;
+  const title = String(source?.title || '');
+  const content = String(source?.content || '');
+  const genericTitle = /查询|票价|预订|订票|攻略|怎么走|路线规划/i.test(title) ||
+    (/时刻表/.test(title) && !/[A-Z]\d{2,4}/i.test(title));
+  if (genericTitle) return null;
+  const clauses = title + '。' + content;
+  for (const clause of clauses.split(/[。；;，,！!？?\n]/)) {
+    if (serviceClauseUnavailable(clause)) continue;
+    const start = clause.indexOf(from);
+    const end = start < 0 ? -1 : clause.indexOf(to, start + from.length);
+    if (end < 0) continue;
+    const between = clause.slice(start + from.length, end);
+    if (between.length > 48 || !/到|至|往返|—|－|→|经|开往|抵达/.test(between)) continue;
+    if (modeWords[mode].test(clause) &&
+      /开通|开行|运营|运行|经停|途经|经营许可|始发|抵达|复航|直飞|客运班线|班车|列车|航班/i.test(clause)) {
+      return clause.trim().slice(0, 160);
+    }
+  }
+  return null;
+}
+
+export function sourceSupportsLeg(source, from, to, mode) {
+  return sourceLegConnectionExcerpt(source, from, to, mode) != null;
+}
+
 function routeIsReasonable(origin, destination, stops, cities) {
   const domestic = assessRoute(origin.name, destination.name, stops);
   if (domestic.verdict === 'non_mainstream') return false;
@@ -59,11 +102,13 @@ export async function discoverRoutes(origin, destination, { searchFn, modelFn, u
   const cached = useCache ? CACHE.get(key) : null;
   if (cached && cached.expires > Date.now()) return cached.value;
 
+  /* 查询词 2026-09-28 实测：堆砌方式词（经哪些城市 交通路线 飞机 铁路 公路）稳定 8s 超时且首条常为货运；
+   * 短自然词 5-7s 返回且以客运来源为主（高铁途经站/携程中转方案/领事馆客运班车须知/航司开航新闻）。 */
   const queries = [
-    `${origin.name} ${destination.name} 经哪些城市 交通路线 飞机 铁路 公路`,
+    `${origin.name} ${destination.name} 中转 途经 城市 路线`,
     origin.country === destination.country
       ? `${origin.name} ${destination.name} 途经城市 旅行路线 交通方式`
-      : `${origin.name} ${destination.name} 经口岸 客运 途经城市 旅行路线`
+      : `${origin.name} ${destination.name} 口岸 客运 路线`
   ];
   const batches = await Promise.all(queries.map((q) => searchFn(q, { limit: 6, timeoutMs: 8000 }).catch(() => null)));
   const seen = new Set();
@@ -92,7 +137,9 @@ export async function discoverRoutes(origin, destination, { searchFn, modelFn, u
     '{"routes":[{"stops":["城市"],"modes":["plane","road"],"source_ids":[1]}]}。' +
     '起点：' + origin.name + '；终点：' + destination.name + '；允许城市：' + JSON.stringify(mentions) +
     '；来源：' + JSON.stringify(leads.map(({ id, title, content }) => ({ id, title, content })));
-  const result = await modelFn({ schema_prompt: prompt, user: '按来源提出值得探索的走法', kind: 'route-discovery', timeoutMs: 20000 });
+  /* 组合上限 12s：渐进请求共享 25s 预算（搜索 ~6s + 组合 ≤12s + 逐段并行验证 ~6s）；
+   * 模型超时让位给逐段验证，候选由策展走廊与规则骨架兜底。 */
+  const result = await modelFn({ schema_prompt: prompt, user: '按来源提出值得探索的走法', kind: 'route-discovery', timeoutMs: 12000 });
   const routes = [];
   const signatures = new Set();
   for (const proposal of (Array.isArray(result?.routes) ? result.routes : []).slice(0, 4)) {
@@ -108,31 +155,18 @@ export async function discoverRoutes(origin, destination, { searchFn, modelFn, u
     if (!Array.isArray(modes) || modes.length !== stops.length + 1 || modes.some((mode) => !MODES.has(mode))) continue;
     const ids = Array.isArray(proposal.source_ids) ? proposal.source_ids : [];
     const support = leads.filter((r) => ids.includes(r.id) && stops.some((s) => leadText(r).includes(s)));
-    const finalConnection = support.some((r) => leadText(r).includes(stops[stops.length - 1]) &&
-      leadText(r).includes(destination.name));
-    if (!finalConnection || stops.some((s) => !support.some((r) => leadText(r).includes(s)))) continue;
+    const nodes = [origin.name, ...stops, destination.name];
+    const passengerModes = ['plane', 'rail', 'road'];
+    /* 多节点的每一段都要有明确客运连接线索；整条 OD 的泛查询页不构成中途各段依据。
+     * 策展跨境走廊在下面独立生成，起点到门户仍可标未知。 */
+    if (nodes.slice(0, -1).some((from, i) => !support.some((r) =>
+      passengerModes.some((mode) => sourceSupportsLeg(r, from, nodes[i + 1], mode))))) continue;
     /* 搜索提出的绕行尚无经过评审的体验理由，先拦截反向或过度绕行；策展灵感另走结构复用。 */
     if (!routeIsReasonable(origin, destination, stops, cities)) continue;
-    const nodes = [origin.name, ...stops, destination.name];
-    const modeWords = { plane: /航班|航空|飞机|机场|flight|airport/i, rail: /客运|列车|火车|高铁|铁路|train|rail/i,
-      road: /客运|班车|大巴|长途汽车|bus|coach/i };
-    let unsupportedRoad = false;
     modes.forEach((mode, i) => {
       if (mode === 'unknown') return;
-      const supported = support.some((r) => {
-        const body = leadText(r);
-        return body.includes(nodes[i]) && body.includes(nodes[i + 1]) && modeWords[mode].test(body) &&
-          !/物流|货运|货车|货物|托运|freight|cargo/i.test(body);
-      });
-      if (!supported && mode === 'road') unsupportedRoad = true;
-      else if (!supported) modes[i] = 'unknown';
+      if (!support.some((r) => sourceSupportsLeg(r, nodes[i], nodes[i + 1], mode))) modes[i] = 'unknown';
     });
-    if (unsupportedRoad) continue;
-    if (modes[modes.length - 1] === 'road' && !support.some((r) => {
-      const body = leadText(r);
-      return body.includes(stops[stops.length - 1]) && body.includes(destination.name) &&
-        /客运|班车|大巴|公路|汽车|bus|coach/i.test(body);
-    })) continue;
     const signature = stops.join('→');
     if (signatures.has(signature)) continue;
     signatures.add(signature);

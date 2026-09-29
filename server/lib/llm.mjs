@@ -11,6 +11,8 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { searchVolc } from './search-volc.mjs';
 
+const VOLC_CHAT = 'https://ark.cn-beijing.volces.com/api/v3/chat/completions';
+
 const DEFAULT_BASE = 'https://api.openai.com/v1';
 const DEFAULT_MODEL = 'gpt-4o-mini';
 
@@ -149,6 +151,47 @@ export async function searchWeb(query, { limit = 5, timeoutMs = 30000, signal } 
       markSearch(err && (err.name === 'TimeoutError' || err.name === 'AbortError') ? 'timeout' : 'error');
     }
     console.error('✗ 联网检索失败（' + query + '）：' + err.message);
+    return null;
+  }
+}
+
+/**
+ * 路线组合专用通道（v0.44.0）：Coding Plan 模型（ark-code-latest）对组合任务实测经常 >12s
+ * 不返回，渐进 25s 预算内不可用（2026-09-28 回放 7/7 超时）。配置了火山普通推理
+ * （VOLC_SEARCH_API_KEY）时，组合与搜索走同一账户的 chat/completions（同计费口径），
+ * 模型默认与搜索同款，可用 VOLC_COMPOSE_MODEL 单独覆盖；失败返回 null 落回规则/策展组合，
+ * 不再串行等待慢通道。未配置火山 key 时回落 callJson（行为与 v0.43.x 一致）。
+ */
+export async function composeJson(opts) {
+  if (!process.env.VOLC_SEARCH_API_KEY) return callJson(opts);
+  const model = process.env.VOLC_COMPOSE_MODEL || process.env.VOLC_SEARCH_MODEL || 'deepseek-v4-flash-ga-260731';
+  try {
+    const timeout = AbortSignal.timeout(opts.timeoutMs || 12000);
+    const res = await fetch(VOLC_CHAT, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${process.env.VOLC_SEARCH_API_KEY}` },
+      body: JSON.stringify({
+        model, temperature: 0.2,
+        messages: [
+          { role: 'system', content: opts.schema_prompt || '只输出 JSON 对象。' },
+          { role: 'user', content: opts.user }
+        ],
+        /* 与 searchVolc 同款适配（v0.43.7）：deepseek 默认开思考，12s 渐进预算内回不来；
+         * 组合是结构化小任务，关思考实测可数秒返回。 */
+        thinking: { type: 'disabled' },
+        response_format: { type: 'json_object' }
+      }),
+      signal: opts.signal ? AbortSignal.any([opts.signal, timeout]) : timeout
+    });
+    if (!res.ok) throw new Error('VOLC compose HTTP ' + res.status);
+    const body = await res.json();
+    logUsage(opts.kind, body.usage, model);
+    const raw = body.choices?.[0]?.message?.content;
+    if (!raw) return null;
+    const m = raw.match(/\{[\s\S]*\}/);
+    return m ? JSON.parse(m[0]) : null;
+  } catch (err) {
+    console.error('✗ 火山组合调用失败，落回规则/策展组合：' + err.message);
     return null;
   }
 }

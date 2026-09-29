@@ -11,7 +11,7 @@
  * 防幻觉契约（延续 v0.30.0）：候选一律 candidate_hypothesis、无未取证数字；LLM 提名只从清单选；
  *   识别不了、核验不了 → 明确阻断，不猜。 */
 
-import { callJson as callJsonDefault, searchWeb as searchWebDefault, webSearchStatus as webSearchStatusDefault } from './llm.mjs';
+import { callJson as callJsonDefault, searchWeb as searchWebDefault, webSearchStatus as webSearchStatusDefault, composeJson as composeJsonDefault } from './llm.mjs';
 import { assignFromTo } from './parse.mjs';
 import { loadPlaces, webSearchConfigured, extractIntentFields } from './trip-service.mjs';
 import { candidatesBetween, haversineKm } from '../../pipeline/lib/geo-skill.mjs';
@@ -20,7 +20,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { ANYWHERE_PLANNER_VERSION } from './versions.mjs';
-import { discoverRoutes } from './route-discovery.mjs';
+import { discoverRoutes, sourceSupportsLeg, sourceLegConnectionExcerpt } from './route-discovery.mjs';
 import { inspirationFor, inspirationRoute, listInspirations } from './inspirations.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -1095,7 +1095,7 @@ export function resultRelevance(r, leg) {
   const from = String(leg.from).toLowerCase();
   const to = String(leg.to).toLowerCase();
   const modeRe = leg.mode_guess === 'rail'
-    ? /火车|铁路|高铁|动车|train|rail/
+    ? /列车|火车|铁路|高铁|动车|train|rail/
     : leg.mode_guess === 'plane'
       ? /航班|飞机|直飞|air\s|airline|flight|fly/
       : leg.mode_guess === 'road'
@@ -1104,37 +1104,48 @@ export function resultRelevance(r, leg) {
   return {
     from_hit: !!from && hay.includes(from),
     to_hit: !!to && hay.includes(to),
-    mode_hit: modeRe ? modeRe.test(hay) : true
+    mode_hit: modeRe ? modeRe.test(hay) : true,
+    connection_hit: !leg.mode_guess || leg.mode_guess === 'unknown'
+      ? ['plane', 'rail', 'road'].some((mode) => sourceSupportsLeg(r, leg.from, leg.to, mode))
+      : sourceSupportsLeg(r, leg.from, leg.to, leg.mode_guess)
   };
 }
 
 /** 逐段搜索线索：同查询缓存（限速纪律）；来源只保留 https 且通过相关性判定（v0.31.0 P0-2）；
- *  记录查询词与逐源相关性；不展示摘要防数字误引；无相关结果保持探索态。 */
-export async function verifyLegs(candidates, searchFn) {
+ *  记录查询词与逐源相关性；不展示摘要防数字误引；无相关结果保持探索态。
+ *  唯一查询并行发起（2026-09-28）：串行时每段独占一个超时窗口，25s 渐进预算内三段以上必超时。 */
+export async function verifyLegs(candidates, searchFn, sharedCache) {
   if (!searchFn) return { leads: 0 };
-  const cache = new Map();
+  const cache = sharedCache || new Map();
+  const jobs = [];
+  const queueSearch = (q) => {
+    if (cache.has(q)) return;
+    cache.set(q, null);
+    jobs.push((async () => { cache.set(q, await searchFn(q).catch(() => null)); })());
+  };
+  for (const cand of candidates) for (const leg of cand.legs) queueSearch(searchQueryFor(leg));
+  await Promise.all(jobs);
   let leads = 0;
   for (const cand of candidates) {
     for (const leg of cand.legs) {
       const q = searchQueryFor(leg);
       leg.lead_query = q;
-      let res = cache.get(q);
-      if (res === undefined) {
-        res = await searchFn(q);
-        cache.set(q, res);
-      }
+      const res = cache.get(q);
       const relevant = [];
       for (const r of (res || [])) {
         if (!(r && typeof r.link === 'string' && /^https:/.test(r.link))) continue;
         const rel = resultRelevance(r, leg);
-        if (rel.from_hit && rel.to_hit && rel.mode_hit) {
-          relevant.push({ title: String(r.title || '').slice(0, 120), link: r.link, sampled_at: new Date().toISOString(), relevance: rel });
+        if (rel.from_hit && rel.to_hit && rel.mode_hit && rel.connection_hit) {
+          const modes = !leg.mode_guess || leg.mode_guess === 'unknown' ? ['plane', 'rail', 'road'] : [leg.mode_guess];
+          const excerpt = modes.map((mode) => sourceLegConnectionExcerpt(r, leg.from, leg.to, mode)).find(Boolean);
+          relevant.push({ title: String(r.title || '').slice(0, 120), link: r.link,
+            sampled_at: new Date().toISOString(), relevance: rel, connection_excerpt: excerpt });
         }
       }
       if (relevant.length) {
         leg.evidence_state = 'source_lead';
         leg.sources = relevant.slice(0, 3);
-        leg.evidence_note = '搜索线索（命中该段两端与方式；非班期核验）';
+        leg.evidence_note = '搜索线索（同句描述该段客运连接与方式；非班期核验）';
         leads++;
       }
     }
@@ -1318,24 +1329,37 @@ export async function planAnywhere(input, deps = {}) {
   });
 
   const wsReady = webSearchConfigured(env).configured;
-  const searchFn = deps.searchWeb !== undefined ? deps.searchWeb : searchWebDefault;
+  const rawSearch = deps.searchWeb !== undefined ? deps.searchWeb : searchWebDefault;
+  /* 本请求搜索状态聚合：两组发现查询并行时一次超时一次可用，按「最近一次」会误报 timeout；
+   * 有任何一次取得结果即如实报 available，全失败时透传最近失败原因（P1-4 不谎报口径不变）。 */
+  let searchHadHit = false;
+  const searchFn = wsReady && rawSearch
+    ? async (q, opts) => { const res = await rawSearch(q, opts); if (res && res.length) searchHadHit = true; return res; }
+    : null;
+  /* 骨架段验证与发现链（搜索+组合）并行（v0.44.0）：组合/hub 模型慢时不再阻塞段线索；
+   * 共享查询缓存——buildCandidateSkeletons 合并后重叠段不重复搜索，只补新增段。 */
+  const legCache = new Map();
+  const baseLegsPromise = baseline && searchFn ? verifyLegs(baseline.candidates, searchFn, legCache) : null;
+  const composeFn = deps.composeJson || deps.callJson || composeJsonDefault;
   const discovery = wsReady && searchFn
-    ? await discoverRoutes(o, d, { searchFn, modelFn: callJson, useCache: deps.useDiscoveryCache ?? (deps.searchWeb === undefined && deps.callJson === undefined) })
+    ? await discoverRoutes(o, d, { searchFn, modelFn: composeFn, useCache: deps.useDiscoveryCache ?? (deps.searchWeb === undefined && deps.callJson === undefined) })
     : { routes: [], searched: false, leads: 0 };
 
-  /* LLM 中转提名（geo 覆盖不到时才需要；一次调用覆盖两类骨架；清单校验在 buildCandidateSkeletons 消费点） */
+  /* LLM 中转提名（geo 覆盖不到时才需要；一次调用覆盖两类骨架；清单校验在 buildCandidateSkeletons 消费点；
+   * 10s 上限：默认 30s 会吃满渐进预算，把逐段验证挤掉） */
   const llmHints = {};
   if (!discovery.routes.length && (!isDomesticPair(o, d) || !(geoCityName(o) && geoCityName(d)))) {
     const hubOut = await callJson({
       schema_prompt: llmHubPrompt(JSON.stringify(cityNames), o.name, d.name),
       user: '为 ' + o.name + ' → ' + d.name + ' 提名中转城市',
-      kind: 'anywhere'
+      kind: 'anywhere', timeoutMs: 10000
     });
     if (hubOut && typeof hubOut === 'object') {
       if (hubOut.one_transfer_city) llmHints.one_transfer_city = hubOut.one_transfer_city;
       if (hubOut.mixed_rail_city) llmHints.mixed_rail_city = hubOut.mixed_rail_city;
     }
   }
+  if (baseLegsPromise) await baseLegsPromise;
 
   llmHints.discovered_routes = [...inspiredRoutes, ...discovery.routes];
   const built = buildCandidateSkeletons(o, d, constraints, llmHints);
@@ -1348,10 +1372,11 @@ export async function planAnywhere(input, deps = {}) {
   }
   degradations.push(...built.degradations);
 
-  /* 逐段搜索线索：只在 web_search 已配置时进行；状态在取证后读取（如实反映本次调用结果，P1-4） */
+  /* 逐段搜索线索：只在 web_search 已配置时进行；状态在取证后读取（如实反映本次调用结果，P1-4）。
+   * 共享 legCache：骨架阶段已验证的段不重复搜索，仅对发现新增段补查询。 */
   let leadStat = { leads: 0 };
   if (wsReady) {
-    leadStat = await verifyLegs(built.candidates, searchFn);
+    leadStat = await verifyLegs(built.candidates, searchFn, legCache);
     if (!leadStat.leads && !discovery.leads) {
       const wsStateNow = deps.webSearchStatus ? deps.webSearchStatus() : webSearchStatusDefault();
       degradations.push('联网检索未取得相关线索（web_search 最近状态：' + (wsStateNow.status || 'unknown') +
@@ -1361,6 +1386,7 @@ export async function planAnywhere(input, deps = {}) {
     degradations.push('web_search 未配置：全部候选段保持探索态（未取证），不模拟证据');
   }
   const wsState = deps.webSearchStatus ? deps.webSearchStatus() : webSearchStatusDefault();
+  const wsStatus = searchHadHit ? 'available' : (wsState.status || 'unknown');
 
   return {
     intent,
@@ -1371,7 +1397,7 @@ export async function planAnywhere(input, deps = {}) {
     constraint_notes: built.constraint_notes,
     degradations,
     explorations: built.explorations,
-    web_search: { configured: wsReady, status: wsState.status || 'unknown' },
+    web_search: { configured: wsReady, status: wsStatus },
     next_steps: [
       '所有候选均为待验证假设：请按每段的核对入口到原平台确认班期',
       '段的「搜索线索」只说明找到相关来源，不是班期核验；取得班次/适用日期等结构化事实后才进入既有证据链',

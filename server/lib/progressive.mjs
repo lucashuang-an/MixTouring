@@ -1,6 +1,6 @@
 /* 在线探索预算与渐进输出；超时保留规则候选，客户端断开后停止后续调用。 */
 import { planAnywhere } from './anywhere.mjs';
-import { callJson, searchWeb, webSearchStatus } from './llm.mjs';
+import { callJson, searchWeb, webSearchStatus, composeJson } from './llm.mjs';
 
 export async function progressivePlan(input, emit, deps = {}, signal) {
   const started = Date.now(), budgetMs = deps.budgetMs ?? 25000;
@@ -22,14 +22,16 @@ export async function progressivePlan(input, emit, deps = {}, signal) {
     finally { if (onAbort) bounded.removeEventListener('abort', onAbort); }
   }
   const model = deps.callJson || callJson, search = deps.searchWeb || searchWeb;
+  const compose = deps.composeJson || composeJson;
   const searchStatus = deps.searchStatus || (deps.searchWeb ? null : webSearchStatus);
   const data = await planAnywhere(input, {
     ...deps,
     useDiscoveryCache: deps.useDiscoveryCache ?? (deps.callJson === undefined && deps.searchWeb === undefined),
     callJson: (opts) => limited('model_calls', 4, model, [{ ...opts, signal: bounded }]),
+    composeJson: (opts) => limited('model_calls', 4, compose, [{ ...opts, signal: bounded }]),
     searchWeb: async (query, opts = {}) => {
       if (searchStopped) return null;
-      const found = await limited('search_calls', 10, search,
+      const found = await limited('search_calls', 14, search,
         [query, { ...opts, signal: bounded, timeoutMs: Math.min(opts.timeoutMs || 8000, 8000) }]);
       if (!found && searchStatus?.().status === 'quota_exhausted') searchStopped = true;
       return found;
