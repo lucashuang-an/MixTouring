@@ -298,8 +298,14 @@ const NO_DIGIT_RE = /\d/;
     '「计划新开」报道不能当作当前客运连接线索');
   ok(!sourceSupportsLeg({ title: '广州至喀什航班已停航', content: '' }, '广州', '喀什', 'plane'),
     '「已停航」语句不能当作当前客运连接线索');
+  ok(!sourceSupportsLeg({ title: '广州至喀什航班尚未正式开通' }, '广州', '喀什', 'plane') &&
+    !sourceSupportsLeg({ title: '广州至喀什航班已经停飞' }, '广州', '喀什', 'plane') &&
+    !sourceSupportsLeg({ title: '广州至喀什航班暂时停飞' }, '广州', '喀什', 'plane'),
+  '「尚未正式开通／已停飞」不能当作客运连接线索');
   ok(sourceSupportsLeg({ title: '南航新开广州—比什凯克航线', content: '南航开通广州至比什凯克直飞航线航班' }, '广州', '比什凯克', 'plane'),
     '「新开/开通」完成时语句仍可作为连接线索（无误伤）');
+  ok(sourceSupportsLeg({ title: '广州至喀什航班开通', content: '首航航班实际执飞' }, '广州', '喀什', 'plane'),
+    '实际首航报道仍可保留为探索线索');
   const genericRoute = await discoverRoutes(resolvePlace('哈尔滨'), resolvePlace('三亚'), {
     searchFn: async () => [generic],
     modelFn: async () => ({ routes: [{ stops: ['海口'], modes: ['rail', 'rail'], source_ids: [1] }] })
@@ -735,7 +741,7 @@ const NO_DIGIT_RE = /\d/;
       searchWeb: async () => null });
   ok(r6b.web_search && r6b.web_search.status === 'timeout',
     'P1-4：本请求全部搜索失败 → 透传最近失败原因（timeout），不谎报可用');
-  ok(r6.planner_version === 'v0.44.4', '编排：anywhere 版本号对齐 v0.44.4');
+  ok(r6.planner_version === 'v0.44.5', '编排：anywhere 版本号对齐 v0.44.5');
 
   const r7 = await planAnywhere({ text: '想去新疆最西边那座古城玩' },
     { callJson: async () => ({ origin: '北京', destination: '喀什' }), env: {}, osmSearch: async () => [] });
@@ -917,6 +923,22 @@ const NO_DIGIT_RE = /\d/;
     '锚点：到达日期早于出发日期（10-10 出发 9-29 到）整条拒绝');
   const aSameDay = sanitizeAnchors({ outbound: { mode: 'plane', date: '2026-10-08', from_city: '北京', to_city: '伊宁', depart_time: '20:00', arrive_time: '09:00' } });
   ok(aSameDay.outbound === null, '锚点：同日到达时刻早于出发时刻整条拒绝');
+  const aCrossZone = sanitizeAnchors({ outbound: { mode: 'plane', date: '2026-10-08', from_city: '乌鲁木齐', to_city: '阿拉木图',
+    depart_time: '08:00', arrive_time: '07:00' } });
+  ok(aCrossZone.outbound?.to_city === '阿拉木图' && aCrossZone.invalid.length === 0,
+    '锚点：跨时区当地 08:00 出发、07:00 到达仍可为正时长');
+  const aCrossZoneInverted = sanitizeAnchors({ outbound: { mode: 'plane', date: '2026-10-08', from_city: '乌鲁木齐', to_city: '阿拉木图',
+    depart_time: '08:00', arrive_time: '04:00' } });
+  ok(aCrossZoneInverted.outbound === null,
+    '锚点：跨时区换算后确实倒置仍拒绝');
+  const sameDayUnknown = await planAnywhere({ origin: '北京', destination: '阿拉木图',
+    anchors: {
+      outbound: { mode: 'plane', date: '2026-10-08', from_city: '北京', to_city: '阿拉木图', arrive_time: '18:00' },
+      return: { mode: 'plane', date: '2026-10-08', from_city: '阿拉木图', to_city: '北京' }
+    } }, { callJson: async () => null, env: {}, osmSearch: async () => [] });
+  ok(sameDayUnknown.anchors?.full_cover === true &&
+    !sameDayUnknown.anchor_notes.some((n) => n.includes('先后矛盾')),
+    '锚点：同日返程未填时刻不能补成 00:00 并误判矛盾');
 
   /* P1-3（二十七轮）：锚点外侧城市未收录整条拒绝（四端点同规则） */
   const plan4b = await planAnywhere({ origin: '北京', destination: '阿拉木图',

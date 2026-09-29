@@ -14,6 +14,7 @@
 import { callJson as callJsonDefault, searchWeb as searchWebDefault, webSearchStatus as webSearchStatusDefault, composeJson as composeJsonDefault } from './llm.mjs';
 import { assignFromTo } from './parse.mjs';
 import { loadPlaces, webSearchConfigured, extractIntentFields } from './trip-service.mjs';
+import { zonedToUtc } from './trip.mjs';
 import { candidatesBetween, haversineKm } from '../../pipeline/lib/geo-skill.mjs';
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -203,6 +204,17 @@ const ANCHOR_MODE_LABEL = { plane: '航班', rail: '火车', road: '公路班线
 const ANCHOR_NO_RE = /^[A-Za-z0-9]{1,12}$/;
 const ANCHOR_TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
+/** 地点当地日期/时刻的 UTC 可能范围；未填时刻表示全天未知，不补成午夜事实。 */
+function anchorTimeRange(date, time, city) {
+  const tz = resolvePlace(city)?.tz;
+  if (!tz) return null;
+  try {
+    const first = zonedToUtc(date, time || '00:00', tz).getTime();
+    const last = time ? first : zonedToUtc(date, '23:59', tz).getTime();
+    return { first, last };
+  } catch { return null; }
+}
+
 function sanitizeAnchorOne(raw) {
   if (!raw || typeof raw !== 'object') return null;
   if (!ANCHOR_MODES.has(raw.mode) || typeof raw.date !== 'string' || !ISO_DATE_OK(raw.date)) return null;
@@ -218,9 +230,10 @@ function sanitizeAnchorOne(raw) {
   if (typeof raw.arrive_date === 'string' && ISO_DATE_OK(raw.arrive_date)) a.arrive_date = raw.arrive_date;
   if (raw.arrive_date == null && a.arrive_time && ANCHOR_TIME_RE.test(a.arrive_time) &&
       raw.arrive_next_day === true) a.arrive_date = nextDayISO(raw.date);
-  /* 二十八轮 P0-2：锚点内部顺序——到达日期不得早于出发日期；同日时到达时刻不得早于出发时刻 */
-  if (a.arrive_date && a.arrive_date < a.date) return null;
-  if (!a.arrive_date && a.arrive_time && a.depart_time && a.arrive_time < a.depart_time) return null;
+  /* 起落各按当地时区转 UTC；只有到达的最晚可能时点仍早于出发的最早可能时点才拒绝。 */
+  const dep = anchorTimeRange(a.date, a.depart_time, a.from_city);
+  const arr = anchorTimeRange(a.arrive_date || a.date, a.arrive_time, a.to_city);
+  if (dep && arr && arr.last < dep.first) return null;
   if (typeof raw.note === 'string' && raw.note.trim()) a.note = raw.note.trim().slice(0, 60);
   return a;
 }
@@ -1473,17 +1486,23 @@ export async function planAnywhere(input, deps = {}) {
     }
   }
   const anchorScope = anchors.outbound ? 'after_outbound_anchor' : 'full';
-  /* P0-2（二十八轮）：时刻级先后校验——先锚点内部出发/到达顺序（sanitizeAnchorOne），
-   * 再比较去程到达（日期+可用时刻）与返程出发（日期+可用时刻）；倒置阻止覆盖与候选。 */
-  const anchorDateTime = (a, kind) => kind === 'arrive'
-    ? ((a.arrive_date || a.date) + 'T' + (a.arrive_time || '00:00'))
-    : (a.date + 'T' + (a.depart_time || '00:00'));
-  const outArriveAt = anchors.outbound ? anchorDateTime(anchors.outbound, 'arrive') : null;
-  const retStartAt = anchors.return ? anchorDateTime(anchors.return, 'depart') : null;
-  const anchorDatesInverted = !!(outArriveAt && retStartAt && outArriveAt > retStartAt);
+  /* 跨城按各自当地时区比较 UTC 范围；缺时刻只在整日范围也无法成立时判矛盾。 */
+  const outArriveAt = anchors.outbound
+    ? anchorTimeRange(anchors.outbound.arrive_date || anchors.outbound.date,
+      anchors.outbound.arrive_time, anchors.outbound.to_city) : null;
+  const retStartAt = anchors.return
+    ? anchorTimeRange(anchors.return.date, anchors.return.depart_time, anchors.return.from_city) : null;
+  const anchorDatesInverted = !!(outArriveAt && retStartAt && outArriveAt.first > retStartAt.last);
   if (anchorDatesInverted) {
-    anchorNotes.push('去程锚点到达时间 ' + outArriveAt.replace('T', ' ') + ' 晚于返程锚点出发时间 ' + retStartAt.replace('T', ' ') +
+    const outLabel = (anchors.outbound.arrive_date || anchors.outbound.date) +
+      (anchors.outbound.arrive_time ? ' ' + anchors.outbound.arrive_time : '（时刻未填）');
+    const retLabel = anchors.return.date +
+      (anchors.return.depart_time ? ' ' + anchors.return.depart_time : '（时刻未填）');
+    anchorNotes.push('去程锚点到达时间 ' + outLabel + ' 晚于返程锚点出发时间 ' + retLabel +
       '，去返先后矛盾：请修正锚点后再看覆盖与候选');
+  } else if (anchors.outbound && anchors.return &&
+      (!outArriveAt || !retStartAt || !anchors.outbound.arrive_time || !anchors.return.depart_time)) {
+    anchorNotes.push('去程到达或返程出发的时刻／时区信息不全，去返先后尚待确认；当前仅排除可确定的时间矛盾');
   }
   /* 锚点日期与意图窗口的结构一致性（可判定事实；窗口缺省不判定） */
   if (anchors.outbound?.date && travel.intent.outbound_window && !inWindow(anchors.outbound.date, travel.intent.outbound_window)) {
