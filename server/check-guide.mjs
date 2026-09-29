@@ -49,6 +49,15 @@ assert.equal(parseGuideTurn('取消返程', now).travel.return_window, null);
 assert.equal(parseGuideTurn('最晚10月3号到', now).recognized, false);
 assert.equal(parseGuideTurn('夜间到达不要', now).constraints.night_arrival, 'avoid');
 assert.equal(parseGuideTurn('预算改到4000元', now).constraints.budget_max_cny, 4000);
+/* 卡 B：不开车与住宿约束的对话确认与撤销 */
+assert.equal(parseGuideTurn('我不会开车', now).constraints.no_self_drive, true);
+assert.ok(parseGuideTurn('我不会开车', now).labels.some((l) => l.includes('不开车')));
+assert.equal(parseGuideTurn('可以自己开车了', now).constraints.no_self_drive, null);
+const stayTurn = parseGuideTurn('9月30日住伊宁', now);
+assert.equal(stayTurn.constraints.lodging_stays.length, 1);
+assert.equal(stayTurn.constraints.lodging_stays[0].city, '伊宁');
+assert.ok(stayTurn.labels.some((l) => l.includes('住 伊宁')));
+assert.equal(parseGuideTurn('不住了，取消住宿', now).constraints.lodging_stays, null);
 assert.equal(parseGuideTurn('改成单程', now).travel.trip_type, 'one_way');
 const arrival = parseGuideTurn('国庆1-3号之间到', now).travel.arrival_window;
 assert.equal(arrival, '2026-10-01 ~ 2026-10-03');

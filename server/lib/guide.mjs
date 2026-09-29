@@ -1,6 +1,9 @@
 /* 将补充表达转成待用户确认的变更，不直接修改原行程。 */
 import guide from '../../mixtouring-hifi/assets/trip-guide.js';
-import { buildTravelIntent, extractConstraints, extractReturnDate } from './anywhere.mjs';
+import { buildTravelIntent, extractConstraints, extractReturnDate, extractLodgingStays } from './anywhere.mjs';
+import { loadPlaces } from './trip-service.mjs';
+
+const CITY_NAMES = loadPlaces().filter((p) => p.kind === 'city').map((p) => p.name);
 
 function answerRouteQuestion(text, plan, selectedCandidateId) {
   const candidates = plan?.candidates || [];
@@ -40,6 +43,12 @@ export function parseGuideTurn(text, nowMs = Date.now(), plan = null, selectedCa
   const preferences = guide.parse(t);
   const parsed = buildTravelIntent(t, null, nowMs);
   const travel = {}, constraints = extractConstraints(t), labels = guide.summary(preferences.patch);
+  /* 卡 B：住宿约束口语（城市须已收录）；「不住 X 了 / 取消住宿」撤销 */
+  const lodging = extractLodgingStays(t, CITY_NAMES, nowMs);
+  if (lodging.length) constraints.lodging_stays = lodging;
+  if (/(?:不住|取消)了?(?:住宿|住宿安排)|取消住宿|住宿不限了?/.test(t)) constraints.lodging_stays = null;
+  /* 撤销不开车：肯定语境（可以/会/能 开车），lookbehind 排除「不会/没法开车」里的否定子串 */
+  if (/(?<![不会没能])(?:可以|会|能)(?:自己)?开车|取消不开车|恢复自驾/.test(t)) constraints.no_self_drive = null;
   for (const key of ['outbound_window', 'arrival_window', 'return_window']) {
     if (parsed.intent[key]) travel[key] = parsed.intent[key];
   }
@@ -65,7 +74,16 @@ export function parseGuideTurn(text, nowMs = Date.now(), plan = null, selectedCa
   const fields = { outbound_window: '出发', arrival_window: '希望到达', return_window: '返回', trip_type: '行程', traveler_count: '人数' };
   for (const [key, value] of Object.entries(travel)) labels.push(fields[key] + '：' + (value === null ? '先不定' : value === 'round_trip' ? '往返' : value === 'one_way' ? '单程' : value));
   const names = { budget_max_cny: '预算上限（元）', max_layover_hours: '最长中转（小时）', max_transfers: '最多换乘', night_arrival: '夜间到达' };
-  for (const [key, value] of Object.entries(constraints)) labels.push(names[key] + '：' + (value == null ? '不限' : value === 'avoid' ? '不接受' : value === 'allow' ? '可接受' : value));
+  for (const [key, value] of Object.entries(constraints)) {
+    if (key === 'no_self_drive' || key === 'lodging_stays') continue; /* 新约束单独展示 */
+    labels.push(names[key] + '：' + (value == null ? '不限' : value === 'avoid' ? '不接受' : value === 'allow' ? '可接受' : value));
+  }
+  if (constraints.no_self_drive === true) labels.push('不开车：是（不含自驾/租车走法）');
+  else if (constraints.no_self_drive === null) labels.push('不开车：不限（已恢复）');
+  for (const stay of (Array.isArray(constraints.lodging_stays) ? constraints.lodging_stays : [])) {
+    labels.push('住宿：' + stay.date + ' 住 ' + stay.city);
+  }
+  if (constraints.lodging_stays === null) labels.push('住宿：已取消');
   const answer = labels.length ? null : answerRouteQuestion(t, plan, selectedCandidateId);
   return { preferences: preferences.patch, travel, constraints, labels, notes: preferences.notes,
     recognized: labels.length > 0,

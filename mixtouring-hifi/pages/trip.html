@@ -103,6 +103,15 @@
         <label style="font-size:12px;color:var(--mixtouring-muted-foreground);">换乘（次） <input id="cnTransfers" type="number" min="0" max="2" step="1" placeholder="不限" style="display:block;margin-top:4px;width:90px;box-sizing:border-box;border:0.5px solid var(--mixtouring-border);border-radius:8px;padding:8px 10px;font-size:13.5px;font-family:inherit;" /></label>
       </div>
       <div style="font-size:11.5px;color:var(--mixtouring-muted-foreground);margin-top:8px;line-height:1.6;">可输入城市、机场、车站或景点；遇到重名地点会请你选择。</div>
+
+      <!-- 卡 B（v0.44.2）：已确定的去/返交通（锚点）——用户确认事实；规划不重算锚点段 -->
+      <details id="anchorPanel" style="margin-top:12px;">
+        <summary style="font-size:13px;color:var(--mixtouring-muted-foreground);cursor:pointer;min-height:28px;">已确定的去/返交通（锚点，可选）</summary>
+        <div id="anchorForms" style="display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;"></div>
+        <div style="font-size:11.5px;color:var(--mixtouring-muted-foreground);margin-top:8px;line-height:1.6;">锚点是你已确认的交通事实，锁定的交通段不再重算。本次继续规划到目的地；去程已锁定时，从其到达城市开始。若返程从其他城市出发，目的地至该城的交通须另行规划。只有去程到达和返程出发都在目的地，才表示跨城交通全部已覆盖。未填的字段留空；可照着票据信息录入并核对，系统不猜测缺失字段。</div>
+        <div id="anchorHint" style="font-size:12px;color:#A8543A;margin-top:6px;line-height:1.6;"></div>
+        <div id="anchorStatus"></div>
+      </details>
       </details>
     </div>
 
@@ -172,8 +181,128 @@
     var SESSION_KEY = 'mt:planning-session';
     var planning = false;
 
+    /* ---------- 卡 B（v0.44.2）：交通锚点（用户确认事实）与会话级新约束 ----------
+     * anchors.outbound/return：已锁定的去/返交通；extraConstraints：不开车与住宿约束（无输入框，由对话确认进入）。
+     * 多轮修改中不丢失；锚点只由用户在面板上锁定/修改/撤销。 */
+    var anchors = { outbound: null, return: null };
+    var extraConstraints = {};
+    var ANCHOR_DIR_LABEL = { outbound: '去程', return: '返程' };
+    var ANCHOR_MODE_TEXT = { plane: '航班', rail: '火车', road: '公路班线' };
+    function anchorPrefix(dir) { return dir === 'outbound' ? 'anOut' : 'anRet'; }
+    function buildAnchorForms() {
+      var box = document.getElementById('anchorForms');
+      box.innerHTML = ['outbound', 'return'].map(function (dir) {
+        var p = anchorPrefix(dir);
+        var field = function (id, label, control) {
+          return '<label style="font-size:12px;color:var(--mixtouring-muted-foreground);"> ' + label + control + '</label>';
+        };
+        return '<div id="' + p + 'Card" style="flex:1 1 320px;min-width:0;padding:12px;border:0.5px solid var(--mixtouring-border);border-radius:14px;">' +
+          '<div style="font-size:13px;">' + ANCHOR_DIR_LABEL[dir] + '交通</div>' +
+          field(p + 'Mode', '方式', '<select id="' + p + 'Mode" style="display:block;margin-top:4px;border:0.5px solid var(--mixtouring-border);border-radius:8px;padding:7px;font-size:13px;font-family:inherit;background:#fff;"><option value="">待选择</option><option value="plane">航班</option><option value="rail">火车</option><option value="road">公路班线</option></select>') +
+          field(p + 'Date', '日期', '<input id="' + p + 'Date" type="date" style="display:block;margin-top:4px;border:0.5px solid var(--mixtouring-border);border-radius:8px;padding:7px;font-size:13px;font-family:inherit;" />') +
+          '<div style="display:flex;gap:8px;margin-top:4px;">' +
+          field(p + 'From', '出发城市', '<input id="' + p + 'From" type="text" placeholder="如 北京" style="display:block;margin-top:4px;width:100%;box-sizing:border-box;border:0.5px solid var(--mixtouring-border);border-radius:8px;padding:7px;font-size:13px;font-family:inherit;" />') +
+          field(p + 'To', '到达城市', '<input id="' + p + 'To" type="text" placeholder="如 伊宁" style="display:block;margin-top:4px;width:100%;box-sizing:border-box;border:0.5px solid var(--mixtouring-border);border-radius:8px;padding:7px;font-size:13px;font-family:inherit;" />') +
+          '</div>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">' +
+          field(p + 'No', '班次号（可空）', '<input id="' + p + 'No" type="text" placeholder="如 CA1234" style="display:block;margin-top:4px;width:110px;border:0.5px solid var(--mixtouring-border);border-radius:8px;padding:7px;font-size:13px;font-family:inherit;" />') +
+          field(p + 'Dep', '出发时刻（可空）', '<input id="' + p + 'Dep" type="time" style="display:block;margin-top:4px;border:0.5px solid var(--mixtouring-border);border-radius:8px;padding:7px;font-size:13px;font-family:inherit;" />') +
+          field(p + 'Arr', '到达时刻（可空）', '<input id="' + p + 'Arr" type="time" style="display:block;margin-top:4px;border:0.5px solid var(--mixtouring-border);border-radius:8px;padding:7px;font-size:13px;font-family:inherit;" />') +
+          '</div>' +
+          '<label style="display:block;font-size:12px;color:var(--mixtouring-muted-foreground);margin-top:6px;"><input id="' + p + 'Next" type="checkbox" /> 次日到达</label>' +
+          '<button id="' + p + 'Lock" type="button" style="min-height:44px;margin-top:8px;padding:9px 16px;background:var(--mixtouring-primary);color:#fff;border:0;border-radius:10px;font-family:inherit;font-size:13px;cursor:pointer;">确认锁定' + ANCHOR_DIR_LABEL[dir] + '</button>' +
+          '</div>';
+      }).join('');
+      ['outbound', 'return'].forEach(function (dir) {
+        var p = anchorPrefix(dir);
+        document.getElementById(p + 'Lock').addEventListener('click', function () { lockAnchor(dir); });
+      });
+      renderAnchorStatus();
+    }
+    function readAnchorForm(dir) {
+      var p = anchorPrefix(dir);
+      var mode = document.getElementById(p + 'Mode').value;
+      var date = document.getElementById(p + 'Date').value;
+      var from = document.getElementById(p + 'From').value.trim();
+      var to = document.getElementById(p + 'To').value.trim();
+      if (!mode || !date || !from || !to || from === to) return null;
+      var a = { mode: mode, date: date, from_city: from, to_city: to };
+      var no = document.getElementById(p + 'No').value.trim();
+      if (no) a.service_no = no;
+      var dep = document.getElementById(p + 'Dep').value;
+      if (dep) a.depart_time = dep;
+      var arr = document.getElementById(p + 'Arr').value;
+      if (arr) {
+        a.arrive_time = arr;
+        /* 次日到达在前端换算成 arrive_date（二十七轮评审：锁定态显示不得把次日到达显示成出发日） */
+        if (document.getElementById(p + 'Next').checked) {
+          var d2 = new Date(a.date + 'T00:00:00Z');
+          d2.setUTCDate(d2.getUTCDate() + 1);
+          a.arrive_date = d2.toISOString().slice(0, 10);
+        }
+      }
+      return a;
+    }
+    function fillAnchorForm(dir, a) {
+      var p = anchorPrefix(dir);
+      document.getElementById(p + 'Mode').value = a ? a.mode || '' : '';
+      document.getElementById(p + 'Date').value = a ? a.date || '' : '';
+      document.getElementById(p + 'From').value = a ? a.from_city || '' : '';
+      document.getElementById(p + 'To').value = a ? a.to_city || '' : '';
+      document.getElementById(p + 'No').value = a ? a.service_no || '' : '';
+      document.getElementById(p + 'Dep').value = a ? a.depart_time || '' : '';
+      document.getElementById(p + 'Arr').value = a ? a.arrive_time || '' : '';
+      document.getElementById(p + 'Next').checked = !!(a && a.arrive_date);
+    }
+    function lockAnchor(dir) {
+      var hint = document.getElementById('anchorHint');
+      var a = readAnchorForm(dir);
+      if (!a) {
+        hint.textContent = ANCHOR_DIR_LABEL[dir] + '锚点需填方式、日期、出发与到达城市（起讫不同城）；缺的字段不会被猜测。';
+        return;
+      }
+      hint.textContent = '';
+      anchors[dir] = a;
+      renderAnchorStatus();
+      if (lastRequest) requestPlan();
+    }
+    function editAnchor(dir) {
+      fillAnchorForm(dir, anchors[dir]);
+      anchors[dir] = null;
+      renderAnchorStatus();
+      /* 二十七轮评审：修改进入编辑态即与结果保持一致（编辑期间锚点已解锁），与撤销同路径重规划 */
+      if (lastRequest) requestPlan();
+    }
+    function revokeAnchor(dir) {
+      anchors[dir] = null;
+      fillAnchorForm(dir, null);
+      renderAnchorStatus();
+      if (lastRequest) requestPlan();
+    }
+    function renderAnchorStatus() {
+      var box = document.getElementById('anchorStatus');
+      var active = ['outbound', 'return'].filter(function (dir) { return anchors[dir]; });
+      if (!active.length) { box.innerHTML = ''; return; }
+      box.innerHTML = '<div style="margin-top:10px;padding:10px 14px;border-radius:12px;background:rgba(30,127,69,0.07);border:1px solid rgba(30,127,69,0.35);">' +
+        '<div style="font-size:12.5px;color:#1E7F45;">已锁定（你确认的事实，重新规划不改变这些段）</div>' +
+        active.map(function (dir) {
+          var a = anchors[dir];
+          var desc = ANCHOR_DIR_LABEL[dir] + '：' + MT.esc(a.from_city) + ' → ' + MT.esc(a.to_city) + ' · ' + ANCHOR_MODE_TEXT[a.mode] + ' · ' + MT.esc(a.date) +
+            (a.service_no ? ' · ' + MT.esc(a.service_no) : '') +
+            (a.depart_time ? ' · ' + MT.esc(a.depart_time) + ' 出发' : '') +
+            (a.arrive_time ? ' · ' + MT.esc(a.arrive_date || a.date) + ' ' + MT.esc(a.arrive_time) + ' 到' : '');
+          return '<div style="display:flex;align-items:center;gap:10px;margin-top:6px;flex-wrap:wrap;"><span style="font-size:12.5px;">' + desc + '</span>' +
+            '<button type="button" data-edit="' + dir + '" style="min-height:34px;padding:5px 12px;border:0.5px solid var(--mixtouring-border);border-radius:8px;background:none;font-family:inherit;font-size:12px;cursor:pointer;">修改</button>' +
+            '<button type="button" data-revoke="' + dir + '" style="min-height:34px;padding:5px 12px;border:0.5px solid var(--mixtouring-border);border-radius:8px;background:none;font-family:inherit;font-size:12px;cursor:pointer;">撤销</button></div>';
+        }).join('') + '</div>';
+      box.querySelectorAll('[data-edit]').forEach(function (btn) { btn.addEventListener('click', function () { editAnchor(btn.getAttribute('data-edit')); }); });
+      box.querySelectorAll('[data-revoke]').forEach(function (btn) { btn.addEventListener('click', function () { revokeAnchor(btn.getAttribute('data-revoke')); }); });
+    }
+    buildAnchorForms();
+
     function guideSnapshot() {
       return JSON.parse(JSON.stringify({ request: lastRequest, travel: collectTravel(), constraints: collectConstraints(),
+        anchors: { outbound: anchors.outbound, return: anchors.return },
         preferences: guideState, messages: guideMessages,
         candidate_key: activeCandidate ? selectedKey() : (pendingRestore && pendingRestore.candidate_key),
         nights: activeCandidate ? activeNights : (pendingRestore && pendingRestore.nights) || activeNights }));
@@ -201,6 +330,13 @@
       c = c || {};
       [['cnBudget', 'budget_max_cny'], ['cnLayover', 'max_layover_hours'], ['cnNight', 'night_arrival'], ['cnTransfers', 'max_transfers']].forEach(function (p) {
         document.getElementById(p[0]).value = c[p[1]] == null ? '' : c[p[1]];
+      });
+      /* 卡 B：不开车/住宿约束为会话级状态（无输入框）。撤销写作显式撤销值（false/空数组）：
+       * requestPlan 沿用原始一句话时，旧文本提取会被显式撤销覆盖，约束不再复活（二十七轮 P1-4）。 */
+      ['no_self_drive', 'lodging_stays'].forEach(function (k) {
+        if (c[k] === undefined) return;
+        if (c[k] === null || c[k] === false) extraConstraints[k] = k === 'lodging_stays' ? [] : false;
+        else extraConstraints[k] = JSON.parse(JSON.stringify(c[k]));
       });
     }
     function resetGuide(text) {
@@ -324,6 +460,13 @@
       guideState = MTGuide.clean(saved.preferences); guideMessages = saved.messages || []; guideProposal = null;
       if (Array.isArray(saved.history)) guideUndo = saved.history.slice(-20);
       fillTravel(saved.travel); fillConstraints(saved.constraints);
+      if (saved.anchors) {
+        anchors.outbound = saved.anchors.outbound || null;
+        anchors.return = saved.anchors.return || null;
+        fillAnchorForm('outbound', anchors.outbound);
+        fillAnchorForm('return', anchors.return);
+        renderAnchorStatus();
+      }
       document.getElementById('nlInput').value = saved.request.text || ((saved.request.origin || '') + '去' + (saved.request.destination || ''));
       if (replan) { pendingRestore = { candidate_key: saved.candidate_key, nights: saved.nights }; requestPlan(); }
       else {
@@ -350,6 +493,7 @@
       if (l !== '') constraints.max_layover_hours = Number(l);
       if (tr !== '') constraints.max_transfers = Number(tr);
       if (night) constraints.night_arrival = night;
+      Object.keys(extraConstraints).forEach(function (k) { constraints[k] = extraConstraints[k]; });
       return constraints;
     }
 
@@ -404,6 +548,8 @@
       if (confirmed && Object.keys(confirmed).length) confirmedPlaces = Object.assign({}, confirmedPlaces, confirmed);
       var body = Object.assign({}, lastRequest, Object.keys(confirmedPlaces).length ? { confirmed_places: confirmedPlaces } : {});
       body.travel = collectTravel();
+      /* 卡 B：锚点随每次规划提交（锁定/修改/撤销后触发重规划共用同一路径） */
+      if (anchors.outbound || anchors.return) body.anchors = { outbound: anchors.outbound, return: anchors.return };
       /* 已提交字段归入本次意图；下次全新查询只带入提交之后明确编辑的字段。 */
       travelDirty = { type: false, out: false, ret: false, count: false };
       constraintDirty = {};
@@ -543,6 +689,15 @@
         guideUndo = Array.isArray(saved.history) ? saved.history.slice(-20) : [];
         if (saved.travel && saved.travel.arrival_window) arrivalWindow = saved.travel.arrival_window;
         if (saved.candidate && saved.candidate.route_key) pendingRestore.candidate_key = saved.candidate.route_key;
+        /* 卡 B：草案带回的锚点与约束一并恢复（锚点为用户确认事实，不因恢复而重算） */
+        if (saved.anchors) {
+          anchors.outbound = saved.anchors.outbound || null;
+          anchors.return = saved.anchors.return || null;
+          fillAnchorForm('outbound', anchors.outbound);
+          fillAnchorForm('return', anchors.return);
+          renderAnchorStatus();
+        }
+        fillConstraints(saved.constraints || {});
       }
       travelDirty = { type: false, out: false, ret: false, count: false };
       MT.toast('已从草案回填，正在重新规划（开放地点须重新确认）');
@@ -617,6 +772,7 @@
       document.getElementById('cnLayover').value = resolvedConstraints.max_layover_hours == null ? '' : resolvedConstraints.max_layover_hours;
       document.getElementById('cnNight').value = resolvedConstraints.night_arrival || '';
       document.getElementById('cnTransfers').value = resolvedConstraints.max_transfers == null ? '' : resolvedConstraints.max_transfers;
+      fillConstraints(resolvedConstraints);
       var html = '<div class="detail-card" style="background:var(--mixtouring-card);border-radius:20px;padding:20px;box-shadow:var(--shadow-card-soft);">';
       html += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">' +
         '<h2 style="font-size:17px;margin:0;">' + placeLabel(data.intent.origin || '（待确认）', data.intent.origin_place && data.intent.origin_place.kind) +
@@ -628,6 +784,19 @@
             return '<span style="font-size:12px;padding:4px 12px;border-radius:9999px;background:rgba(30,127,69,0.08);color:#1E7F45;">' + MT.esc(c.label) + '</span>';
           }).join('') + '</div>';
       }
+      /* 卡 B：锚点（用户确认事实）与锚点说明——与待验证候选区分呈现 */
+      if (data.anchors && (data.anchors.outbound || data.anchors.return)) {
+        html += '<div style="margin-top:10px;padding:10px 14px;border-radius:12px;background:rgba(30,127,69,0.07);border:1px solid rgba(30,127,69,0.35);">' +
+          '<div style="font-size:12.5px;color:#1E7F45;">已锁定交通（你确认的事实，规划不重算这些段）</div>' +
+          ['outbound', 'return'].filter(function (dir) { return data.anchors[dir]; }).map(function (dir) {
+            var a = data.anchors[dir];
+            return '<div style="font-size:12px;margin-top:4px;">' + (dir === 'outbound' ? '去程' : '返程') + '：' + MT.esc(a.from_city) + ' → ' + MT.esc(a.to_city) + ' · ' +
+              MT.esc(ANCHOR_MODE_TEXT[a.mode] || a.mode) + ' · ' + MT.esc(a.date) + (a.service_no ? ' · ' + MT.esc(a.service_no) : '') + '</div>';
+          }).join('') + '</div>';
+      }
+      (data.anchor_notes || []).forEach(function (n) {
+        html += '<div style="margin-top:6px;font-size:12px;color:var(--mixtouring-muted-foreground);line-height:1.6;">· ' + MT.esc(n) + '</div>';
+      });
       /* 行程意图摘要（v0.35.0 P0：往返/日期/人数可见且不回退） */
       var tvLabels = [];
       if (data.intent.trip_type === 'round_trip') tvLabels.push('往返');
@@ -926,6 +1095,7 @@
         var snapshot = {
           request: JSON.parse(JSON.stringify(lastRequest || {})),
           travel: collectTravel(), constraints: collectConstraints(),
+          anchors: { outbound: JSON.parse(JSON.stringify(anchors.outbound)), return: JSON.parse(JSON.stringify(anchors.return)) },
           preferences: guideState, messages: guideMessages, history: guideUndo.slice(-20),
           place_names: { origin: activePlan.intent.origin_place ? activePlan.intent.origin_place.name : null, destination: activePlan.intent.destination_place ? activePlan.intent.destination_place.name : null },
           confirmed_note: { origin: activePlan.intent.origin_place && activePlan.intent.origin_place.dynamic ? '当时为开放地点确认（恢复须重新核验确认）' : null, destination: activePlan.intent.destination_place && activePlan.intent.destination_place.dynamic ? '当时为开放地点确认（恢复须重新核验确认）' : null },
