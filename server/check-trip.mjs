@@ -306,7 +306,7 @@ const [F_OUT, F_IN] = FIXTURE.dated_legs.map((l) => ({ ...l, baggage_terms: { ca
   ok(capabilities(true, true, 'quota_exhausted').web_search_status === 'quota_exhausted' &&
     capabilities(true, true, 'quota_exhausted').web_search_configured === true, 'P1-4：配置成功但状态如实为 quota_exhausted');
   ok(capabilities(true, true).trip_planner_version === 'v0.29.1' &&
-    capabilities(true, true).anywhere_planner_version === 'v0.44.5', 'P1-4：版本拆分（trip/anywhere 各自对齐）');
+    capabilities(true, true).anywhere_planner_version === 'v0.44.7', 'P1-4：版本拆分（trip/anywhere 各自对齐）');
   ok(webSearchConfigured({ VOLC_SEARCH_API_KEY: 'test' }).basis === 'volc-search', '火山搜索独立于问答密钥配置');
   const cited = { status: 'completed', usage: { tool_usage: { web_search: 1 } }, output: [
     { type: 'web_search_call', status: 'completed' },

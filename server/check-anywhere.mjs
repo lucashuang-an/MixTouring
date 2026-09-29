@@ -305,7 +305,30 @@ const NO_DIGIT_RE = /\d/;
   ok(sourceSupportsLeg({ title: '南航新开广州—比什凯克航线', content: '南航开通广州至比什凯克直飞航线航班' }, '广州', '比什凯克', 'plane'),
     '「新开/开通」完成时语句仍可作为连接线索（无误伤）');
   ok(sourceSupportsLeg({ title: '广州至喀什航班开通', content: '首航航班实际执飞' }, '广州', '喀什', 'plane'),
-    '实际首航报道仍可保留为探索线索');
+    '来源：实际开行报道仍可保留为探索线索');
+  for (const [mode, service] of [['plane', '航班'], ['rail', '客运列车'], ['road', '客运班车']]) {
+    for (const state of ['未能正式开通', '尚在筹备未正式开通', '暂不开通']) {
+      ok(!sourceSupportsLeg({ title: '广州至喀什' + service + state }, '广州', '喀什', mode),
+        '运营语义：' + service + state + ' 不支持连接');
+    }
+  }
+  ok(!sourceSupportsLeg({ title: '广州至喀什航班计划于明年国庆假期前正式开通' }, '广州', '喀什', 'plane'),
+    '运营语义：长日期修饰语不使未来计划通过');
+  ok(sourceSupportsLeg({ title: '广州至喀什航班不经停其他机场并已正式开通' }, '广州', '喀什', 'plane'),
+    '运营语义：不经停不等于未运营，实际开行仍保留');
+  const deniedLegs = buildCandidateSkeletons(resolvePlace('北京'), resolvePlace('上海'), {});
+  await verifyLegs(deniedLegs.candidates, async (q) => [{ title: q.includes('北京') ? '北京至上海航班未能正式开通' : '无相关连接', link: 'https://example.org/not-open' }]);
+  ok(deniedLegs.candidates.flatMap((c) => c.legs).every((leg) => leg.evidence_state === 'explore'),
+    '段级验证：未开行短句不升级 source_lead');
+  const deniedRoute = await discoverRoutes(resolvePlace('哈尔滨'), resolvePlace('三亚'), {
+    searchFn: async () => [
+      { title: '哈尔滨至海口列车未能正式开行', link: 'https://example.org/not-open' },
+      { title: '海口至三亚列车开行', link: 'https://example.org/open' }
+    ],
+    modelFn: async () => ({ routes: [{ stops: ['海口'], modes: ['rail', 'rail'], source_ids: [1, 2] }] })
+  });
+  ok(!deniedRoute.routes.some((route) => route.stops.includes('海口')),
+    '组合守门：任一段否定运营时不生成模型组合');
   const genericRoute = await discoverRoutes(resolvePlace('哈尔滨'), resolvePlace('三亚'), {
     searchFn: async () => [generic],
     modelFn: async () => ({ routes: [{ stops: ['海口'], modes: ['rail', 'rail'], source_ids: [1] }] })
@@ -741,7 +764,7 @@ const NO_DIGIT_RE = /\d/;
       searchWeb: async () => null });
   ok(r6b.web_search && r6b.web_search.status === 'timeout',
     'P1-4：本请求全部搜索失败 → 透传最近失败原因（timeout），不谎报可用');
-  ok(r6.planner_version === 'v0.44.5', '编排：anywhere 版本号对齐 v0.44.5');
+  ok(r6.planner_version === 'v0.44.7', '编排：anywhere 版本号对齐 v0.44.7');
 
   const r7 = await planAnywhere({ text: '想去新疆最西边那座古城玩' },
     { callJson: async () => ({ origin: '北京', destination: '喀什' }), env: {}, osmSearch: async () => [] });

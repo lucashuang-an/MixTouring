@@ -28,6 +28,15 @@ function leadText(source) {
   return String(source.title || '') + ' ' + String(source.content || '');
 }
 
+/** 先判断短句的运营状态；交通词和地点共现不能抵消否定、筹备或未来计划。 */
+function serviceClauseUnavailable(clause) {
+  const excluded = /物流|货运|货车|货物|托运|freight|cargo|0\s*(?:车次|班次)|暂无|停运|停航|停飞|停驶|停班|停开|取消|中断|暂停|筹备|规划中/i;
+  const future = /(?:计划|将|拟|预计|即将|有意|延期|等待|尚待)[^。；;，,！!？?\n]*(?:新?开(?:通|行|航)?|复航|恢复|运营|运行|执飞|直飞)|待(?:开通|开行|开航|复航|运营)/;
+  /* 否定词后允许多个情态/状态修饰词，不再依赖固定字符距离；「不经停」不等同否定运营。 */
+  const denied = /(?:未|不|没有)(?:能|会|可|曾|再|予以|正式|实际|成功|如期|按期|获准|开始|正常|继续|完全|真正|直接|进行|持续|已经|暂时)*(?:开通|开行|开航|复航|恢复|运营|运行|执飞|直飞|通航)/;
+  return excluded.test(clause) || future.test(clause) || denied.test(clause);
+}
+
 /** 搜索摘要只作线索；只有同一短句明确连接两端且描述客运，才支持某段的方式。
  * 泛查询／订票页标题即使含起终点与方式，也不能证明实际有该段服务。 */
 export function sourceLegConnectionExcerpt(source, from, to, mode) {
@@ -42,12 +51,9 @@ export function sourceLegConnectionExcerpt(source, from, to, mode) {
   const genericTitle = /查询|票价|预订|订票|攻略|怎么走|路线规划/i.test(title) ||
     (/时刻表/.test(title) && !/[A-Z]\d{2,4}/i.test(title));
   if (genericTitle) return null;
-  /* 否定/将来时运营语句整句跳过；允许前缀与开行词之间有日期或「正式」等修饰词。
-   * 「新开」无将来时前缀不拦，实际首航报道仍能成为探索线索。 */
-  const NEGATIVE_SERVICE_RE = /物流|货运|货车|货物|托运|freight|cargo|0\s*(?:车次|班次)|暂无|(?:计划|将|拟|预计|即将|有意)[^。；;，,！!？?\n]{0,8}(?:新?开(?:通|行|航)?|复航|恢复|运营|直飞)|停运|停航|停飞|停驶|停班|停开|取消|中断|暂停(?:运|营|开|飞)?|未(?:开通|开行|运营)|(?:尚未|暂未|仍未|还未|并未|未曾)[^。；;，,！!？?\n]{0,8}(?:开通|开行|开航|复航|运营|恢复|直飞)|延期(?:开通|开行|复航)/i;
   const clauses = title + '。' + content;
   for (const clause of clauses.split(/[。；;，,！!？?\n]/)) {
-    if (NEGATIVE_SERVICE_RE.test(clause)) continue;
+    if (serviceClauseUnavailable(clause)) continue;
     const start = clause.indexOf(from);
     const end = start < 0 ? -1 : clause.indexOf(to, start + from.length);
     if (end < 0) continue;
