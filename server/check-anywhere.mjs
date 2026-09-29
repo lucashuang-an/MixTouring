@@ -8,7 +8,7 @@ import {
   resolvePlace, scanPlaceMentions, extractConstraints, constraintChips,
   buildCandidateSkeletons, verifyLegs, planAnywhere, resultRelevance,
   registerPlaceCandidate, takePlaceCandidate, railDirectEligibility, corridorEffectiveStatus, isValidWindow, buildTravelIntent, RAIL_DIRECT_MAX_KM,
-  osmKind, KIND_LABEL
+  osmKind, KIND_LABEL, sanitizeAnchors, extractLodgingStays
 } from './lib/anywhere.mjs';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -728,7 +728,7 @@ const NO_DIGIT_RE = /\d/;
       searchWeb: async () => null });
   ok(r6b.web_search && r6b.web_search.status === 'timeout',
     'P1-4：本请求全部搜索失败 → 透传最近失败原因（timeout），不谎报可用');
-  ok(r6.planner_version === 'v0.44.0', '编排：anywhere 版本号对齐 v0.44.0');
+  ok(r6.planner_version === 'v0.44.2', '编排：anywhere 版本号对齐 v0.44.2');
 
   const r7 = await planAnywhere({ text: '想去新疆最西边那座古城玩' },
     { callJson: async () => ({ origin: '北京', destination: '喀什' }), env: {}, osmSearch: async () => [] });
@@ -806,6 +806,85 @@ const NO_DIGIT_RE = /\d/;
     modelFn: async () => ({ routes: [{ stops: ['兰州', '银川'], modes: ['rail', 'rail', 'rail'], source_ids: [1] }] })
   });
   ok(!backtrack.routes.some((r) => r.stops.join('→') === '兰州→银川'), '多节点守门：拒绝途经城市顺序折返');
+}
+
+/* ---------- 卡 B（v0.44.2）：交通锚点（用户确认事实）与多轮约束 ---------- */
+{
+  /* 白名单：合法去返结构；班次号规范化；非法字段整条拒绝（不猜） */
+  const a1 = sanitizeAnchors({
+    outbound: { mode: 'plane', date: '2026-09-30', from_city: '北京', to_city: '伊宁', service_no: 'ca1234', depart_time: '08:30', arrive_time: '13:05', arrive_next_day: true },
+    return: { mode: 'rail', date: '2026-10-08', from_city: '阿拉木图', to_city: '北京' }
+  });
+  ok(a1.outbound?.mode === 'plane' && a1.outbound?.service_no === 'CA1234' && a1.outbound?.arrive_date === '2026-10-01' &&
+    a1.return?.mode === 'rail' && a1.invalid.length === 0, '锚点：合法去返结构通过白名单（班次号大写、跨天到达补算）');
+  const a2 = sanitizeAnchors({ outbound: { mode: 'fly', date: '2026-09-30', from_city: '北京', to_city: '伊宁' } });
+  ok(a2.outbound === null && a2.invalid.includes('outbound'), '锚点：方式枚举外整条拒绝并记 invalid');
+  const a3 = sanitizeAnchors({ outbound: { mode: 'plane', date: '2026-02-31', from_city: '北京', to_city: '伊宁' } });
+  ok(a3.outbound === null, '锚点：非真实日历日期拒绝');
+  ok(sanitizeAnchors(null).outbound === null && sanitizeAnchors({}).invalid.length === 0, '锚点：无锚点输入为零状态（旧行为不变）');
+
+  /* 端点重映射：去程锚点北京→伊宁，规划候选全部从伊宁开始；锚点不进假设候选池 */
+  const plan1 = await planAnywhere({ origin: '北京', destination: '阿拉木图',
+    anchors: { outbound: { mode: 'plane', date: '2026-09-30', from_city: '北京', to_city: '伊宁' } } },
+    { callJson: async () => null, env: {}, osmSearch: async () => [] });
+  ok(plan1.anchors?.outbound?.to_city === '伊宁' && plan1.anchors.recompute_scope === 'after_outbound_anchor',
+    '锚点：去程锁定后响应带回锚点与重算范围（after_outbound_anchor）');
+  ok(plan1.candidates.length > 0 && plan1.candidates.every((c) => c.legs[0].from === '伊宁'),
+    '锚点：候选全部从锚点到达城开始（锚点段不重算）');
+  ok(plan1.anchor_notes.some((n) => n.includes('不重算')) && plan1.intent.origin === '北京',
+    '锚点：说明含「不重算」，意图仍保留用户原始出发地');
+  ok(!plan1.candidates.some((c) => c.kind === 'anchor'), '锚点：确认事实不冒充假设候选（无 anchor 类卡片）');
+
+  /* 全覆盖：去程到伊宁 + 返程从伊宁 → 中间无跨城段，诚实说明而非生成空候选 */
+  const plan2 = await planAnywhere({ origin: '北京', destination: '阿拉木图',
+    anchors: {
+      outbound: { mode: 'plane', date: '2026-09-30', from_city: '北京', to_city: '伊宁' },
+      return: { mode: 'plane', date: '2026-10-08', from_city: '伊宁', to_city: '北京' }
+    } },
+    { callJson: async () => null, env: {}, osmSearch: async () => [] });
+  ok(plan2.anchors?.full_cover === true && plan2.candidates.length === 0 &&
+    plan2.anchor_notes.some((n) => n.includes('没有待重算的跨城段')), '锚点：去返全覆盖时不生成候选并说明原因');
+
+  /* 进出城市不同：返程锚点从乌鲁木齐出发 → 规划终点重映射为乌鲁木齐 */
+  const plan3 = await planAnywhere({ origin: '北京', destination: '阿拉木图',
+    anchors: { return: { mode: 'plane', date: '2026-10-08', from_city: '乌鲁木齐', to_city: '北京' } } },
+    { callJson: async () => null, env: {}, osmSearch: async () => [] });
+  ok(plan3.anchors.recompute_scope === 'before_return_anchor' &&
+    plan3.candidates.length > 0 && plan3.candidates.every((c) => c.legs.at(-1).to === '乌鲁木齐') &&
+    plan3.anchor_notes.some((n) => n.includes('进出城市可以不同')), '锚点：返程出发城为终点（进出城市可以不同）');
+
+  /* 锚点城市未收录：拒绝并提示修正（锚点不进开放地点核验） */
+  const plan4 = await planAnywhere({ origin: '北京', destination: '阿拉木图',
+    anchors: { outbound: { mode: 'plane', date: '2026-09-30', from_city: '北京', to_city: '任意虚构城' } } },
+    { callJson: async () => null, env: {}, osmSearch: async () => [] });
+  ok(plan4.anchors === null && plan4.needs_confirmation.some((n) => n.includes('未收录') && n.includes('锚点')),
+    '锚点：未收录城市拒绝并给出修正指引');
+
+  /* 住宿冲突（可判定结构事实）：锚点 9-30 到乌鲁木齐 vs 「9-30 住伊宁」 */
+  const plan5 = await planAnywhere({ origin: '北京', destination: '阿拉木图',
+    anchors: { outbound: { mode: 'plane', date: '2026-09-30', from_city: '北京', to_city: '乌鲁木齐' } },
+    constraints: { lodging_stays: [{ date: '2026-09-30', city: '伊宁' }] } },
+    { callJson: async () => null, env: {}, osmSearch: async () => [] });
+  ok(plan5.anchor_notes.some((n) => n.includes('冲突')), '住宿：与锚点当日到达城市的结构冲突被指出');
+  const plan6 = await planAnywhere({ origin: '北京', destination: '阿拉木图',
+    constraints: { no_self_drive: true, lodging_stays: [{ date: '2026-09-30', city: '伊宁' }] } },
+    { callJson: async () => null, env: {}, osmSearch: async () => [] });
+  ok(plan6.intent.constraint_chips.some((c) => c.key === 'no_self_drive') &&
+    plan6.intent.constraint_chips.some((c) => c.key === 'lodging' && c.label.includes('伊宁')) &&
+    plan6.anchor_notes.some((n) => n.includes('不开车')), '约束：不开车与住宿约束进入 chips 并带说明（无锚点时 notes 如实记录）');
+
+  /* 口语提取：住宿（城市须收录，年份/日历规则同返程）；不开车否定词紧邻 */
+  const FIX_NOW = Date.UTC(2026, 8, 1);
+  const cities = ['北京', '伊宁', '阿拉木图', '乌鲁木齐'];
+  const s1 = extractLodgingStays('9月30日住伊宁', cities, FIX_NOW);
+  ok(s1.length === 1 && s1[0].date === '2026-09-30' && s1[0].city === '伊宁', '住宿口语：月日+住+已收录城市');
+  ok(extractLodgingStays('9月31日住伊宁', cities, FIX_NOW).length === 0, '住宿口语：非真实日历拒绝');
+  ok(extractLodgingStays('10月3号住在阿拉木图', cities, FIX_NOW)[0]?.date === '2026-10-03', '住宿口语：住在/号 均识别');
+  ok(extractLodgingStays('9月30日住霍格沃茨', cities, FIX_NOW).length === 0, '住宿口语：未收录城市忽略（不猜）');
+  ok(extractConstraints('我不会开车')['no_self_drive'] === true && extractConstraints('没有驾照')['no_self_drive'] === true,
+    '不开车口语：否定+方式紧邻识别');
+  ok(extractConstraints('坐火车不会累，自己开车吧')['no_self_drive'] === undefined,
+    '不开车口语：跨句共现不误报');
 }
 
 console.log(fail === 0
