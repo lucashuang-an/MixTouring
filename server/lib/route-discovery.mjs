@@ -28,6 +28,40 @@ function leadText(source) {
   return String(source.title || '') + ' ' + String(source.content || '');
 }
 
+/** 搜索摘要只作线索；只有同一短句明确连接两端且描述客运，才支持某段的方式。
+ * 泛查询／订票页标题即使含起终点与方式，也不能证明实际有该段服务。 */
+export function sourceLegConnectionExcerpt(source, from, to, mode) {
+  const modeWords = {
+    plane: /航班|航空|飞机|机场|直飞|flight|airline/i,
+    rail: /客运列车|列车|火车|高铁|动车|铁路|train|rail/i,
+    road: /道路客运|公路客运|客运班线|班车|大巴|长途汽车|bus|coach/i
+  };
+  if (!modeWords[mode] || !from || !to) return null;
+  const title = String(source?.title || '');
+  const content = String(source?.content || '');
+  const genericTitle = /查询|票价|预订|订票|攻略|怎么走|路线规划/i.test(title) ||
+    (/时刻表/.test(title) && !/[A-Z]\d{2,4}/i.test(title));
+  if (genericTitle) return null;
+  const clauses = title + '。' + content;
+  for (const clause of clauses.split(/[。；;，,！!？?\n]/)) {
+    if (/物流|货运|货车|货物|托运|freight|cargo|0\s*(?:车次|班次)|暂无|未开通|停运|即将开通|计划开通|拟开通|预计开通/i.test(clause)) continue;
+    const start = clause.indexOf(from);
+    const end = start < 0 ? -1 : clause.indexOf(to, start + from.length);
+    if (end < 0) continue;
+    const between = clause.slice(start + from.length, end);
+    if (between.length > 48 || !/到|至|往返|—|－|→|经|开往|抵达/.test(between)) continue;
+    if (modeWords[mode].test(clause) &&
+      /开通|开行|运营|运行|经停|途经|经营许可|始发|抵达|复航|直飞|客运班线|班车|列车|航班/i.test(clause)) {
+      return clause.trim().slice(0, 160);
+    }
+  }
+  return null;
+}
+
+export function sourceSupportsLeg(source, from, to, mode) {
+  return sourceLegConnectionExcerpt(source, from, to, mode) != null;
+}
+
 function routeIsReasonable(origin, destination, stops, cities) {
   const domestic = assessRoute(origin.name, destination.name, stops);
   if (domestic.verdict === 'non_mainstream') return false;
@@ -112,31 +146,18 @@ export async function discoverRoutes(origin, destination, { searchFn, modelFn, u
     if (!Array.isArray(modes) || modes.length !== stops.length + 1 || modes.some((mode) => !MODES.has(mode))) continue;
     const ids = Array.isArray(proposal.source_ids) ? proposal.source_ids : [];
     const support = leads.filter((r) => ids.includes(r.id) && stops.some((s) => leadText(r).includes(s)));
-    const finalConnection = support.some((r) => leadText(r).includes(stops[stops.length - 1]) &&
-      leadText(r).includes(destination.name));
-    if (!finalConnection || stops.some((s) => !support.some((r) => leadText(r).includes(s)))) continue;
+    const nodes = [origin.name, ...stops, destination.name];
+    const passengerModes = ['plane', 'rail', 'road'];
+    /* 多节点的每一段都要有明确客运连接线索；整条 OD 的泛查询页不构成中途各段依据。
+     * 策展跨境走廊在下面独立生成，起点到门户仍可标未知。 */
+    if (nodes.slice(0, -1).some((from, i) => !support.some((r) =>
+      passengerModes.some((mode) => sourceSupportsLeg(r, from, nodes[i + 1], mode))))) continue;
     /* 搜索提出的绕行尚无经过评审的体验理由，先拦截反向或过度绕行；策展灵感另走结构复用。 */
     if (!routeIsReasonable(origin, destination, stops, cities)) continue;
-    const nodes = [origin.name, ...stops, destination.name];
-    const modeWords = { plane: /航班|航空|飞机|机场|flight|airport/i, rail: /客运|列车|火车|高铁|铁路|train|rail/i,
-      road: /客运|班车|大巴|长途汽车|bus|coach/i };
-    let unsupportedRoad = false;
     modes.forEach((mode, i) => {
       if (mode === 'unknown') return;
-      const supported = support.some((r) => {
-        const body = leadText(r);
-        return body.includes(nodes[i]) && body.includes(nodes[i + 1]) && modeWords[mode].test(body) &&
-          !/物流|货运|货车|货物|托运|freight|cargo/i.test(body);
-      });
-      if (!supported && mode === 'road') unsupportedRoad = true;
-      else if (!supported) modes[i] = 'unknown';
+      if (!support.some((r) => sourceSupportsLeg(r, nodes[i], nodes[i + 1], mode))) modes[i] = 'unknown';
     });
-    if (unsupportedRoad) continue;
-    if (modes[modes.length - 1] === 'road' && !support.some((r) => {
-      const body = leadText(r);
-      return body.includes(stops[stops.length - 1]) && body.includes(destination.name) &&
-        /客运|班车|大巴|公路|汽车|bus|coach/i.test(body);
-    })) continue;
     const signature = stops.join('→');
     if (signatures.has(signature)) continue;
     signatures.add(signature);

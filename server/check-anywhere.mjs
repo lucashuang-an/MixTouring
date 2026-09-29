@@ -13,7 +13,8 @@ import {
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { discoverRoutes } from './lib/route-discovery.mjs';
+import { discoverRoutes, sourceSupportsLeg } from './lib/route-discovery.mjs';
+import { replayCandidate } from './lib/discovery-replay.mjs';
 import { buildJourneyDetail } from './lib/journey.mjs';
 
 let fail = 0;
@@ -251,22 +252,32 @@ const NO_DIGIT_RE = /\d/;
   const queries = [];
   const stat = await verifyLegs(built.candidates, async (q) => {
     calls++; queries.push(q);
-    /* 相关结果（覆盖全部段的两端与方式词）+ 一条无关 https 干扰项 */
+    /* 明确描述该段连接的结果 + 一条无关 https 干扰项。泛查询页不再算逐段来源。 */
+    const match = q.match(/^(.+?) 到 (.+?) (.+?) 怎么走$/);
+    const service = match?.[3] === '航班' ? '航班开通' : match?.[3] === '公路客运' ? '公路客运班线开通' : '列车开行';
     return [
-      { title: '北京 喀什 乌鲁木齐 航班 火车 铁路 高铁 攻略', link: 'https://example.com/a', content: '北京 乌鲁木齐 喀什 航班 火车' },
+      { title: `${match?.[1]}至${match?.[2]}${service}`, link: 'https://example.com/a', content: '' },
       { title: '无关促销页', link: 'https://example.com/seo', content: '双十一' },
       { title: '非https丢弃', link: 'http://x.com/b', content: '北京 喀什 航班' }
     ];
   });
   const legs = built.candidates.flatMap((c) => c.legs);
   ok(legs.every((l) => l.evidence_state === 'source_lead' && l.sources.length === 1 && l.sources[0].link.startsWith('https:')),
-    '取证→线索：相关 https 来源升级 source_lead；无关与 http 来源被拒');
+    '取证→线索：明确逐段连接的 https 来源才升 source_lead；无关与 http 来源被拒');
   ok(legs.every((l) => l.lead_query && l.lead_query.includes(l.from) && l.lead_query.includes(l.to) && l.sources[0].relevance),
     '线索：记录查询词与逐源相关性判定');
   ok(legs.every((l) => !l.evidence_note.includes('核验通过') && l.evidence_note.includes('非班期核验')),
     '线索：文案明确「非班期核验」（不称取证）');
   ok(new Set(queries).size === queries.length, '线索：相同查询不重复发起（缓存去重）');
   ok(stat.leads === legs.length, '线索：全部段获得线索');
+  const captured = replayCandidate({ kind: 'discovered', explanation: '探索方向', basis: { rule: 'search-discovery' },
+    legs: [legs[0], { from: '喀什', to: '比什凯克', mode_guess: 'road', evidence_state: 'explore', sources: [] }] });
+  ok(captured.legs[0].lead_query === legs[0].lead_query &&
+    captured.legs[0].evidence_state === 'source_lead' &&
+    captured.legs[0].sources[0].connection_excerpt &&
+    captured.legs[0].sources[0].relevance.connection_hit === true &&
+    captured.legs[1].evidence_state === 'explore' && captured.legs[1].sources.length === 0,
+    '回放保留逐段查询、来源与命中短句；未找到连接的段仍为 explore');
 
   const built2 = buildCandidateSkeletons(o, d, {}, {});
   await verifyLegs(built2.candidates, async () => [{ title: '完全无关', link: 'https://e.com/x' }]);
@@ -274,6 +285,30 @@ const NO_DIGIT_RE = /\d/;
     'P0-2 反例：合法 HTTPS 但内容无关 → 保持探索态（不伪造线索）');
   await verifyLegs(built2.candidates, null);
   ok(true, '线索：无 searchFn 时安全跳过');
+
+  const generic = { title: '哈尔滨到三亚高铁查询', content: '页面列出海口；哈尔滨 海口 三亚 火车查询',
+    link: 'https://example.org/generic-search' };
+  ok(!sourceSupportsLeg(generic, '哈尔滨', '海口', 'rail') &&
+    !sourceSupportsLeg(generic, '海口', '三亚', 'rail'),
+    '泛起终点查询页与中途地名共现，不能支持任一中途铁路段');
+  ok(!sourceSupportsLeg({ title: '塔城至北京航线即将开通' }, '塔城', '北京', 'plane'),
+    '计划开通的航线不能当作当前客运连接线索');
+  const genericRoute = await discoverRoutes(resolvePlace('哈尔滨'), resolvePlace('三亚'), {
+    searchFn: async () => [generic],
+    modelFn: async () => ({ routes: [{ stops: ['海口'], modes: ['rail', 'rail'], source_ids: [1] }] })
+  });
+  ok(!genericRoute.routes.some((route) => route.stops.includes('海口')),
+    '发现守门：整条 OD 查询页不能生成经海口的两段铁路卡');
+  const statedLegs = [
+    { title: '哈尔滨至海口列车开行', link: 'https://example.org/harbin-haikou' },
+    { title: '海口至三亚列车开行', link: 'https://example.org/haikou-sanya' }
+  ];
+  const explicitRoute = await discoverRoutes(resolvePlace('哈尔滨'), resolvePlace('三亚'), {
+    searchFn: async () => statedLegs,
+    modelFn: async () => ({ routes: [{ stops: ['海口'], modes: ['rail', 'rail'], source_ids: [1, 2] }] })
+  });
+  ok(explicitRoute.routes.some((route) => route.stops.includes('海口') && route.modes.every((mode) => mode === 'rail')),
+    '逐段明确连接的来源可保留经海口的探索铁路走法');
 }
 
 /* ---------- 开放地点解析（P0-1：安全两阶段四验收场景） ---------- */
@@ -677,7 +712,11 @@ const NO_DIGIT_RE = /\d/;
   const fakeEnv = { LLM_API_KEY: 'x', LLM_BASE_URL: 'https://open.bigmodel.cn/api/paas/v4' };
   const r6 = await planAnywhere({ origin: '北京', destination: '喀什' },
     { callJson: async () => null, env: fakeEnv, osmSearch: async () => [], webSearchStatus: () => ({ status: 'quota_exhausted' }),
-      searchWeb: async () => [{ title: '北京 喀什 乌鲁木齐 航班 火车 铁路 高铁', link: 'https://e.com/x', content: '北京 乌鲁木齐 喀什' }] });
+      searchWeb: async (q) => {
+        const match = q.match(/^(.+?) 到 (.+?) (.+?) 怎么走$/);
+        const service = match?.[3] === '航班' ? '航班开通' : match?.[3] === '公路客运' ? '公路客运班线开通' : '列车开行';
+        return [{ title: `${match?.[1]}至${match?.[2]}${service}`, link: 'https://e.com/x', content: '' }];
+      } });
   ok(r6.candidates.filter((c) => c.basis?.rule !== 'historical-inspiration')
     .flatMap((c) => c.legs).every((l) => l.evidence_state === 'source_lead') &&
     r6.candidates.some((c) => c.basis?.rule === 'historical-inspiration'),
@@ -728,7 +767,8 @@ const NO_DIGIT_RE = /\d/;
     detail.outbound.every((leg) => !leg.service_no && !leg.price_sample),
     '详情：伊宁停留与跨境清单可用，无虚构班次和价格');
   const newSearchRoute = await discoverRoutes(resolvePlace('北京'), resolvePlace('喀什'), {
-    searchFn: async () => [{ title: '北京 银川 喀什 铁路航班走法', content: '北京经银川前往喀什的铁路与航班组合', link: 'https://example.org/route' }],
+    searchFn: async () => [{ title: '北京至银川列车开行；银川至喀什航班开通',
+      content: '北京至银川列车开行；银川至喀什航班开通', link: 'https://example.org/route' }],
     modelFn: async () => ({ routes: [{ stops: ['银川'], modes: ['rail', 'plane'], source_ids: [1] }] })
   });
   ok(newSearchRoute.routes.length === 1 && newSearchRoute.routes[0].stops[0] === '银川' &&

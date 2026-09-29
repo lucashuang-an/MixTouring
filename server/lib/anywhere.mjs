@@ -20,7 +20,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { ANYWHERE_PLANNER_VERSION } from './versions.mjs';
-import { discoverRoutes } from './route-discovery.mjs';
+import { discoverRoutes, sourceSupportsLeg, sourceLegConnectionExcerpt } from './route-discovery.mjs';
 import { inspirationFor, inspirationRoute, listInspirations } from './inspirations.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -1095,7 +1095,7 @@ export function resultRelevance(r, leg) {
   const from = String(leg.from).toLowerCase();
   const to = String(leg.to).toLowerCase();
   const modeRe = leg.mode_guess === 'rail'
-    ? /火车|铁路|高铁|动车|train|rail/
+    ? /列车|火车|铁路|高铁|动车|train|rail/
     : leg.mode_guess === 'plane'
       ? /航班|飞机|直飞|air\s|airline|flight|fly/
       : leg.mode_guess === 'road'
@@ -1104,7 +1104,10 @@ export function resultRelevance(r, leg) {
   return {
     from_hit: !!from && hay.includes(from),
     to_hit: !!to && hay.includes(to),
-    mode_hit: modeRe ? modeRe.test(hay) : true
+    mode_hit: modeRe ? modeRe.test(hay) : true,
+    connection_hit: !leg.mode_guess || leg.mode_guess === 'unknown'
+      ? ['plane', 'rail', 'road'].some((mode) => sourceSupportsLeg(r, leg.from, leg.to, mode))
+      : sourceSupportsLeg(r, leg.from, leg.to, leg.mode_guess)
   };
 }
 
@@ -1132,14 +1135,17 @@ export async function verifyLegs(candidates, searchFn, sharedCache) {
       for (const r of (res || [])) {
         if (!(r && typeof r.link === 'string' && /^https:/.test(r.link))) continue;
         const rel = resultRelevance(r, leg);
-        if (rel.from_hit && rel.to_hit && rel.mode_hit) {
-          relevant.push({ title: String(r.title || '').slice(0, 120), link: r.link, sampled_at: new Date().toISOString(), relevance: rel });
+        if (rel.from_hit && rel.to_hit && rel.mode_hit && rel.connection_hit) {
+          const modes = !leg.mode_guess || leg.mode_guess === 'unknown' ? ['plane', 'rail', 'road'] : [leg.mode_guess];
+          const excerpt = modes.map((mode) => sourceLegConnectionExcerpt(r, leg.from, leg.to, mode)).find(Boolean);
+          relevant.push({ title: String(r.title || '').slice(0, 120), link: r.link,
+            sampled_at: new Date().toISOString(), relevance: rel, connection_excerpt: excerpt });
         }
       }
       if (relevant.length) {
         leg.evidence_state = 'source_lead';
         leg.sources = relevant.slice(0, 3);
-        leg.evidence_note = '搜索线索（命中该段两端与方式；非班期核验）';
+        leg.evidence_note = '搜索线索（同句描述该段客运连接与方式；非班期核验）';
         leads++;
       }
     }
