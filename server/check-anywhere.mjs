@@ -293,6 +293,13 @@ const NO_DIGIT_RE = /\d/;
     '泛起终点查询页与中途地名共现，不能支持任一中途铁路段');
   ok(!sourceSupportsLeg({ title: '塔城至北京航线即将开通' }, '塔城', '北京', 'plane'),
     '计划开通的航线不能当作当前客运连接线索');
+  ok(!sourceSupportsLeg({ title: '中国南方航空计划新开广州至喀什直飞航线' }, '广州', '喀什', 'plane') &&
+    !sourceSupportsLeg({ title: '广州至喀什航班尚未正式开通' }, '广州', '喀什', 'plane') &&
+    !sourceSupportsLeg({ title: '广州至喀什航班已经停飞' }, '广州', '喀什', 'plane') &&
+    !sourceSupportsLeg({ title: '广州至喀什航班暂时停飞' }, '广州', '喀什', 'plane'),
+    '来源：计划新开、尚未正式开通和已停飞均不能支持客运连接');
+  ok(sourceSupportsLeg({ title: '广州至喀什航班开通', content: '首航航班实际执飞' }, '广州', '喀什', 'plane'),
+    '来源：实际开行报道仍可保留为探索线索');
   const genericRoute = await discoverRoutes(resolvePlace('哈尔滨'), resolvePlace('三亚'), {
     searchFn: async () => [generic],
     modelFn: async () => ({ routes: [{ stops: ['海口'], modes: ['rail', 'rail'], source_ids: [1] }] })
@@ -728,7 +735,7 @@ const NO_DIGIT_RE = /\d/;
       searchWeb: async () => null });
   ok(r6b.web_search && r6b.web_search.status === 'timeout',
     'P1-4：本请求全部搜索失败 → 透传最近失败原因（timeout），不谎报可用');
-  ok(r6.planner_version === 'v0.44.0', '编排：anywhere 版本号对齐 v0.44.0');
+  ok(r6.planner_version === 'v0.44.5', '编排：anywhere 版本号对齐 v0.44.5');
 
   const r7 = await planAnywhere({ text: '想去新疆最西边那座古城玩' },
     { callJson: async () => ({ origin: '北京', destination: '喀什' }), env: {}, osmSearch: async () => [] });
