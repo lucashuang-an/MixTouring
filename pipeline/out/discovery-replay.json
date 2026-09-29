@@ -1,17 +1,17 @@
 {
-  "sampled_at": "2026-09-29T02:41:40.442Z",
+  "sampled_at": "2026-09-29T12:13:37.622Z",
   "note": "真实通道回放，非班期核验；调用次数不等于费用，金额须结合供应商账单。",
   "cases": [
     {
       "origin": "北京",
       "destination": "阿拉木图",
-      "first_result_ms": 124,
-      "complete_ms": 15336,
+      "first_result_ms": 119,
+      "complete_ms": 15890,
       "metrics": {
         "model_calls": 1,
         "search_calls": 11,
-        "first_result_ms": 11,
-        "elapsed_ms": 15286,
+        "first_result_ms": 8,
+        "elapsed_ms": 15824,
         "budget_exhausted": false
       },
       "search": {
@@ -35,7 +35,7 @@
                 {
                   "title": "从北京市到阿拉木图的直达航班",
                   "link": "https://www.flightconnections.com/cn/%E4%BB%8E-pek-%E9%A3%9E%E5%BE%80-ala-%E7%9A%84%E8%88%AA%E7%8F%AD",
-                  "sampled_at": "2026-09-29T02:41:55.774Z",
+                  "sampled_at": "2026-09-29T12:13:53.510Z",
                   "connection_excerpt": "从北京市到阿拉木图的直达航班",
                   "relevance": {
                     "from_hit": true,
@@ -47,7 +47,7 @@
                 {
                   "title": "国航开通北京至阿拉木图直飞航线 - 民用航空资讯网",
                   "link": "https://www.ccaonline.cn/yunshu/ystop/1095713.html",
-                  "sampled_at": "2026-09-29T02:41:55.774Z",
+                  "sampled_at": "2026-09-29T12:13:53.510Z",
                   "connection_excerpt": "国航开通北京至阿拉木图直飞航线 - 民用航空资讯网",
                   "relevance": {
                     "from_hit": true,
@@ -127,7 +127,7 @@
                 {
                   "title": "乌鲁木齐第二条国际客运班线正式发车运营_核心区动态_新疆维吾尔自治区发展和改革委员会",
                   "link": "https://xjdrc.xinjiang.gov.cn/xjfgw/c112381/202401/511090a17e27400d93d756d63bd0d8bc.shtml",
-                  "sampled_at": "2026-09-29T02:41:55.775Z",
+                  "sampled_at": "2026-09-29T12:13:53.510Z",
                   "connection_excerpt": "乌鲁木齐—都拉塔—阿拉木图国际客运班线正式发车运营",
                   "relevance": {
                     "from_hit": true,
@@ -176,7 +176,7 @@
                 {
                   "title": "塔城—阿拉木图国际客运班线开通了",
                   "link": "https://c.m.163.com/news/a/JQU9N8LG0514R9KE.html",
-                  "sampled_at": "2026-09-29T02:41:55.775Z",
+                  "sampled_at": "2026-09-29T12:13:53.510Z",
                   "connection_excerpt": "塔城—阿拉木图国际客运班线开通了",
                   "relevance": {
                     "from_hit": true,
@@ -188,7 +188,7 @@
                 {
                   "title": "塔城至阿拉木图国际客运班线开通- 大数跨境",
                   "link": "https://m.10100.com/article/1885015",
-                  "sampled_at": "2026-09-29T02:41:55.775Z",
+                  "sampled_at": "2026-09-29T12:13:53.510Z",
                   "connection_excerpt": "塔城至阿拉木图国际客运班线开通- 大数跨境",
                   "relevance": {
                     "from_hit": true,
@@ -237,7 +237,7 @@
                 {
                   "title": "從乌鲁木齐市到阿拉木图的直達航班",
                   "link": "https://www.flightconnections.com/tw/%E5%BE%9E-urc-%E5%88%B0-ala-%E7%9A%84%E8%88%AA%E7%8F%AD",
-                  "sampled_at": "2026-09-29T02:41:55.775Z",
+                  "sampled_at": "2026-09-29T12:13:53.511Z",
                   "connection_excerpt": "從乌鲁木齐市到阿拉木图的直達航班",
                   "relevance": {
                     "from_hit": true,
@@ -249,7 +249,7 @@
                 {
                   "title": "新增乌鲁木齐至阿拉木图国际客运航班",
                   "link": "https://sdxw.iqilu.com/share/YS0yMS0xNzE4NTc5NQ.html",
-                  "sampled_at": "2026-09-29T02:41:55.775Z",
+                  "sampled_at": "2026-09-29T12:13:53.511Z",
                   "connection_excerpt": "新增乌鲁木齐至阿拉木图国际客运航班",
                   "relevance": {
                     "from_hit": true,
@@ -305,7 +305,7 @@
                 {
                   "title": "從乌鲁木齐市到阿拉木图的直達航班",
                   "link": "https://www.flightconnections.com/tw/%E5%BE%9E-urc-%E5%88%B0-ala-%E7%9A%84%E8%88%AA%E7%8F%AD",
-                  "sampled_at": "2026-09-29T02:41:55.775Z",
+                  "sampled_at": "2026-09-29T12:13:53.511Z",
                   "connection_excerpt": "從乌鲁木齐市到阿拉木图的直達航班",
                   "relevance": {
                     "from_hit": true,
@@ -317,7 +317,7 @@
                 {
                   "title": "新增乌鲁木齐至阿拉木图国际客运航班",
                   "link": "https://sdxw.iqilu.com/share/YS0yMS0xNzE4NTc5NQ.html",
-                  "sampled_at": "2026-09-29T02:41:55.775Z",
+                  "sampled_at": "2026-09-29T12:13:53.511Z",
                   "connection_excerpt": "新增乌鲁木齐至阿拉木图国际客运航班",
                   "relevance": {
                     "from_hit": true,
@@ -359,13 +359,13 @@
     {
       "origin": "上海",
       "destination": "昆明",
-      "first_result_ms": 12,
-      "complete_ms": 6822,
+      "first_result_ms": 10,
+      "complete_ms": 8017,
       "metrics": {
         "model_calls": 1,
         "search_calls": 5,
         "first_result_ms": 5,
-        "elapsed_ms": 6817,
+        "elapsed_ms": 8014,
         "budget_exhausted": false
       },
       "search": {
@@ -435,13 +435,13 @@
     {
       "origin": "广州",
       "destination": "比什凯克",
-      "first_result_ms": 8,
-      "complete_ms": 14712,
+      "first_result_ms": 6,
+      "complete_ms": 13900,
       "metrics": {
         "model_calls": 1,
         "search_calls": 5,
         "first_result_ms": 3,
-        "elapsed_ms": 14708,
+        "elapsed_ms": 13898,
         "budget_exhausted": false
       },
       "search": {
@@ -458,10 +458,47 @@
               "to": "比什凯克",
               "mode": "plane",
               "via": null,
-              "evidence_state": "explore",
+              "evidence_state": "source_lead",
               "lead_query": "广州 到 比什凯克 航班 怎么走",
-              "evidence_note": null,
-              "sources": []
+              "evidence_note": "搜索线索（同句描述该段客运连接与方式；非班期核验）",
+              "sources": [
+                {
+                  "title": "南航新开广州—比什凯克航线 助力与吉尔吉斯斯坦经贸往来与文化交流 - 广州市人民政府门户网站",
+                  "link": "https://www.gz.gov.cn/zwfw/zxfw/jtfw/content/mpost_10748350.html",
+                  "sampled_at": "2026-09-29T12:14:15.431Z",
+                  "connection_excerpt": "标志着南航广州—比什凯克国际直飞客运航线成功首航",
+                  "relevance": {
+                    "from_hit": true,
+                    "to_hit": true,
+                    "mode_hit": true,
+                    "connection_hit": true
+                  }
+                },
+                {
+                  "title": "南航开通广州至比什凯克直飞航线，助力中吉经贸往来与文化交流 - 中国日报网",
+                  "link": "https://gd.chinadaily.com.cn/a/202603/31/WS69cb3237a310942cc49a5b4e.html",
+                  "sampled_at": "2026-09-29T12:14:15.431Z",
+                  "connection_excerpt": "南航开通广州至比什凯克直飞航线",
+                  "relevance": {
+                    "from_hit": true,
+                    "to_hit": true,
+                    "mode_hit": true,
+                    "connection_hit": true
+                  }
+                },
+                {
+                  "title": "广州日报-南航新开广州—比什凯克航线",
+                  "link": "https://gzdaily.dayoo.com/h5/html5/2026-03/31/content_868_906127.htm",
+                  "sampled_at": "2026-09-29T12:14:15.431Z",
+                  "connection_excerpt": "标志着南航广州—比什凯克国际直飞客运航线成功首航",
+                  "relevance": {
+                    "from_hit": true,
+                    "to_hit": true,
+                    "mode_hit": true,
+                    "connection_hit": true
+                  }
+                }
+              ]
             }
           ],
           "reason": "假设存在直达航班：班期与价格待逐段取证，未取证前不做任何比较",
@@ -479,10 +516,23 @@
               "to": "喀什",
               "mode": null,
               "via": null,
-              "evidence_state": "explore",
+              "evidence_state": "source_lead",
               "lead_query": "广州 到 喀什 交通 怎么走",
-              "evidence_note": null,
-              "sources": []
+              "evidence_note": "搜索线索（同句描述该段客运连接与方式；非班期核验）",
+              "sources": [
+                {
+                  "title": "8月15日起南航将新开广州-喀什直飞航线 系目前国内飞行时间最长直飞航线 - 广州市人民政府门户网站",
+                  "link": "https://www.gz.gov.cn/zwfw/zxfw/jtfw/content/mpost_9156543.html",
+                  "sampled_at": "2026-09-29T12:14:15.431Z",
+                  "connection_excerpt": "中国南方航空计划新开广州至喀什直飞航线",
+                  "relevance": {
+                    "from_hit": true,
+                    "to_hit": true,
+                    "mode_hit": true,
+                    "connection_hit": true
+                  }
+                }
+              ]
             },
             {
               "from": "喀什",
@@ -496,7 +546,7 @@
                 {
                   "title": "新春首发!喀什至比什凯克国际定期客运班车开行",
                   "link": "https://www.xjbc.gov.cn/xwzx/spxw/20240309/i1013075.html",
-                  "sampled_at": "2026-09-29T02:42:17.314Z",
+                  "sampled_at": "2026-09-29T12:14:15.431Z",
                   "connection_excerpt": "喀什至比什凯克国际定期客运班车开行",
                   "relevance": {
                     "from_hit": true,
@@ -508,7 +558,7 @@
                 {
                   "title": "新春首发！喀什至比什凯克国际定期客运班车开行",
                   "link": "https://cj.sina.cn/article/norm_detail?url=https%3A%2F%2Ffinance.sina.com.cn%2Fjjxw%2F2024-02-23%2Fdoc-inaiznvi5277221.shtml",
-                  "sampled_at": "2026-09-29T02:42:17.314Z",
+                  "sampled_at": "2026-09-29T12:14:15.431Z",
                   "connection_excerpt": "喀什至比什凯克国际定期客运班车开行",
                   "relevance": {
                     "from_hit": true,
@@ -520,7 +570,7 @@
                 {
                   "title": "中国新疆喀什至吉尔吉斯斯坦国际客运班车恢复运行_核心区动态_新疆维吾尔自治区发展和改革委员会",
                   "link": "https://xjdrc.xinjiang.gov.cn/xjfgw/c112381/202303/0f35687849474d4d86ef6b2b17a6782d.shtml",
-                  "sampled_at": "2026-09-29T02:42:17.314Z",
+                  "sampled_at": "2026-09-29T12:14:15.431Z",
                   "connection_excerpt": "喀什市至吉尔吉斯斯坦首都比什凯克国际班车",
                   "relevance": {
                     "from_hit": true,
@@ -549,13 +599,13 @@
     {
       "origin": "成都",
       "destination": "拉萨",
-      "first_result_ms": 12,
-      "complete_ms": 8438,
+      "first_result_ms": 10,
+      "complete_ms": 10150,
       "metrics": {
         "model_calls": 1,
         "search_calls": 6,
         "first_result_ms": 3,
-        "elapsed_ms": 8434,
+        "elapsed_ms": 10147,
         "budget_exhausted": false
       },
       "search": {
@@ -603,23 +653,10 @@
               "to": "拉萨",
               "mode": "rail",
               "via": null,
-              "evidence_state": "source_lead",
+              "evidence_state": "explore",
               "lead_query": "西宁 到 拉萨 火车 怎么走",
-              "evidence_note": "搜索线索（同句描述该段客运连接与方式；非班期核验）",
-              "sources": [
-                {
-                  "title": "游客注意!拉萨往返西宁、林芝最新消息!_西藏自治区文化和旅游厅",
-                  "link": "https://wlt.xizang.gov.cn/xccx/lytg/202603/t20260318_529958.html",
-                  "sampled_at": "2026-09-29T02:42:25.752Z",
-                  "connection_excerpt": "西宁至拉萨加开Z9813次旅客列车",
-                  "relevance": {
-                    "from_hit": true,
-                    "to_hit": true,
-                    "mode_hit": true,
-                    "connection_hit": true
-                  }
-                }
-              ]
+              "evidence_note": null,
+              "sources": []
             }
           ],
           "reason": "库内历史路线结构提示可经西宁方向探索；逐段交通、实际换乘与日期衔接仍需确认",
@@ -641,46 +678,20 @@
               "to": "西宁",
               "mode": null,
               "via": null,
-              "evidence_state": "source_lead",
+              "evidence_state": "explore",
               "lead_query": "成都 到 西宁 交通 怎么走",
-              "evidence_note": "搜索线索（同句描述该段客运连接与方式；非班期核验）",
-              "sources": [
-                {
-                  "title": "成都到西宁飞行时间 & 航班时间表 2026 便宜机票 | Trip.com",
-                  "link": "https://hk.trip.com/hot/%E6%88%90%E9%83%BD%E5%88%B0%E8%A5%BF%E5%AF%A7%E9%A3%9B%E8%A1%8C%E6%99%82%E9%96%93/",
-                  "sampled_at": "2026-09-29T02:42:25.752Z",
-                  "connection_excerpt": "成都到西宁飞行时间 & 航班时间表 2026 便宜机票 | Trip.com",
-                  "relevance": {
-                    "from_hit": true,
-                    "to_hit": true,
-                    "mode_hit": true,
-                    "connection_hit": true
-                  }
-                }
-              ]
+              "evidence_note": null,
+              "sources": []
             },
             {
               "from": "西宁",
               "to": "拉萨",
               "mode": "rail",
               "via": null,
-              "evidence_state": "source_lead",
+              "evidence_state": "explore",
               "lead_query": "西宁 到 拉萨 火车 怎么走",
-              "evidence_note": "搜索线索（同句描述该段客运连接与方式；非班期核验）",
-              "sources": [
-                {
-                  "title": "游客注意!拉萨往返西宁、林芝最新消息!_西藏自治区文化和旅游厅",
-                  "link": "https://wlt.xizang.gov.cn/xccx/lytg/202603/t20260318_529958.html",
-                  "sampled_at": "2026-09-29T02:42:25.752Z",
-                  "connection_excerpt": "西宁至拉萨加开Z9813次旅客列车",
-                  "relevance": {
-                    "from_hit": true,
-                    "to_hit": true,
-                    "mode_hit": true,
-                    "connection_hit": true
-                  }
-                }
-              ]
+              "evidence_note": null,
+              "sources": []
             }
           ],
           "reason": "假设经「西宁」一次中转：中转城市按顺路约束内的枢纽作用与「枢纽→目的地」段连接依据筛选（确定性估算，非班期事实），两段班期与衔接余量待逐段取证",
@@ -707,13 +718,13 @@
     {
       "origin": "哈尔滨",
       "destination": "三亚",
-      "first_result_ms": 8,
-      "complete_ms": 8309,
+      "first_result_ms": 7,
+      "complete_ms": 8132,
       "metrics": {
         "model_calls": 1,
         "search_calls": 3,
-        "first_result_ms": 4,
-        "elapsed_ms": 8306,
+        "first_result_ms": 3,
+        "elapsed_ms": 8130,
         "budget_exhausted": false
       },
       "search": {
@@ -730,10 +741,23 @@
               "to": "三亚",
               "mode": null,
               "via": null,
-              "evidence_state": "explore",
+              "evidence_state": "source_lead",
               "lead_query": "哈尔滨 到 三亚 交通 怎么走",
-              "evidence_note": null,
-              "sources": []
+              "evidence_note": "搜索线索（同句描述该段客运连接与方式；非班期核验）",
+              "sources": [
+                {
+                  "title": "哈尔滨到三亚",
+                  "link": "https://www.1681989.cn/shenghuo/776185.html",
+                  "sampled_at": "2026-09-29T12:14:33.713Z",
+                  "connection_excerpt": "以最快的直飞航班体验哈尔滨至三亚的美妙之旅",
+                  "relevance": {
+                    "from_hit": true,
+                    "to_hit": true,
+                    "mode_hit": true,
+                    "connection_hit": true
+                  }
+                }
+              ]
             }
           ],
           "reason": "假设存在直达航班或直达列车：具体班期待逐段取证",
@@ -748,13 +772,13 @@
     {
       "origin": "北京",
       "destination": "香港",
-      "first_result_ms": 9,
-      "complete_ms": 20751,
+      "first_result_ms": 8,
+      "complete_ms": 18230,
       "metrics": {
         "model_calls": 2,
-        "search_calls": 8,
-        "first_result_ms": 4,
-        "elapsed_ms": 20747,
+        "search_calls": 6,
+        "first_result_ms": 3,
+        "elapsed_ms": 18227,
         "budget_exhausted": false
       },
       "search": {
@@ -854,43 +878,6 @@
               }
             ]
           }
-        },
-        {
-          "kind": "mixed",
-          "legs": [
-            {
-              "from": "北京",
-              "to": "武汉",
-              "mode": "rail",
-              "via": null,
-              "evidence_state": "explore",
-              "lead_query": "北京 到 武汉 火车 怎么走",
-              "evidence_note": null,
-              "sources": []
-            },
-            {
-              "from": "武汉",
-              "to": "香港",
-              "mode": "plane",
-              "via": null,
-              "evidence_state": "explore",
-              "lead_query": "武汉 到 香港 航班 怎么走",
-              "evidence_note": null,
-              "sources": []
-            }
-          ],
-          "reason": "假设先乘铁路到「武汉」再飞往目的地的混合走法：中转城市按「起点→枢纽」铁路依据与「枢纽→目的地」航空依据分别筛选（依据见下），两段班期与衔接待逐段取证",
-          "basis": {
-            "rule": "llm",
-            "whys": [
-              {
-                "scope": "llm",
-                "leg": null,
-                "direction": null,
-                "text": "由 AI 从已收录城市中提名（待验证假设，段连接依据待查）"
-              }
-            ]
-          }
         }
       ]
     },
@@ -898,12 +885,12 @@
       "origin": "上海",
       "destination": "台北",
       "first_result_ms": 8,
-      "complete_ms": 11063,
+      "complete_ms": 16348,
       "metrics": {
         "model_calls": 2,
         "search_calls": 3,
         "first_result_ms": 3,
-        "elapsed_ms": 11060,
+        "elapsed_ms": 16345,
         "budget_exhausted": false
       },
       "search": {
@@ -920,10 +907,23 @@
               "to": "台北",
               "mode": "plane",
               "via": null,
-              "evidence_state": "explore",
+              "evidence_state": "source_lead",
               "lead_query": "上海 到 台北 航班 怎么走",
-              "evidence_note": null,
-              "sources": []
+              "evidence_note": "搜索线索（同句描述该段客运连接与方式；非班期核验）",
+              "sources": [
+                {
+                  "title": "从上海到台北的航班 | 国泰航空",
+                  "link": "https://flights.cathaypacific.com/destinations/zh_HK/%E5%BE%9E%E4%B8%8A%E6%B5%B7%E5%88%B0%E5%8F%B0%E5%8C%97%E7%9A%84%E8%88%AA%E7%8F%AD",
+                  "sampled_at": "2026-09-29T12:15:08.292Z",
+                  "connection_excerpt": "从上海到台北的航班 | 国泰航空",
+                  "relevance": {
+                    "from_hit": true,
+                    "to_hit": true,
+                    "mode_hit": true,
+                    "connection_hit": true
+                  }
+                }
+              ]
             }
           ],
           "reason": "假设存在直达航班：班期与价格待逐段取证，未取证前不做任何比较",

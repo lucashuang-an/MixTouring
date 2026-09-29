@@ -728,7 +728,7 @@ const NO_DIGIT_RE = /\d/;
       searchWeb: async () => null });
   ok(r6b.web_search && r6b.web_search.status === 'timeout',
     'P1-4：本请求全部搜索失败 → 透传最近失败原因（timeout），不谎报可用');
-  ok(r6.planner_version === 'v0.44.2', '编排：anywhere 版本号对齐 v0.44.2');
+  ok(r6.planner_version === 'v0.44.3', '编排：anywhere 版本号对齐 v0.44.3');
 
   const r7 = await planAnywhere({ text: '想去新疆最西边那座古城玩' },
     { callJson: async () => ({ origin: '北京', destination: '喀什' }), env: {}, osmSearch: async () => [] });
@@ -808,7 +808,7 @@ const NO_DIGIT_RE = /\d/;
   ok(!backtrack.routes.some((r) => r.stops.join('→') === '兰州→银川'), '多节点守门：拒绝途经城市顺序折返');
 }
 
-/* ---------- 卡 B（v0.44.2）：交通锚点（用户确认事实）与多轮约束 ---------- */
+/* ---------- 卡 B（v0.44.3）：交通锚点（用户确认事实）与多轮约束 ---------- */
 {
   /* 白名单：合法去返结构；班次号规范化；非法字段整条拒绝（不猜） */
   const a1 = sanitizeAnchors({
@@ -845,13 +845,64 @@ const NO_DIGIT_RE = /\d/;
   ok(plan2.anchors?.full_cover === true && plan2.candidates.length === 0 &&
     plan2.anchor_notes.some((n) => n.includes('没有待重算的跨城段')), '锚点：去返全覆盖时不生成候选并说明原因');
 
-  /* 进出城市不同：返程锚点从乌鲁木齐出发 → 规划终点重映射为乌鲁木齐 */
+  /* P0-1（二十七轮）：单返程锚点不重映射终点——去目的地的去程探索保留，
+   * 目的地→返程出发城的接驳段诚实提示（不能把北京→乌鲁木齐当作本次完整旅程） */
   const plan3 = await planAnywhere({ origin: '北京', destination: '阿拉木图',
     anchors: { return: { mode: 'plane', date: '2026-10-08', from_city: '乌鲁木齐', to_city: '北京' } } },
     { callJson: async () => null, env: {}, osmSearch: async () => [] });
-  ok(plan3.anchors.recompute_scope === 'before_return_anchor' &&
-    plan3.candidates.length > 0 && plan3.candidates.every((c) => c.legs.at(-1).to === '乌鲁木齐') &&
-    plan3.anchor_notes.some((n) => n.includes('进出城市可以不同')), '锚点：返程出发城为终点（进出城市可以不同）');
+  ok(plan3.anchors.recompute_scope === 'full' &&
+    plan3.candidates.length > 0 && plan3.candidates.every((c) => c.legs[0].from === '北京' && c.legs.at(-1).to === '阿拉木图') &&
+    plan3.anchor_notes.some((n) => n.includes('目的地不因返程锚点跳过')) &&
+    plan3.anchor_notes.some((n) => n.includes('另行单独规划')),
+    '锚点：单返程锚点保留目的地去程探索，返程接驳段诚实提示待单独规划');
+  /* 双锚点（进出城市不同）仍重映射为中间段 */
+  const plan3b = await planAnywhere({ origin: '北京', destination: '阿拉木图',
+    anchors: {
+      outbound: { mode: 'plane', date: '2026-09-30', from_city: '北京', to_city: '伊宁' },
+      return: { mode: 'plane', date: '2026-10-08', from_city: '乌鲁木齐', to_city: '北京' }
+    } },
+    { callJson: async () => null, env: {}, osmSearch: async () => [] });
+  ok(plan3b.anchors.recompute_scope === 'between_anchors' &&
+    plan3b.candidates.every((c) => c.legs[0].from === '伊宁' && c.legs.at(-1).to === '乌鲁木齐'),
+    '锚点：双锚点进出不同城时只规划中间段');
+
+  /* P0-2（二十七轮）：去返日期倒置不宣称全覆盖，拦截候选并提示修正 */
+  const plan3c = await planAnywhere({ origin: '北京', destination: '阿拉木图',
+    anchors: {
+      outbound: { mode: 'plane', date: '2026-10-10', from_city: '北京', to_city: '伊宁' },
+      return: { mode: 'plane', date: '2026-09-30', from_city: '伊宁', to_city: '北京' }
+    } },
+    { callJson: async () => null, env: {}, osmSearch: async () => [] });
+  ok(plan3c.candidates.length === 0 && !plan3c.anchors.full_cover &&
+    plan3c.anchor_notes.some((n) => n.includes('日期矛盾')) &&
+    plan3c.next_steps.some((n) => n.includes('修正')),
+    '锚点：去程 10-10 到、返程 9-30 走的日期倒置被拦截并要求修正');
+
+  /* P1-3（二十七轮）：锚点外侧城市未收录整条拒绝（四端点同规则） */
+  const plan4b = await planAnywhere({ origin: '北京', destination: '阿拉木图',
+    anchors: { outbound: { mode: 'plane', date: '2026-09-30', from_city: '月球城', to_city: '伊宁' } } },
+    { callJson: async () => null, env: {}, osmSearch: async () => [] });
+  ok(plan4b.anchors === null && plan4b.needs_confirmation.some((n) => n.includes('未收录') && n.includes('月球城')),
+    '锚点：外侧未收录城市（月球城）整条拒绝并指明城市');
+  const plan4c = await planAnywhere({ origin: '北京', destination: '阿拉木图',
+    anchors: { return: { mode: 'plane', date: '2026-10-08', from_city: '乌鲁木齐', to_city: '任意虚构城' } } },
+    { callJson: async () => null, env: {}, osmSearch: async () => [] });
+  ok(plan4c.anchors === null && plan4c.needs_confirmation.some((n) => n.includes('未收录')),
+    '锚点：返程到达侧未收录城市同样整条拒绝');
+
+  /* P1-4（二十七轮）：显式撤销（false/空数组）覆盖旧一句话提取，约束不复活 */
+  const plan4d = await planAnywhere(
+    { text: '北京去阿拉木图，不会开车，9月30日住伊宁', constraints: { no_self_drive: false, lodging_stays: [] } },
+    { callJson: async () => null, env: {}, osmSearch: async () => [] });
+  ok(plan4d.intent.constraints.no_self_drive === undefined &&
+    plan4d.intent.constraints.lodging_stays === undefined &&
+    !plan4d.intent.constraint_chips.some((c) => c.key === 'no_self_drive' || c.key === 'lodging'),
+    '撤销：显式 false/空数组覆盖旧文本提取，不开车与住宿不再复活');
+  const plan4e = await planAnywhere(
+    { text: '北京去阿拉木图，不会开车，9月30日住伊宁', constraints: { lodging_stays: [] } },
+    { callJson: async () => null, env: {}, osmSearch: async () => [] });
+  ok(plan4e.intent.constraints.no_self_drive === true && plan4e.intent.constraints.lodging_stays === undefined,
+    '撤销：显式清空住宿不影响旧文本的不开车约束（逐键独立覆盖）');
 
   /* 锚点城市未收录：拒绝并提示修正（锚点不进开放地点核验） */
   const plan4 = await planAnywhere({ origin: '北京', destination: '阿拉木图',

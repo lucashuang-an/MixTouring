@@ -234,7 +234,12 @@
       var arr = document.getElementById(p + 'Arr').value;
       if (arr) {
         a.arrive_time = arr;
-        if (document.getElementById(p + 'Next').checked) a.arrive_next_day = true;
+        /* 次日到达在前端换算成 arrive_date（二十七轮评审：锁定态显示不得把次日到达显示成出发日） */
+        if (document.getElementById(p + 'Next').checked) {
+          var d2 = new Date(a.date + 'T00:00:00Z');
+          d2.setUTCDate(d2.getUTCDate() + 1);
+          a.arrive_date = d2.toISOString().slice(0, 10);
+        }
       }
       return a;
     }
@@ -247,7 +252,7 @@
       document.getElementById(p + 'No').value = a ? a.service_no || '' : '';
       document.getElementById(p + 'Dep').value = a ? a.depart_time || '' : '';
       document.getElementById(p + 'Arr').value = a ? a.arrive_time || '' : '';
-      document.getElementById(p + 'Next').checked = !!(a && a.arrive_next_day);
+      document.getElementById(p + 'Next').checked = !!(a && a.arrive_date);
     }
     function lockAnchor(dir) {
       var hint = document.getElementById('anchorHint');
@@ -265,6 +270,8 @@
       fillAnchorForm(dir, anchors[dir]);
       anchors[dir] = null;
       renderAnchorStatus();
+      /* 二十七轮评审：修改进入编辑态即与结果保持一致（编辑期间锚点已解锁），与撤销同路径重规划 */
+      if (lastRequest) requestPlan();
     }
     function revokeAnchor(dir) {
       anchors[dir] = null;
@@ -324,10 +331,11 @@
       [['cnBudget', 'budget_max_cny'], ['cnLayover', 'max_layover_hours'], ['cnNight', 'night_arrival'], ['cnTransfers', 'max_transfers']].forEach(function (p) {
         document.getElementById(p[0]).value = c[p[1]] == null ? '' : c[p[1]];
       });
-      /* 卡 B：不开车/住宿约束为会话级状态（无输入框）；null/false 表示该轮撤销 */
+      /* 卡 B：不开车/住宿约束为会话级状态（无输入框）。撤销写作显式撤销值（false/空数组）：
+       * requestPlan 沿用原始一句话时，旧文本提取会被显式撤销覆盖，约束不再复活（二十七轮 P1-4）。 */
       ['no_self_drive', 'lodging_stays'].forEach(function (k) {
         if (c[k] === undefined) return;
-        if (c[k] === null || c[k] === false) delete extraConstraints[k];
+        if (c[k] === null || c[k] === false) extraConstraints[k] = k === 'lodging_stays' ? [] : false;
         else extraConstraints[k] = JSON.parse(JSON.stringify(c[k]));
       });
     }
