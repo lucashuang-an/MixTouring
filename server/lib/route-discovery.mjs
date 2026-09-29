@@ -42,9 +42,13 @@ export function sourceLegConnectionExcerpt(source, from, to, mode) {
   const genericTitle = /查询|票价|预订|订票|攻略|怎么走|路线规划/i.test(title) ||
     (/时刻表/.test(title) && !/[A-Z]\d{2,4}/i.test(title));
   if (genericTitle) return null;
+  /* 否定/将来时运营语句整句跳过（二十八轮 P1：「计划新开」「已停航」曾通过）：
+   * 组合前缀（计划/将/拟/预计/即将/有意）+ ≤3 字 + 开通/开行/开航/复航类；停运/停航/取消/暂停/延期；
+   * 「新开」无将来时前缀不拦（「南航新开航线」为已开行事实）。 */
+  const NEGATIVE_SERVICE_RE = /物流|货运|货车|货物|托运|freight|cargo|0\s*(?:车次|班次)|暂无|(?:计划|将|拟|预计|即将|有意)[^。；;，,！!？?\n]{0,3}(?:新?开(?:通|行|航)?|复航|恢复)|停运|停航|暂停(?:运|营|开)|取消|未开通|尚未(?:开通|开行|复航|运营)|暂未(?:开通|开行|运营)|延期(?:开通|开行|复航)/i;
   const clauses = title + '。' + content;
   for (const clause of clauses.split(/[。；;，,！!？?\n]/)) {
-    if (/物流|货运|货车|货物|托运|freight|cargo|0\s*(?:车次|班次)|暂无|未开通|停运|即将开通|计划开通|拟开通|预计开通/i.test(clause)) continue;
+    if (NEGATIVE_SERVICE_RE.test(clause)) continue;
     const start = clause.indexOf(from);
     const end = start < 0 ? -1 : clause.indexOf(to, start + from.length);
     if (end < 0) continue;

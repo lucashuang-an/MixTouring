@@ -293,6 +293,13 @@ const NO_DIGIT_RE = /\d/;
     '泛起终点查询页与中途地名共现，不能支持任一中途铁路段');
   ok(!sourceSupportsLeg({ title: '塔城至北京航线即将开通' }, '塔城', '北京', 'plane'),
     '计划开通的航线不能当作当前客运连接线索');
+  /* 二十八轮 P1 反例：「计划新开」「已停航」曾通过同一判据 */
+  ok(!sourceSupportsLeg({ title: '中国南方航空计划新开广州至喀什直飞航线', content: '' }, '广州', '喀什', 'plane'),
+    '「计划新开」报道不能当作当前客运连接线索');
+  ok(!sourceSupportsLeg({ title: '广州至喀什航班已停航', content: '' }, '广州', '喀什', 'plane'),
+    '「已停航」语句不能当作当前客运连接线索');
+  ok(sourceSupportsLeg({ title: '南航新开广州—比什凯克航线', content: '南航开通广州至比什凯克直飞航线航班' }, '广州', '比什凯克', 'plane'),
+    '「新开/开通」完成时语句仍可作为连接线索（无误伤）');
   const genericRoute = await discoverRoutes(resolvePlace('哈尔滨'), resolvePlace('三亚'), {
     searchFn: async () => [generic],
     modelFn: async () => ({ routes: [{ stops: ['海口'], modes: ['rail', 'rail'], source_ids: [1] }] })
@@ -728,7 +735,7 @@ const NO_DIGIT_RE = /\d/;
       searchWeb: async () => null });
   ok(r6b.web_search && r6b.web_search.status === 'timeout',
     'P1-4：本请求全部搜索失败 → 透传最近失败原因（timeout），不谎报可用');
-  ok(r6.planner_version === 'v0.44.3', '编排：anywhere 版本号对齐 v0.44.3');
+  ok(r6.planner_version === 'v0.44.4', '编排：anywhere 版本号对齐 v0.44.4');
 
   const r7 = await planAnywhere({ text: '想去新疆最西边那座古城玩' },
     { callJson: async () => ({ origin: '北京', destination: '喀什' }), env: {}, osmSearch: async () => [] });
@@ -808,7 +815,7 @@ const NO_DIGIT_RE = /\d/;
   ok(!backtrack.routes.some((r) => r.stops.join('→') === '兰州→银川'), '多节点守门：拒绝途经城市顺序折返');
 }
 
-/* ---------- 卡 B（v0.44.3）：交通锚点（用户确认事实）与多轮约束 ---------- */
+/* ---------- 卡 B（v0.44.4）：交通锚点（用户确认事实）与多轮约束 ---------- */
 {
   /* 白名单：合法去返结构；班次号规范化；非法字段整条拒绝（不猜） */
   const a1 = sanitizeAnchors({
@@ -835,15 +842,28 @@ const NO_DIGIT_RE = /\d/;
     '锚点：说明含「不重算」，意图仍保留用户原始出发地');
   ok(!plan1.candidates.some((c) => c.kind === 'anchor'), '锚点：确认事实不冒充假设候选（无 anchor 类卡片）');
 
-  /* 全覆盖：去程到伊宁 + 返程从伊宁 → 中间无跨城段，诚实说明而非生成空候选 */
+  /* 二十八轮 P0-1 反例：双锚点都在伊宁、目的地阿拉木图 → 目的地必经，不得判 full_cover；
+   * 候选=伊宁→阿拉木图（去程侧），返程段阿拉木图→伊宁诚实提示待单独规划 */
   const plan2 = await planAnywhere({ origin: '北京', destination: '阿拉木图',
     anchors: {
       outbound: { mode: 'plane', date: '2026-09-30', from_city: '北京', to_city: '伊宁' },
       return: { mode: 'plane', date: '2026-10-08', from_city: '伊宁', to_city: '北京' }
     } },
     { callJson: async () => null, env: {}, osmSearch: async () => [] });
-  ok(plan2.anchors?.full_cover === true && plan2.candidates.length === 0 &&
-    plan2.anchor_notes.some((n) => n.includes('没有待重算的跨城段')), '锚点：去返全覆盖时不生成候选并说明原因');
+  ok(plan2.anchors?.full_cover !== true && plan2.candidates.length > 0 &&
+    plan2.candidates.every((c) => c.legs[0].from === '伊宁' && c.legs.at(-1).to === '阿拉木图') &&
+    plan2.anchor_notes.some((n) => n.includes('阿拉木图 → 伊宁') && n.includes('另行单独规划')),
+    '锚点：双锚点不贴目的地时目的地必经（伊宁→阿拉木图仍规划），返程段提示待单独规划');
+  /* 真全覆盖：两锚点都贴目的地（去程到阿拉木图、返程从阿拉木图）才判覆盖 */
+  const plan2b = await planAnywhere({ origin: '北京', destination: '阿拉木图',
+    anchors: {
+      outbound: { mode: 'plane', date: '2026-09-30', from_city: '北京', to_city: '阿拉木图' },
+      return: { mode: 'plane', date: '2026-10-08', from_city: '阿拉木图', to_city: '北京' }
+    } },
+    { callJson: async () => null, env: {}, osmSearch: async () => [] });
+  ok(plan2b.anchors?.full_cover === true && plan2b.candidates.length === 0 &&
+    plan2b.anchor_notes.some((n) => n.includes('没有待重算的跨城段')),
+    '锚点：双锚点均贴目的地时才判全覆盖（诚实说明无待重算段）');
 
   /* P0-1（二十七轮）：单返程锚点不重映射终点——去目的地的去程探索保留，
    * 目的地→返程出发城的接驳段诚实提示（不能把北京→乌鲁木齐当作本次完整旅程） */
@@ -852,19 +872,21 @@ const NO_DIGIT_RE = /\d/;
     { callJson: async () => null, env: {}, osmSearch: async () => [] });
   ok(plan3.anchors.recompute_scope === 'full' &&
     plan3.candidates.length > 0 && plan3.candidates.every((c) => c.legs[0].from === '北京' && c.legs.at(-1).to === '阿拉木图') &&
-    plan3.anchor_notes.some((n) => n.includes('目的地不因返程锚点跳过')) &&
+    plan3.anchor_notes.some((n) => n.includes('目的地不因锚点跳过')) &&
     plan3.anchor_notes.some((n) => n.includes('另行单独规划')),
     '锚点：单返程锚点保留目的地去程探索，返程接驳段诚实提示待单独规划');
-  /* 双锚点（进出城市不同）仍重映射为中间段 */
+  /* 二十八轮 P0-1 反例：双锚点进出不同城（去到伊宁、返从乌鲁木齐）→ 候选仍是 伊宁→阿拉木图，
+   * 不是「伊宁→乌鲁木齐」——返程接驳段另行提示 */
   const plan3b = await planAnywhere({ origin: '北京', destination: '阿拉木图',
     anchors: {
       outbound: { mode: 'plane', date: '2026-09-30', from_city: '北京', to_city: '伊宁' },
       return: { mode: 'plane', date: '2026-10-08', from_city: '乌鲁木齐', to_city: '北京' }
     } },
     { callJson: async () => null, env: {}, osmSearch: async () => [] });
-  ok(plan3b.anchors.recompute_scope === 'between_anchors' &&
-    plan3b.candidates.every((c) => c.legs[0].from === '伊宁' && c.legs.at(-1).to === '乌鲁木齐'),
-    '锚点：双锚点进出不同城时只规划中间段');
+  ok(plan3b.anchors.recompute_scope === 'after_outbound_anchor' &&
+    plan3b.candidates.every((c) => c.legs[0].from === '伊宁' && c.legs.at(-1).to === '阿拉木图') &&
+    plan3b.anchor_notes.some((n) => n.includes('阿拉木图 → 乌鲁木齐')),
+    '锚点：双锚点进出不同城时目的地仍为终点（伊宁→阿拉木图），返程接驳段单独提示');
 
   /* P0-2（二十七轮）：去返日期倒置不宣称全覆盖，拦截候选并提示修正 */
   const plan3c = await planAnywhere({ origin: '北京', destination: '阿拉木图',
@@ -874,9 +896,27 @@ const NO_DIGIT_RE = /\d/;
     } },
     { callJson: async () => null, env: {}, osmSearch: async () => [] });
   ok(plan3c.candidates.length === 0 && !plan3c.anchors.full_cover &&
-    plan3c.anchor_notes.some((n) => n.includes('日期矛盾')) &&
+    plan3c.anchor_notes.some((n) => n.includes('矛盾')) &&
     plan3c.next_steps.some((n) => n.includes('修正')),
     '锚点：去程 10-10 到、返程 9-30 走的日期倒置被拦截并要求修正');
+
+  /* P0-2（二十八轮）：同日先到后走的时刻倒置被拦截 */
+  const plan3d = await planAnywhere({ origin: '北京', destination: '阿拉木图',
+    anchors: {
+      outbound: { mode: 'plane', date: '2026-10-08', from_city: '北京', to_city: '伊宁', arrive_time: '23:00' },
+      return: { mode: 'plane', date: '2026-10-08', from_city: '伊宁', to_city: '北京', depart_time: '08:00' }
+    } },
+    { callJson: async () => null, env: {}, osmSearch: async () => [] });
+  ok(plan3d.candidates.length === 0 && plan3d.anchors.full_cover !== true &&
+    plan3d.anchor_notes.some((n) => n.includes('先后矛盾')),
+    '锚点：同日 23:00 到、08:00 走的时刻倒置被拦截（不判全覆盖）');
+
+  /* P0-2（二十八轮）：锚点内到达日期早于出发日期整条拒绝 */
+  const aInverted = sanitizeAnchors({ outbound: { mode: 'plane', date: '2026-10-10', from_city: '北京', to_city: '伊宁', arrive_date: '2026-09-29' } });
+  ok(aInverted.outbound === null && aInverted.invalid.includes('outbound'),
+    '锚点：到达日期早于出发日期（10-10 出发 9-29 到）整条拒绝');
+  const aSameDay = sanitizeAnchors({ outbound: { mode: 'plane', date: '2026-10-08', from_city: '北京', to_city: '伊宁', depart_time: '20:00', arrive_time: '09:00' } });
+  ok(aSameDay.outbound === null, '锚点：同日到达时刻早于出发时刻整条拒绝');
 
   /* P1-3（二十七轮）：锚点外侧城市未收录整条拒绝（四端点同规则） */
   const plan4b = await planAnywhere({ origin: '北京', destination: '阿拉木图',

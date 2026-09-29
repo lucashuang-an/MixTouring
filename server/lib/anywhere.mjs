@@ -218,6 +218,9 @@ function sanitizeAnchorOne(raw) {
   if (typeof raw.arrive_date === 'string' && ISO_DATE_OK(raw.arrive_date)) a.arrive_date = raw.arrive_date;
   if (raw.arrive_date == null && a.arrive_time && ANCHOR_TIME_RE.test(a.arrive_time) &&
       raw.arrive_next_day === true) a.arrive_date = nextDayISO(raw.date);
+  /* 二十八轮 P0-2：锚点内部顺序——到达日期不得早于出发日期；同日时到达时刻不得早于出发时刻 */
+  if (a.arrive_date && a.arrive_date < a.date) return null;
+  if (!a.arrive_date && a.arrive_time && a.depart_time && a.arrive_time < a.depart_time) return null;
   if (typeof raw.note === 'string' && raw.note.trim()) a.note = raw.note.trim().slice(0, 60);
   return a;
 }
@@ -1455,6 +1458,8 @@ export async function planAnywhere(input, deps = {}) {
     o = p;
     anchorRemapped = true;
   }
+  /* 用户目的地是必须经过的行程节点（二十八轮 P0-1）：d 永不因锚点改变；
+   * 规划主段 = 去程锚点到达城（若有）→ 目的地；目的地 → 返程锚点出发城的返程段单卡契约不能表达，诚实提示。 */
   if (anchors.return) {
     const p = resolvePlace(anchors.return.from_city);
     anchorNotes.push('返程已锁定「' + anchors.return.from_city + '→' + anchors.return.to_city + ' ' +
@@ -1462,25 +1467,23 @@ export async function planAnywhere(input, deps = {}) {
     if (d && anchors.return.to_city !== d.name) {
       anchorNotes.push('返程锚点回到「' + anchors.return.to_city + '」——与原目的地「' + d.name + '」不同：这是你输入的进出城市变化，已保留，请核对');
     }
-    if (anchors.outbound) {
-      /* 双锚点：中间段 = 去程锚点到达城 → 返程锚点出发城 */
-      anchorNotes.push('待规划段为 ' + o.name + ' → ' + p.name);
-      d = p;
-      anchorRemapped = true;
-    } else {
-      /* P0-1：单返程锚点不重映射终点——保留去目的地的去程探索；
-       * 目的地→返程出发城的接驳段当前单次规划契约不能与去程同卡表达，诚实提示而不是丢目的地 */
-      anchorNotes.push('本次仍规划 ' + (o ? o.name : '起点') + ' → ' + (d ? d.name : '目的地') + ' 的去程探索（目的地不因返程锚点跳过）；' +
-        '「' + (d ? d.name : '目的地') + ' → ' + p.name + '」的返程接驳段当前不能与去程同卡生成，请另行单独规划，或确认后再锁定返程锚点');
+    if (d && p && p.name !== d.name) {
+      anchorNotes.push('本次规划 ' + (o ? o.name : '起点') + ' → ' + d.name + ' 的去程侧（目的地不因锚点跳过）；' +
+        '「' + d.name + ' → ' + p.name + '」的返程接驳段当前不能与去程同卡生成，请另行单独规划，或确认后再锁定返程锚点');
     }
   }
-  const anchorScope = anchors.outbound && anchors.return ? 'between_anchors'
-    : anchors.outbound ? 'after_outbound_anchor' : 'full';
-  /* P0-2：去返锚点日期先后校验（跨日到达按 arrive_date 参与比较）；倒置阻止覆盖结论并拦截候选 */
-  const outArriveDay = anchors.outbound ? (anchors.outbound.arrive_date || anchors.outbound.date) : null;
-  const anchorDatesInverted = !!(outArriveDay && anchors.return && outArriveDay > anchors.return.date);
+  const anchorScope = anchors.outbound ? 'after_outbound_anchor' : 'full';
+  /* P0-2（二十八轮）：时刻级先后校验——先锚点内部出发/到达顺序（sanitizeAnchorOne），
+   * 再比较去程到达（日期+可用时刻）与返程出发（日期+可用时刻）；倒置阻止覆盖与候选。 */
+  const anchorDateTime = (a, kind) => kind === 'arrive'
+    ? ((a.arrive_date || a.date) + 'T' + (a.arrive_time || '00:00'))
+    : (a.date + 'T' + (a.depart_time || '00:00'));
+  const outArriveAt = anchors.outbound ? anchorDateTime(anchors.outbound, 'arrive') : null;
+  const retStartAt = anchors.return ? anchorDateTime(anchors.return, 'depart') : null;
+  const anchorDatesInverted = !!(outArriveAt && retStartAt && outArriveAt > retStartAt);
   if (anchorDatesInverted) {
-    anchorNotes.push('去程锚点到达日期 ' + outArriveDay + ' 晚于返程锚点出发日期 ' + anchors.return.date + '，去返日期矛盾：请修正锚点后再看覆盖与候选');
+    anchorNotes.push('去程锚点到达时间 ' + outArriveAt.replace('T', ' ') + ' 晚于返程锚点出发时间 ' + retStartAt.replace('T', ' ') +
+      '，去返先后矛盾：请修正锚点后再看覆盖与候选');
   }
   /* 锚点日期与意图窗口的结构一致性（可判定事实；窗口缺省不判定） */
   if (anchors.outbound?.date && travel.intent.outbound_window && !inWindow(anchors.outbound.date, travel.intent.outbound_window)) {
@@ -1528,8 +1531,9 @@ export async function planAnywhere(input, deps = {}) {
       planner_version: ANYWHERE_VERSION
     };
   }
-  /* 去返锚点覆盖全程（内侧端点相同且日期不倒置）：中间无跨城段待规划，诚实说明后返回 */
-  if (anchors.outbound && anchors.return && o.name === d.name) {
+  /* 去返锚点覆盖全程（二十八轮 P0-1 收紧）：仅当两锚点都贴着目的地
+   * （去程锚点到达城=目的地 且 返程锚点出发城=目的地）才判全覆盖；否则目的地必经，按去程侧规划。 */
+  if (anchors.outbound && anchors.return && o.name === d.name && anchors.return.from_city === d.name) {
     return {
       intent,
       route: { route_type: routeTypeOf(o, d) },
