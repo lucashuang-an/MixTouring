@@ -1,0 +1,139 @@
+{
+  "sampled_at": "2026-09-30",
+  "scope": "伊犁及赛里木湖方向",
+  "attractions": [
+    {
+      "id": "nalati",
+      "name": "那拉提",
+      "county": "新源县",
+      "landscape": "高山草原、河谷与牧场",
+      "theme": "草原",
+      "season_note": "历史介绍描述夏牧场；国庆草色、开放范围须查当期公告。",
+      "access_questions": [
+        "伊宁至新源县的公共交通",
+        "新源县至景区门区及回程接驳",
+        "当日景区区间车与开放范围"
+      ],
+      "source": {
+        "title": "伊犁那拉提旅游风景区",
+        "url": "https://wlt.xinjiang.gov.cn/wlt/c112782/202208/b7ebb6b55e804544a0beacd258bc403b.shtml",
+        "published_at": "2022-08",
+        "evidence_state": "historical"
+      }
+    },
+    {
+      "id": "kalajun",
+      "name": "喀拉峻",
+      "county": "特克斯县",
+      "landscape": "草原、森林与峡谷",
+      "theme": "草原",
+      "season_note": "历史景观介绍不能保证当期草色；草原与峡谷游览范围分别待查。",
+      "access_questions": [
+        "伊宁至特克斯县的公共交通",
+        "特克斯至景区门区及回程接驳",
+        "草原与峡谷之间的景区交通"
+      ],
+      "source": {
+        "title": "喀拉峻景区荣获“国家5A级旅游景区”称号",
+        "url": "https://wlt.xinjiang.gov.cn/wlt/dzdt/201611/50aa4566f6d04dc699227b359b09a551.shtml",
+        "published_at": "2016-11",
+        "evidence_state": "historical"
+      }
+    },
+    {
+      "id": "xiata",
+      "name": "夏塔",
+      "county": "昭苏县夏特乡",
+      "landscape": "雪山、冰川背景与森林河谷",
+      "theme": "雪山河谷",
+      "season_note": "历史开园报道不代表本次日期开放；山地步道、天气与开放范围须核对。",
+      "access_questions": [
+        "伊宁至昭苏县的公共交通",
+        "昭苏至夏特乡及景区门区的往返接驳",
+        "景区车辆、步道开放与返程时间"
+      ],
+      "source": {
+        "title": "提升改造完成！昭苏县夏塔景区6月10日正式开门迎客",
+        "url": "https://www.xjyl.gov.cn/xjylz/c112876/202406/3cefa71406ef4ba7903e89327939f636.shtml",
+        "published_at": "2024-06-11",
+        "evidence_state": "historical"
+      }
+    },
+    {
+      "id": "kuerdening",
+      "name": "库尔德宁",
+      "county": "巩留县",
+      "landscape": "云杉森林与山谷",
+      "theme": "森林",
+      "season_note": "森林景观资料不代表当期道路和景区开放状态；出行前需查公告。",
+      "access_questions": [
+        "伊宁至巩留县的公共交通",
+        "巩留至库尔德宁门区及回程接驳",
+        "景区区间车与开放范围"
+      ],
+      "source": {
+        "title": "花开巩留 巩留2020年库尔德宁杏花专列线路产品说明会在乌鲁木齐召开",
+        "url": "https://wlt.xinjiang.gov.cn/wlt/dzdt/201912/a61b81bdb03c42e2859da4b5a04a177d.shtml",
+        "published_at": "2019-12",
+        "evidence_state": "historical"
+      }
+    },
+    {
+      "id": "sayram",
+      "name": "赛里木湖",
+      "county": "博尔塔拉州",
+      "landscape": "高山湖泊、湖岸与山地背景",
+      "theme": "湖泊",
+      "season_note": "四季景观介绍不是当期开放承诺；湖区天气、环湖交通和开放范围待查。",
+      "access_questions": [
+        "伊宁至赛里木湖门区的往返公共交通",
+        "湖区游览交通及上下车地点",
+        "回程末班与天气影响"
+      ],
+      "source": {
+        "title": "“新疆推动高质量发展”系列主题新闻发布会（第四场）",
+        "url": "https://www.xinjiang.gov.cn/xinjiang/xwfb/202408/ff0d4bc27fef4e13b9b4720676a07559.shtml",
+        "published_at": "2024-08",
+        "evidence_state": "historical"
+      }
+    },
+    {
+      "id": "qiaxi",
+      "name": "恰西",
+      "county": "巩留县",
+      "landscape": "云杉林、草原与溪流",
+      "theme": "森林",
+      "season_note": "历史资料描述夏秋景观；本次道路和开放范围须查当期公告。",
+      "access_questions": [
+        "伊宁至巩留县的公共交通",
+        "巩留至恰西及回程接驳",
+        "林区道路与步道开放范围"
+      ],
+      "source": {
+        "title": "恰西景区—国家级森林公园",
+        "url": "https://www.xjgl.gov.cn/xjgl/c114150/202102/8edb7432a9114e51aa1cccdb26cf2be5.shtml",
+        "published_at": "2021-02-23",
+        "evidence_state": "historical"
+      }
+    },
+    {
+      "id": "qiongkushitai",
+      "name": "琼库什台",
+      "county": "特克斯县",
+      "landscape": "历史文化村落与草原环境",
+      "theme": "村落",
+      "season_note": "历史冬景报道不能保证本次日期的道路、住宿与游览条件。",
+      "access_questions": [
+        "伊宁至特克斯县的公共交通",
+        "特克斯至村落的往返接驳",
+        "住宿可达性及山地道路情况"
+      ],
+      "source": {
+        "title": "热度飙升！冬日里的旅游宝藏地琼库什台村",
+        "url": "https://zgtks.gov.cn/zgtks/jrtks/202411/101f0830d47c4ee6af9f5b8035d8d94a.shtml",
+        "published_at": "2024-11",
+        "evidence_state": "historical"
+      }
+    }
+  ]
+}

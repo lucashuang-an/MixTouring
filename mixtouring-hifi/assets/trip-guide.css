@@ -27,3 +27,19 @@
   .trip-page .planning-workspace:has(#guideArea:not([hidden])) { display: grid; grid-template-columns: minmax(290px, .85fr) minmax(0, 1.6fr); gap: 22px; align-items: start; }
   .trip-page #guideArea { position: sticky; top: 20px; max-height: calc(100vh - 40px); overflow: auto; }
 }
+/* 景点比较沿用设计令牌，窄屏单列，不将预算排成精确日程。 */
+.sight-panel {margin-top:18px;padding:20px;border-radius:20px;background:var(--mixtouring-card);box-shadow:var(--shadow-card-soft);font-size:14px;line-height:1.7;}
+.sight-panel summary {cursor:pointer;min-height:44px;display:list-item;}
+.sight-controls,.sight-choices,.sight-grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;}
+.sight-panel label {display:block;}
+.sight-panel input[type=number],.sight-panel select {max-width:100%;box-sizing:border-box;min-height:44px;border:1px solid var(--mixtouring-border);border-radius:8px;padding:8px;font:inherit;background:var(--mixtouring-card);}
+.sight-panel input[type=number] {width:100px;}
+.sight-panel input[type=checkbox] {width:20px;height:20px;margin-right:8px;vertical-align:middle;}
+.sight-panel fieldset {border:1px solid var(--mixtouring-border);border-radius:12px;margin:14px 0;padding:12px;}
+.sight-panel button {min-height:44px;max-width:100%;padding:8px 14px;border:1px solid var(--mixtouring-border);border-radius:10px;background:var(--mixtouring-muted);font:inherit;cursor:pointer;}
+.sight-panel button:disabled {opacity:.5;cursor:default;}
+.sight-status,.sight-option,.sight-grid article {margin:12px 0;padding:14px;border:1px solid var(--mixtouring-border);border-radius:12px;overflow-wrap:anywhere;}
+.sight-status {background:var(--mixtouring-muted);}
+.sight-panel h3 {font-size:15px;font-weight:400;}
+.sight-muted {color:var(--mixtouring-muted-foreground);font-size:12px;}
+@media(max-width:767px){.sight-controls,.sight-choices,.sight-grid {grid-template-columns:1fr;}.sight-panel{padding:16px;}}

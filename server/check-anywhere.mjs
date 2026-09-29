@@ -764,7 +764,7 @@ const NO_DIGIT_RE = /\d/;
       searchWeb: async () => null });
   ok(r6b.web_search && r6b.web_search.status === 'timeout',
     'P1-4：本请求全部搜索失败 → 透传最近失败原因（timeout），不谎报可用');
-  ok(r6.planner_version === 'v0.44.7', '编排：anywhere 版本号对齐 v0.44.7');
+  ok(r6.planner_version === 'v0.45.0', '编排：anywhere 版本号对齐 v0.45.0');
 
   const r7 = await planAnywhere({ text: '想去新疆最西边那座古城玩' },
     { callJson: async () => ({ origin: '北京', destination: '喀什' }), env: {}, osmSearch: async () => [] });
