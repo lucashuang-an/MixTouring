@@ -21,6 +21,7 @@ import { planAnywhere } from './lib/anywhere.mjs';
 import { registerJourneyPlan, journeyDetailFromPlanId, guidePlanFromId } from './lib/journey.mjs';
 import { webSearchStatus } from './lib/llm.mjs';
 import { parseGuideTurn } from './lib/guide.mjs';
+import { sightCatalog, compareSights } from './lib/sights.mjs';
 import { progressivePlan } from './lib/progressive.mjs';
 import { listInspirations } from './lib/inspirations.mjs';
 
@@ -351,6 +352,16 @@ app.use(async (ctx, next) => {
   if (path === '/api/anywhere/guide' && ctx.method === 'POST') {
     const body = await readBody(ctx) || {};
     ctx.body = { code: 0, data: parseGuideTurn(body.text, Date.now(), guidePlanFromId(body.plan_id), body.candidate_id) };
+    return;
+  }
+
+  /* 卡 C：客户端只提交用户选择与预算；景观来源和运营状态由服务端目录提供。 */
+  if (path === '/api/anywhere/sights' && ctx.method === 'POST') {
+    const body = await readBody(ctx) || {};
+    const plan = guidePlanFromId(body.plan_id);
+    ctx.body = { code: 0, data: { catalog: sightCatalog(), comparison: compareSights({
+      state: body.state, constraints: { ...plan?.intent?.constraints, ...body.constraints }
+    }) } };
     return;
   }
 

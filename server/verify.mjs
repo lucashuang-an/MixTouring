@@ -304,7 +304,7 @@ async function main() {
   const caps = await (await fetch(BASE + '/api/capabilities')).json();
   if (caps.code === 0 && typeof caps.data.web_search_configured === 'boolean' &&
     ['available', 'quota_exhausted', 'timeout', 'error', 'unknown'].includes(caps.data.web_search_status) &&
-    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.44.7') {
+    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.45.0') {
     console.log('✓ /api/capabilities P1-4：configured 与最近真实状态分开（web_search_configured=' +
       caps.data.web_search_configured + ', status=' + caps.data.web_search_status + '），版本拆分对齐');
   } else { failed++; console.error('✗ /api/capabilities 形状异常：' + JSON.stringify(caps).slice(0, 200)); }
@@ -377,6 +377,18 @@ async function main() {
     if (detail.code === 0 && detail.data.stopover.city === '银川' && detail.data.cost.known_total === null) console.log('✓ 渐进接口输出两阶段且灵感结构可接详情，旧价不继承');
     else { failed++; console.error('✗ 渐进灵感详情契约不一致'); }
   } else { failed++; console.error('✗ 路线灵感或渐进输出契约不一致'); }
+  const sightResponse = await (await fetch(BASE + '/api/anywhere/sights', { method:'POST', headers:{'content-type':'application/json'},
+    body:JSON.stringify({state:{full_days:2},constraints:{no_self_drive:true}}) })).json();
+  const sightData = sightResponse.data;
+  if (sightResponse.code===0 && sightData.catalog.attractions.length===7 && sightData.comparison.status==='budget_conflict' &&
+      sightData.comparison.no_self_drive && sightData.comparison.budget.travel_hours===null) {
+    console.log('✓ 景点比较接口：四处两天预算冲突，无车条件保留，交通时长未知');
+  } else {failed++;console.error('✗ 景点比较接口预算或证据边界异常');}
+  const sightTurn = await (await fetch(BASE + '/api/anywhere/guide', {method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({text:'只保留夏塔和库尔德宁，我不会开车'})})).json();
+  if (sightTurn.code===0 && sightTurn.data.sights.selected_ids.length===2 && sightTurn.data.constraints.no_self_drive) {
+    console.log('✓ 对话接口：景点取舍与无车条件等待用户确认');
+  } else {failed++;console.error('✗ 对话接口景点取舍契约异常');}
   console.log(failed ? `\n✗ ${failed} 项不一致` : '\n✓ 全部接口与 mock.js 派生结果一致');
   process.exit(failed ? 1 : 0);
 }

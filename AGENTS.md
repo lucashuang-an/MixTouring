@@ -20,10 +20,12 @@
 | G2.5 任意地点规划测试 | `node server/check-anywhere.mjs` | 确定性（注入桩，无网络无 key），v0.30.0 起 |
 | G2.6 线路发现校准 | `node server/calibrate-routes.mjs` | 分层抽样报告（写入 pipeline/out/route-calibration.json），v0.37.0 起 |
 | G4 私人草案存储测试 | `node server/check-drafts.mjs` | 存储层 + 失败场景矩阵（内存假体），v0.42.2 起 |
+| 卡 C 景点与时间预算测试 | `node server/check-sights.mjs` | 预算冲突、无车未知、景点取舍和来源隔离，v0.45.0 起 |
 | CI | push 自动触发 | GitHub Actions 跑 verify + check-pages + check-geo + check-trip + check-anywhere + calibrate-routes + check-drafts；collect 定时任务需配 Secrets 并设 `LLM_COLLECT=1` |
 
 **提交前必跑（全绿才提交）**：`check-pages` + `check-geo` + `verify` + `check-trip` + `check-anywhere` + `calibrate-routes` + `check-drafts`。
 v0.43.3 起，涉及对话、详情、渐进或灵感复用时，同时跑 `node server/check-guide.mjs`、`node server/check-journey.mjs`、`node server/check-progressive.mjs`、`node server/check-inspirations.mjs`（均已纳入 CI）。真实发现回放用 `node server/replay-discovery.mjs`，默认本地 3014，可用 VERIFY_BASE 覆盖；输出 discovery-replay.json 供人工评估，不作为 CI。
+v0.45.0 起，涉及景点比较、游玩预算或景点状态保存恢复时，同时跑 `node server/check-sights.mjs`。默认游玩预留是可调整的预算，不是实测最短耗时；道路和接驳未知时不得宣称可完成。
 
 ## 1. 协作工作流（硬性流程）
 

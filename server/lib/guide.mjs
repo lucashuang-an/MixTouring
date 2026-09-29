@@ -2,6 +2,7 @@
 import guide from '../../mixtouring-hifi/assets/trip-guide.js';
 import { buildTravelIntent, extractConstraints, extractReturnDate, extractLodgingStays } from './anywhere.mjs';
 import { loadPlaces } from './trip-service.mjs';
+import { parseSightChange } from './sights.mjs';
 
 const CITY_NAMES = loadPlaces().filter((p) => p.kind === 'city').map((p) => p.name);
 
@@ -43,6 +44,8 @@ export function parseGuideTurn(text, nowMs = Date.now(), plan = null, selectedCa
   const preferences = guide.parse(t);
   const parsed = buildTravelIntent(t, null, nowMs);
   const travel = {}, constraints = extractConstraints(t), labels = guide.summary(preferences.patch);
+  const sightChange = parseSightChange(t);
+  labels.push(...sightChange.labels);
   /* 卡 B：住宿约束口语（城市须已收录）；「不住 X 了 / 取消住宿」撤销 */
   const lodging = extractLodgingStays(t, CITY_NAMES, nowMs);
   if (lodging.length) constraints.lodging_stays = lodging;
@@ -85,7 +88,7 @@ export function parseGuideTurn(text, nowMs = Date.now(), plan = null, selectedCa
   }
   if (constraints.lodging_stays === null) labels.push('住宿：已取消');
   const answer = labels.length ? null : answerRouteQuestion(t, plan, selectedCandidateId);
-  return { preferences: preferences.patch, travel, constraints, labels, notes: preferences.notes,
+  return { preferences: preferences.patch, travel, constraints, sights: sightChange.patch, labels, notes: preferences.notes,
     recognized: labels.length > 0,
     message: labels.length ? '我理解到下面这些调整，确认后应用。其余表达暂未转成条件。'
       : answer || preferences.notes[0] || '我还没理解你想调整什么。可以问当前走法的依据或待查项，也可以说明停留晚数、交通偏好、日期和预算。' };

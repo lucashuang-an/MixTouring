@@ -121,6 +121,7 @@
       <aside id="guideArea" aria-label="一起规划" hidden></aside>
       <div id="resultArea" style="margin-top:18px;"></div>
     </div>
+    <details id="sightDetails" class="sight-panel"><summary>伊犁沿途游玩：景点比较与时间取舍</summary><div id="sightContent"></div></details>
   </main>
 
   <nav data-mobile-nav="global" aria-label="主要导航" class="trip-nav">
@@ -134,6 +135,7 @@
   <script src="../assets/app.js"></script>
   <script src="../assets/draft-store.js"></script>
   <script src="../assets/trip-guide.js"></script>
+  <script src="../assets/sight-planner.js"></script>
   <script>
   (function () {
     var resultArea = document.getElementById('resultArea');
@@ -299,10 +301,14 @@
       box.querySelectorAll('[data-revoke]').forEach(function (btn) { btn.addEventListener('click', function () { revokeAnchor(btn.getAttribute('data-revoke')); }); });
     }
     buildAnchorForms();
+    MTSights.init(document.getElementById('sightContent'), function () {
+      return { plan_id:activePlan && activePlan.plan_id, constraints:collectConstraints() };
+    }, function () { rememberSession(); });
 
     function guideSnapshot() {
       return JSON.parse(JSON.stringify({ request: lastRequest, travel: collectTravel(), constraints: collectConstraints(),
         anchors: { outbound: anchors.outbound, return: anchors.return },
+        sights: MTSights.getState(),
         preferences: guideState, messages: guideMessages,
         candidate_key: activeCandidate ? selectedKey() : (pendingRestore && pendingRestore.candidate_key),
         nights: activeCandidate ? activeNights : (pendingRestore && pendingRestore.nights) || activeNights }));
@@ -345,6 +351,7 @@
       guideMessages = [{ role: 'user', text: text }]; guideUndo = []; guideProposal = null;
       pendingRestore = null; arrivalWindow = null; revisions = [];
       activePlan = null; activeCandidate = null; activeNights = 0;
+      MTSights.reset();
       resultArea.innerHTML = ''; document.getElementById('guideArea').hidden = true;
     }
     function renderGuide() {
@@ -421,6 +428,7 @@
       var changeSequence = guideSequence;
       var previous = guideSnapshot();
       guideUndo.push(previous);
+      if (change.sights && Object.keys(change.sights).length) MTSights.applyPatch(change.sights);
       guideState = MTGuide.clean(Object.assign({}, guideState, change.preferences));
       var p = change.preferences || {}, reply = [];
       if (p.pace === 'simple') reply.push('直达走法已放在前面，方便先比较省心的选择。');
@@ -460,6 +468,7 @@
       guideState = MTGuide.clean(saved.preferences); guideMessages = saved.messages || []; guideProposal = null;
       if (Array.isArray(saved.history)) guideUndo = saved.history.slice(-20);
       fillTravel(saved.travel); fillConstraints(saved.constraints);
+      MTSights.restore(saved.sights);
       if (saved.anchors) {
         anchors.outbound = saved.anchors.outbound || null;
         anchors.return = saved.anchors.return || null;
@@ -698,6 +707,7 @@
           renderAnchorStatus();
         }
         fillConstraints(saved.constraints || {});
+        MTSights.restore(saved.sights);
       }
       travelDirty = { type: false, out: false, ret: false, count: false };
       MT.toast('已从草案回填，正在重新规划（开放地点须重新确认）');
@@ -773,6 +783,7 @@
       document.getElementById('cnNight').value = resolvedConstraints.night_arrival || '';
       document.getElementById('cnTransfers').value = resolvedConstraints.max_transfers == null ? '' : resolvedConstraints.max_transfers;
       fillConstraints(resolvedConstraints);
+      MTSights.refresh();
       var html = '<div class="detail-card" style="background:var(--mixtouring-card);border-radius:20px;padding:20px;box-shadow:var(--shadow-card-soft);">';
       html += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">' +
         '<h2 style="font-size:17px;margin:0;">' + placeLabel(data.intent.origin || '（待确认）', data.intent.origin_place && data.intent.origin_place.kind) +
@@ -961,6 +972,7 @@
         request: JSON.parse(JSON.stringify(lastRequest || {})),
         confirmed: Object.assign({}, confirmedPlaces),
         travel: collectTravel(), constraints: collectConstraints(),
+        sights: MTSights.getState(),
         preferences: guideState, messages: guideMessages, candidate_key: selectedKey(),
         candidate_id: candidateId, candidate_label: candidate ? candidateTitle(candidate) : '待重新选择走法', nights: nights
       };
@@ -992,6 +1004,7 @@
     function restoreRevision(index) {
       var rev = revisions[index];
       if (!rev) return;
+      MTSights.restore(rev.sights);
       lastRequest = JSON.parse(JSON.stringify(rev.request));
       guideState = MTGuide.clean(rev.preferences); guideMessages = rev.messages || [];
       arrivalWindow = rev.travel.arrival_window || null;
@@ -1096,6 +1109,7 @@
           request: JSON.parse(JSON.stringify(lastRequest || {})),
           travel: collectTravel(), constraints: collectConstraints(),
           anchors: { outbound: JSON.parse(JSON.stringify(anchors.outbound)), return: JSON.parse(JSON.stringify(anchors.return)) },
+          sights: MTSights.getState(),
           preferences: guideState, messages: guideMessages, history: guideUndo.slice(-20),
           place_names: { origin: activePlan.intent.origin_place ? activePlan.intent.origin_place.name : null, destination: activePlan.intent.destination_place ? activePlan.intent.destination_place.name : null },
           confirmed_note: { origin: activePlan.intent.origin_place && activePlan.intent.origin_place.dynamic ? '当时为开放地点确认（恢复须重新核验确认）' : null, destination: activePlan.intent.destination_place && activePlan.intent.destination_place.dynamic ? '当时为开放地点确认（恢复须重新核验确认）' : null },

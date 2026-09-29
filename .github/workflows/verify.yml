@@ -41,3 +41,4 @@ jobs:
           node server/check-journey.mjs
           node server/check-progressive.mjs
           node server/check-inspirations.mjs
+          node server/check-sights.mjs
