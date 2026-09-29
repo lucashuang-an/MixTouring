@@ -32,6 +32,7 @@
 .sight-panel summary {cursor:pointer;min-height:44px;display:list-item;}
 .sight-controls,.sight-choices,.sight-grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;}
 .sight-panel label {display:block;}
+.sight-choices > div > label:first-child {min-height:44px;display:flex;align-items:center;}
 .sight-panel input[type=number],.sight-panel select {max-width:100%;box-sizing:border-box;min-height:44px;border:1px solid var(--mixtouring-border);border-radius:8px;padding:8px;font:inherit;background:var(--mixtouring-card);}
 .sight-panel input[type=number] {width:100px;}
 .sight-panel input[type=checkbox] {width:20px;height:20px;margin-right:8px;vertical-align:middle;}
