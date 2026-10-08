@@ -21,7 +21,8 @@ let fail = 0;
 let total = 0;
 const ok = (cond, name) => { total++; if (cond) console.log('✓ ' + name); else { fail++; console.error('✗ ' + name); } };
 
-const NO_LLM = { callJson: async () => null, env: {}, osmSearch: async () => [] };
+const FIXTURE_NOW = Date.parse('2026-09-26T00:00:00+08:00');
+const NO_LLM = { callJson: async () => null, env: {}, osmSearch: async () => [], nowMs:FIXTURE_NOW };
 const NO_DIGIT_RE = /\d/;
 
 /* ---------- PlaceResolver：精确名 / 别名 / 类型 / 大小写 ---------- */
@@ -502,6 +503,9 @@ const NO_DIGIT_RE = /\d/;
     'P0：国庆假期宽窗提取（' + rt.intent.outbound_window + '）');
   ok(rt.intent.return_window === '2026-10-07 ~ 2026-10-07',
     'P0：返程日期提取「10月7日回来」→ 2026-10-07 单日窗（代码计算年份）');
+  const afterHoliday=await planAnywhere({text:'国庆附近从北京去阿拉木图，10月7日回来'}, {...NO_LLM,nowMs:Date.parse('2026-10-09T00:00:00+08:00')});
+  ok(afterHoliday.intent.outbound_window==='2027-09-27 ~ 2027-10-07' && afterHoliday.intent.return_window==='2027-10-07 ~ 2027-10-07',
+    '固定节后时钟：未写年份的国庆与返程顺延，历史回归不依赖运行日期');
   const explicitOut = buildTravelIntent('国庆附近从北京去阿拉木图，一个人往返，10月3日出发，10月10日回来', null, new Date('2026-09-26T00:00:00+08:00').getTime());
   ok(explicitOut.intent.outbound_window === '2026-10-03 ~ 2026-10-03' &&
     explicitOut.intent.return_window === '2026-10-10 ~ 2026-10-10',
@@ -542,10 +546,10 @@ const NO_DIGIT_RE = /\d/;
       return null;
     },
     osmSearch: async () => osmT,
-    env: {}
+    env: {}, nowMs:FIXTURE_NOW
   });
   const p2c = await planAnywhere({ text: '国庆附近从北京去塔什干，10月7日回来，2个人', confirmed_places: { destination: p1.place_candidates.destination[0].candidate_id } }, {
-    callJson: async () => null, osmSearch: async () => osmT, env: {}
+    callJson: async () => null, osmSearch: async () => osmT, env: {}, nowMs:FIXTURE_NOW
   });
   ok(p2c.intent.trip_type === 'round_trip' && p2c.intent.traveler_count === 2 &&
     p2c.intent.return_window === '2026-10-07 ~ 2026-10-07' && p2c.intent.outbound_window,
@@ -764,7 +768,7 @@ const NO_DIGIT_RE = /\d/;
       searchWeb: async () => null });
   ok(r6b.web_search && r6b.web_search.status === 'timeout',
     'P1-4：本请求全部搜索失败 → 透传最近失败原因（timeout），不谎报可用');
-  ok(r6.planner_version === 'v0.45.0', '编排：anywhere 版本号对齐 v0.45.0');
+  ok(r6.planner_version === 'v0.46.0', '编排：anywhere 版本号对齐 v0.46.0');
 
   const r7 = await planAnywhere({ text: '想去新疆最西边那座古城玩' },
     { callJson: async () => ({ origin: '北京', destination: '喀什' }), env: {}, osmSearch: async () => [] });
@@ -893,6 +897,9 @@ const NO_DIGIT_RE = /\d/;
   ok(plan2b.anchors?.full_cover === true && plan2b.candidates.length === 0 &&
     plan2b.anchor_notes.some((n) => n.includes('没有待重算的跨城段')),
     '锚点：双锚点均贴目的地时才判全覆盖（诚实说明无待重算段）');
+  ok(plan2b.intent.trip_type==='round_trip' && plan2b.intent.outbound_window==='2026-09-30 ~ 2026-09-30' && plan2b.intent.return_window==='2026-10-08 ~ 2026-10-08' &&
+    !plan2b.anchor_notes.some((n)=>n.includes('进出城市变化')) && !plan2b.needs_confirmation.some((n)=>n.includes('行程类型未识别')),
+    '全覆盖去返同一出发地：意图与日期来自已锁定输入，正常返程不误报城市变化');
 
   /* P0-1（二十七轮）：单返程锚点不重映射终点——去目的地的去程探索保留，
    * 目的地→返程出发城的接驳段诚实提示（不能把北京→乌鲁木齐当作本次完整旅程） */

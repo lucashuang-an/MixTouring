@@ -121,6 +121,10 @@
       <aside id="guideArea" aria-label="一起规划" hidden></aside>
       <div id="resultArea" style="margin-top:18px;"></div>
     </div>
+    <div id="taskSaveArea" class="sight-panel" hidden>
+      <button id="btnSaveTask" type="button" class="guide-primary">保存当前规划（私人草案）</button>
+      <p id="taskSaveNote" class="sight-muted">保存当前交通锚点、景点、住宿与条件；恢复时重新核对。</p>
+    </div>
     <details id="sightDetails" class="sight-panel"><summary>伊犁沿途游玩：景点比较与时间取舍</summary><div id="sightContent"></div></details>
   </main>
 
@@ -302,7 +306,7 @@
     }
     buildAnchorForms();
     MTSights.init(document.getElementById('sightContent'), function () {
-      return { plan_id:activePlan && activePlan.plan_id, constraints:collectConstraints() };
+      return { plan_id:activePlan && activePlan.plan_id, anchors:anchors, constraints:collectConstraints() };
     }, function () { rememberSession(); });
 
     function guideSnapshot() {
@@ -316,6 +320,34 @@
     function selectedKey() {
       return MTGuide.routeKey(activePlan && activePlan.candidates.find(function (c) { return c.id === activeCandidate; }));
     }
+    function taskSnapshot() {
+      var candidate = activePlan && activePlan.candidates.find(function (c) { return c.id === activeCandidate; });
+      return Object.assign(guideSnapshot(), {
+        scope: candidate ? 'candidate' : 'task', history: guideUndo.slice(-20),
+        place_names: { origin: activePlan.intent.origin_place && activePlan.intent.origin_place.name,
+          destination: activePlan.intent.destination_place && activePlan.intent.destination_place.name },
+        confirmed_note: { origin: activePlan.intent.origin_place && activePlan.intent.origin_place.dynamic ? '当时为开放地点确认（恢复须重新核验确认）' : null,
+          destination: activePlan.intent.destination_place && activePlan.intent.destination_place.dynamic ? '当时为开放地点确认（恢复须重新核验确认）' : null },
+        candidate: candidate ? { id: candidate.id, route_key: MTGuide.routeKey(candidate), label: candidateTitle(candidate), kind: candidate.kind,
+          hub: candidate.legs.length > 1 ? candidate.legs[1].from : null, modes: candidate.legs.map(function (l) { return l.mode_guess || '?'; }).join('+') } : null,
+        nights: activeNights, engine: activePlan.intent.parse_engine
+      });
+    }
+    function saveCurrentTask(noteId) {
+      if (planning || !activePlan || !lastRequest) { MT.toast('请等当前规划更新完成后保存'); return; }
+      var note = document.getElementById(noteId);
+      var name = (activePlan.intent.origin || '') + ' → ' + (activePlan.intent.destination || '');
+      var res = MTDrafts.save(name, taskSnapshot());
+      if (res.ok) {
+        note.innerHTML = '已保存（' + res.draft.versions.length + ' 个版本）。<a href="me.html">去我的行程查看</a>；恢复时重新规划与核对。' +
+          (res.warn ? '版本或草案较多，可在我的行程主动整理；历史未删除。' : '');
+        MT.toast('已保存到私人草案');
+      } else {
+        note.textContent = res.reason === 'write_failed' ? '保存失败：浏览器存储不可写，草案未保存。' : '保存失败：' + (res.reason || '未知原因');
+        MT.toast('草案未保存，请稍后重试');
+      }
+    }
+    document.getElementById('btnSaveTask').onclick = function () { saveCurrentTask('taskSaveNote'); };
     function rememberSession() {
       if (!lastRequest) return;
       try {
@@ -351,20 +383,25 @@
       guideMessages = [{ role: 'user', text: text }]; guideUndo = []; guideProposal = null;
       pendingRestore = null; arrivalWindow = null; revisions = [];
       activePlan = null; activeCandidate = null; activeNights = 0;
+      document.getElementById('taskSaveArea').hidden = true;
       MTSights.reset();
       resultArea.innerHTML = ''; document.getElementById('guideArea').hidden = true;
+    }
+    function restoreConstraintSnapshot(saved) {
+      extraConstraints = {};
+      fillConstraints(saved || {});
     }
     function renderGuide() {
       var area = document.getElementById('guideArea');
       area.hidden = !activePlan;
       if (area.hidden) return;
-      if (!activePlan.candidates.length) {
+      if (!activePlan.candidates.length && (!activePlan.intent.origin_place || !activePlan.intent.destination_place)) {
         var missing = !activePlan.intent.origin ? '你准备从哪里出发？' : !activePlan.intent.destination ? '你想去哪里？' : '可以补充更明确的起终点，或在右侧确认地点。';
         area.innerHTML = '<h2>一起把路线想清楚</h2><p>' + missing + '</p><form id="guideMissingForm"><label for="guideMissingInput">补充地点</label><input id="guideMissingInput" placeholder="例如：北京" /><button type="submit" class="guide-primary">继续找走法</button></form>';
         document.getElementById('guideMissingForm').onsubmit = function (e) { e.preventDefault(); submitGuide(document.getElementById('guideMissingInput').value); };
         return;
       }
-      var q = MTGuide.question(guideState, activePlan.candidates);
+      var q = activePlan.candidates.length ? MTGuide.question(guideState, activePlan.candidates) : null;
       var summary = MTGuide.summary(guideState);
       var html = '<h2>一起把路线想清楚</h2><div class="guide-messages">' + guideMessages.slice(-6).map(function (m) {
         return '<p class="guide-message ' + (m.role === 'user' ? 'guide-user' : '') + '">' + MT.esc(m.text) + '</p>';
@@ -379,7 +416,10 @@
         html += '<p class="guide-question">' + MT.esc(q.title) + '</p><div class="guide-choices">' + q.options.map(function (o, i) {
           return '<button class="guideChoice" data-choice="' + i + '">' + MT.esc(o.label) + '</button>';
         }).join('') + '<button id="guideSkip" class="guide-skip">先不定，继续看路线</button></div>';
-      } else html += '<p class="guide-question">可以直接选一条走法看详情，也可以继续告诉我想调整什么。</p>';
+      } else html += '<p class="guide-question">' + (activePlan.anchors && activePlan.anchors.full_cover
+        ? '跨城交通已由你锁定，可以继续安排景点、住宿和游玩时间。'
+        : activePlan.candidates.length ? '可以直接选一条走法看详情，也可以继续告诉我想调整什么。'
+        : '当前没有新增跨城候选，请核对锚点与提示；可以继续调整景点和条件。') + '</p>';
       html += '<label for="guideInput">补充你的想法</label><form id="guideForm"><input id="guideInput" maxlength="500" placeholder="如：可以停两晚，但不想坐长途车" autocomplete="off" /><button class="guide-primary" type="submit">发送</button></form>' +
         '<div class="guide-tools"><button id="guideUndo" ' + (guideUndo.length ? '' : 'disabled') + '>撤销上次调整</button><button id="guideReset">重看全部走法</button></div>';
       area.innerHTML = html;
@@ -400,7 +440,7 @@
     function submitGuide(text) {
       text = String(text || '').trim();
       if (!text) return;
-      if (!activePlan.candidates.length) {
+      if (!activePlan.candidates.length && (!activePlan.intent.origin_place || !activePlan.intent.destination_place)) {
         var it = activePlan.intent;
         var place = text.replace(/^(?:我在|我从|从|去|到)/, '').replace(/出发$/, '').trim();
         lastRequest = !it.origin && it.destination ? { origin: place, destination: it.destination } :
@@ -467,7 +507,7 @@
       lastRequest = JSON.parse(JSON.stringify(saved.request));
       guideState = MTGuide.clean(saved.preferences); guideMessages = saved.messages || []; guideProposal = null;
       if (Array.isArray(saved.history)) guideUndo = saved.history.slice(-20);
-      fillTravel(saved.travel); fillConstraints(saved.constraints);
+      fillTravel(saved.travel); restoreConstraintSnapshot(saved.constraints);
       MTSights.restore(saved.sights);
       if (saved.anchors) {
         anchors.outbound = saved.anchors.outbound || null;
@@ -593,7 +633,9 @@
         }
         if (pendingRestore && !isBase) {
           var restore = pendingRestore; pendingRestore = null;
-          if (restore.candidate_key && restore.candidate_key !== '[]') {
+          if (restore.task_only) {
+            document.getElementById('planStatus').textContent = '已恢复规划条件与景点草案，交通与开放情况仍需核对。';
+          } else if (restore.candidate_key && restore.candidate_key !== '[]') {
             var matched = res.data.candidates.find(function (c) { return MTGuide.routeKey(c) === restore.candidate_key; });
             if (matched && MTGuide.rank([matched], guideState).items.length) openJourney(matched.id, matched.kind === 'direct' ? 0 : restore.nights, false, false);
             else document.getElementById('planStatus').textContent = '原走法在当前结果中暂未匹配，请重新选择；已保留你的偏好。';
@@ -692,6 +734,7 @@
       var version = draft && draft.versions.find(function (v) { return v.vid === q.get('ver'); });
       if (version) {
         var saved = version.snapshot;
+        pendingRestore.task_only = saved.scope === 'task';
         if (saved.request && saved.request.inspiration_id) lastRequest.inspiration_id = saved.request.inspiration_id;
         guideState = MTGuide.clean(saved.preferences);
         guideMessages = saved.messages || [{ role: 'user', text: text || (from + '去' + to) }];
@@ -706,7 +749,7 @@
           fillAnchorForm('return', anchors.return);
           renderAnchorStatus();
         }
-        fillConstraints(saved.constraints || {});
+        restoreConstraintSnapshot(saved.constraints);
         MTSights.restore(saved.sights);
       }
       travelDirty = { type: false, out: false, ret: false, count: false };
@@ -775,6 +818,8 @@
       });
     }
     function renderUnified(data) {
+      document.getElementById('taskSaveArea').hidden = !data.intent.origin || !data.intent.destination;
+      document.getElementById('taskSaveNote').textContent = '当前规划已更新；保存交通锚点、景点、住宿与条件，恢复时重新核对。';
       backfillForm(data);
       /* 修改语句解析出的结构化约束也回填，避免结果与上方控件出现两套状态。 */
       var resolvedConstraints = data.intent.constraints || {};
@@ -925,7 +970,7 @@
         html += '<div style="margin-top:8px;font-size:12px;color:#A16207;">· ' + MT.esc(n) + '</div>';
       });
       var placeCandidates = data.place_candidates || {};
-      if (!data.candidates.length && !((placeCandidates.origin || []).length || (placeCandidates.destination || []).length)) {
+      if (!data.candidates.length && !(data.anchors && data.anchors.full_cover) && !((placeCandidates.origin || []).length || (placeCandidates.destination || []).length)) {
         var placeUnavailable = (data.degradations || []).some(function (n) { return /核验通道不可用|未找到可核验/.test(n); });
         html += '<div style="margin-top:12px;font-size:12.5px;color:#A16207;line-height:1.7;">' +
           (placeUnavailable ? '地点暂时无法确认，请补充国家或地区后重试。' : '暂时没有找到可参考的走法，请调整地点或条件后重试。') + '</div>';
@@ -1004,6 +1049,7 @@
     function restoreRevision(index) {
       var rev = revisions[index];
       if (!rev) return;
+      restoreConstraintSnapshot(rev.constraints);
       MTSights.restore(rev.sights);
       lastRequest = JSON.parse(JSON.stringify(rev.request));
       guideState = MTGuide.clean(rev.preferences); guideMessages = rev.messages || [];
@@ -1100,33 +1146,7 @@
       }); });
       document.getElementById('btnEditForm').addEventListener('click', function () { document.getElementById('moreConditions').open = true; document.getElementById('moreConditions').scrollIntoView({ behavior: 'smooth' }); });
       var btnSave = document.getElementById('btnSaveDraft');
-      if (btnSave) btnSave.addEventListener('click', function () {
-        if (planning) { MT.toast('正在更新路线，请稍等再保存'); return; }
-        var note = document.getElementById('draftSaveNote');
-        var cand2 = activePlan.candidates.find(function (c) { return c.id === activeCandidate; });
-        var name2 = (activePlan.intent.origin || '') + ' → ' + (activePlan.intent.destination || '');
-        var snapshot = {
-          request: JSON.parse(JSON.stringify(lastRequest || {})),
-          travel: collectTravel(), constraints: collectConstraints(),
-          anchors: { outbound: JSON.parse(JSON.stringify(anchors.outbound)), return: JSON.parse(JSON.stringify(anchors.return)) },
-          sights: MTSights.getState(),
-          preferences: guideState, messages: guideMessages, history: guideUndo.slice(-20),
-          place_names: { origin: activePlan.intent.origin_place ? activePlan.intent.origin_place.name : null, destination: activePlan.intent.destination_place ? activePlan.intent.destination_place.name : null },
-          confirmed_note: { origin: activePlan.intent.origin_place && activePlan.intent.origin_place.dynamic ? '当时为开放地点确认（恢复须重新核验确认）' : null, destination: activePlan.intent.destination_place && activePlan.intent.destination_place.dynamic ? '当时为开放地点确认（恢复须重新核验确认）' : null },
-          candidate: { id: activeCandidate, route_key: MTGuide.routeKey(cand2), label: cand2 ? candidateTitle(cand2) : '待重新选择走法', kind: cand2 ? cand2.kind : null, hub: cand2 && cand2.legs.length > 1 ? cand2.legs[1].from : null, modes: cand2 ? cand2.legs.map(function (l) { return l.mode_guess || '?'; }).join('+') : '' },
-          nights: activeNights, engine: activePlan.intent.parse_engine
-        };
-        var res = MTDrafts.save(name2, snapshot);
-        if (res.ok) {
-          note.innerHTML = '已保存（' + res.draft.versions.length + ' 个版本）。<a href="me.html">去我的行程查看</a>；下次恢复会保留对话偏好并重新规划。';
-          MT.toast('已保存到私人草案');
-        } else {
-          note.innerHTML = res.reason === 'write_failed'
-            ? '<span style="color:#A8543A;">保存失败：浏览器存储不可写（隐私模式/空间不足）。草案未保存，可稍后重试。</span>'
-            : '<span style="color:#A8543A;">保存失败：' + MT.esc(res.reason || '未知原因') + '</span>';
-          MT.toast('保存失败（存储不可写）');
-        }
-      });
+      if (btnSave) btnSave.addEventListener('click', function () { saveCurrentTask('draftSaveNote'); });
       document.getElementById('btnApplyEdit').addEventListener('click', function () {
         var edit = document.getElementById('editPrompt').value.trim();
         if (!edit) { MT.toast('先描述想修改的条件'); return; }

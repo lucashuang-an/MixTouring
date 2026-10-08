@@ -1387,13 +1387,13 @@ export async function planAnywhere(input, deps = {}) {
   const constraints = { ...extractConstraints(text) };
   const explicitConstraints = sanitizeConstraints(input.constraints);
   for (const key of Object.keys(explicitConstraints)) constraints[key] = explicitConstraints[key];
-  const textStays = extractLodgingStays(text || '', cityNames);
+  const textStays = extractLodgingStays(text || '', cityNames, deps.nowMs);
   if (textStays.length && explicitConstraints.lodging_stays === undefined) constraints.lodging_stays = textStays;
   if (constraints.no_self_drive === false) delete constraints.no_self_drive;
   if (Array.isArray(constraints.lodging_stays) && !constraints.lodging_stays.length) delete constraints.lodging_stays;
   const chips = constraintChips(constraints);
   /* P0（十轮）：往返/日期/人数意图——文本确定性提取 + UI 显式字段覆盖，经消歧/重新规划不回退 */
-  const travel = buildTravelIntent(text || '', input.travel || null);
+  const travel = buildTravelIntent(text || '', input.travel || null, deps.nowMs);
   const intent = {
     origin: o ? o.name : (rawOrigin || null),
     destination: d ? d.name : (rawDest || null),
@@ -1477,8 +1477,8 @@ export async function planAnywhere(input, deps = {}) {
     const p = resolvePlace(anchors.return.from_city);
     anchorNotes.push('返程已锁定「' + anchors.return.from_city + '→' + anchors.return.to_city + ' ' +
       ANCHOR_MODE_LABEL[anchors.return.mode] + ' ' + anchors.return.date + '」（你确认的事实，不重算）');
-    if (d && anchors.return.to_city !== d.name) {
-      anchorNotes.push('返程锚点回到「' + anchors.return.to_city + '」——与原目的地「' + d.name + '」不同：这是你输入的进出城市变化，已保留，请核对');
+    if (intent.origin_place && resolvePlace(anchors.return.to_city)?.name !== intent.origin_place.name) {
+      anchorNotes.push('返程锚点回到「' + anchors.return.to_city + '」——与原出发地「' + intent.origin_place.name + '」不同：这是你输入的进出城市变化，已保留，请核对');
     }
     if (d && p && p.name !== d.name) {
       anchorNotes.push('本次规划 ' + (o ? o.name : '起点') + ' → ' + d.name + ' 的去程侧（目的地不因锚点跳过）；' +
@@ -1553,6 +1553,14 @@ export async function planAnywhere(input, deps = {}) {
   /* 去返锚点覆盖全程（二十八轮 P0-1 收紧）：仅当两锚点都贴着目的地
    * （去程锚点到达城=目的地 且 返程锚点出发城=目的地）才判全覆盖；否则目的地必经，按去程侧规划。 */
   if (anchors.outbound && anchors.return && o.name === d.name && anchors.return.from_city === d.name) {
+    if (intent.trip_type==='pending' && resolvePlace(anchors.outbound.from_city)?.name===intent.origin_place.name && resolvePlace(anchors.return.to_city)?.name===intent.origin_place.name) {
+      intent.trip_type='round_trip';
+    }
+    if (intent.trip_type==='round_trip') {
+      intent.outbound_window ||= anchors.outbound.date+' ~ '+anchors.outbound.date;
+      intent.return_window ||= anchors.return.date+' ~ '+anchors.return.date;
+      for(let i=needs.length-1;i>=0;i--) if(/^行程类型未识别|^往返行程请补/.test(needs[i])) needs.splice(i,1);
+    }
     return {
       intent,
       route: { route_type: routeTypeOf(o, d) },
@@ -1563,9 +1571,9 @@ export async function planAnywhere(input, deps = {}) {
       degradations,
       explorations: [],
       anchors: { ...anchorPayload, full_cover: true },
-      anchor_notes: [...anchorNotes, '去程与返程之间的跨城交通已全部由你确认，本次没有待重算的跨城段；城市内接驳与停留安排不在当前范围'],
+      anchor_notes: [...anchorNotes, '去程与返程之间的跨城交通已全部由你确认，本次没有待重算的跨城段；可继续比较景点和住宿，城市内接驳仍待核查'],
       web_search: { configured: webSearchConfigured(env).configured, status: 'not_needed' },
-      next_steps: ['如需继续探索中间段，可撤销任一锚点后重新规划', '锚点信息可在修改时更正；撤销锚点后该段回到待规划状态'],
+      next_steps: ['可继续比较景点、检查游玩日期并保存当前任务草案', '如需继续探索中间段，可撤销任一锚点后重新规划', '锚点信息可在修改时更正；撤销锚点后该段回到待规划状态'],
       planner_version: ANYWHERE_VERSION
     };
   }

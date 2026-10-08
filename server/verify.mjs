@@ -90,7 +90,9 @@ async function main() {
   const p1 = await getJSON('/api/parse?q=' + encodeURIComponent('国庆从杭州去喀什'));
   diff('/api/parse 国庆从杭州去喀什.from', p1.from, '杭州');
   diff('/api/parse 国庆从杭州去喀什.to', p1.to, '喀什');
-  diff('/api/parse 国庆从杭州去喀什.date', p1.date, new Date().getFullYear() + '/10/01');
+  const parseToday=new Date(), holidayThisYear=new Date(parseToday.getFullYear(),9,1);
+  const holidayYear=holidayThisYear<new Date(parseToday.getFullYear(),parseToday.getMonth(),parseToday.getDate())?parseToday.getFullYear()+1:parseToday.getFullYear();
+  diff('/api/parse 国庆从杭州去喀什.date', p1.date, holidayYear + '/10/01');
 
   const p2 = await getJSON('/api/parse?q=' + encodeURIComponent('上海到昆明明天'));
   diff('/api/parse 上海到昆明明天.from', p2.from, '上海');
@@ -204,7 +206,7 @@ async function main() {
   } else { failed++; console.error('✗ /api/trip/parse 缺返程窗未提示补全'); }
 
   /* v0.26.3 复审③验收：明确「10 月 1 日」→ 单日窗；「直达」→ 不猜单程 */
-  const tripExact = await (await fetch(BASE + '/api/trip/parse', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: '10月1日从北京去阿拉木图' }) })).json();
+  const tripExact = await (await fetch(BASE + '/api/trip/parse', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: '2026年10月1日从北京去阿拉木图' }) })).json();
   if (tripExact.code === 0 && tripExact.data.query.outbound_window === '2026-10-01 ~ 2026-10-01') {
     console.log('✓ /api/trip/parse 明确 10/01 → 单日窗');
   } else { failed++; console.error('✗ /api/trip/parse 明确日期窗异常：' + JSON.stringify(tripExact.data?.query?.outbound_window)); }
@@ -304,7 +306,7 @@ async function main() {
   const caps = await (await fetch(BASE + '/api/capabilities')).json();
   if (caps.code === 0 && typeof caps.data.web_search_configured === 'boolean' &&
     ['available', 'quota_exhausted', 'timeout', 'error', 'unknown'].includes(caps.data.web_search_status) &&
-    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.45.0') {
+    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.46.0') {
     console.log('✓ /api/capabilities P1-4：configured 与最近真实状态分开（web_search_configured=' +
       caps.data.web_search_configured + ', status=' + caps.data.web_search_status + '），版本拆分对齐');
   } else { failed++; console.error('✗ /api/capabilities 形状异常：' + JSON.stringify(caps).slice(0, 200)); }
@@ -389,6 +391,18 @@ async function main() {
   if (sightTurn.code===0 && sightTurn.data.sights.selected_ids.length===2 && sightTurn.data.constraints.no_self_drive) {
     console.log('✓ 对话接口：景点取舍与无车条件等待用户确认');
   } else {failed++;console.error('✗ 对话接口景点取舍契约异常');}
+  const lockedPlan=await (await fetch(BASE+'/api/anywhere/plan',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({origin:'北京',destination:'伊宁',constraints:{no_self_drive:true,lodging_stays:[{city:'伊宁',date:'2026-09-30'}]},
+    anchors:{outbound:{mode:'plane',date:'2026-09-30',arrive_date:'2026-09-30',from_city:'北京',to_city:'伊宁'},return:{mode:'plane',date:'2026-10-03',from_city:'伊宁',to_city:'北京'}}})})).json();
+  const lockedGuide=await (await fetch(BASE+'/api/anywhere/guide',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({plan_id:lockedPlan.data?.plan_id,text:'只保留夏塔和库尔德宁'})})).json();
+  const windowCheck=await (await fetch(BASE+'/api/anywhere/sights',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({plan_id:lockedPlan.data?.plan_id,
+    state:{selected_ids:['xiata','kuerdening'],full_days:2,play_window:'2026-10-01 ~ 2026-10-02'}})})).json();
+  if(lockedPlan.code===0 && lockedPlan.data.anchors?.full_cover && lockedPlan.data.candidates.length===0 && lockedGuide.data?.recognized &&
+      windowCheck.data?.comparison.window.full_days_bounds?.possible_max===2 && windowCheck.data.comparison.status==='transport_pending') {
+    console.log('✓ 交通全覆盖零候选仍可对话并检查景点日期，接驳保持待查');
+  } else {failed++;console.error('✗ 零候选任务或景点日期接口异常');}
+  const cleared=await (await fetch(BASE+'/api/anywhere/sights',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({plan_id:lockedPlan.data?.plan_id,anchors:null,constraints:{},state:{full_days:2}})})).json();
+  if(cleared.data?.comparison.window.full_days_bounds===null && !cleared.data.comparison.no_self_drive && !cleared.data.comparison.window.notes.some((n)=>n.includes('住宿'))) console.log('✓ 景点接口显式撤销锚点和约束不从旧 plan_id 复活');
+  else {failed++;console.error('✗ 景点接口撤销锚点异常');}
   console.log(failed ? `\n✗ ${failed} 项不一致` : '\n✓ 全部接口与 mock.js 派生结果一致');
   process.exit(failed ? 1 : 0);
 }

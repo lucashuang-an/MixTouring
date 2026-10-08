@@ -44,7 +44,7 @@ export function parseGuideTurn(text, nowMs = Date.now(), plan = null, selectedCa
   const preferences = guide.parse(t);
   const parsed = buildTravelIntent(t, null, nowMs);
   const travel = {}, constraints = extractConstraints(t), labels = guide.summary(preferences.patch);
-  const sightChange = parseSightChange(t);
+  const sightChange = parseSightChange(t,nowMs);
   labels.push(...sightChange.labels);
   /* 卡 B：住宿约束口语（城市须已收录）；「不住 X 了 / 取消住宿」撤销 */
   const lodging = extractLodgingStays(t, CITY_NAMES, nowMs);
@@ -53,7 +53,9 @@ export function parseGuideTurn(text, nowMs = Date.now(), plan = null, selectedCa
   /* 撤销不开车：肯定语境（可以/会/能 开车），lookbehind 排除「不会/没法开车」里的否定子串 */
   if (/(?<![不会没能])(?:可以|会|能)(?:自己)?开车|取消不开车|恢复自驾/.test(t)) constraints.no_self_drive = null;
   for (const key of ['outbound_window', 'arrival_window', 'return_window']) {
-    if (parsed.intent[key]) travel[key] = parsed.intent[key];
+    const isSightDate=key!=='return_window' && parsed.intent[key]===sightChange.patch.play_window && !/去程|出发|启程/.test(t);
+    const isLodgingDate=key!=='return_window' && lodging.length>0 && !/去程|出发|启程/.test(t);
+    if (parsed.intent[key] && !isSightDate && !isLodgingDate) travel[key] = parsed.intent[key];
   }
   const explicitReturn = extractReturnDate(t, nowMs);
   if (explicitReturn) { travel.return_window = explicitReturn; travel.trip_type = 'round_trip'; }
@@ -64,7 +66,7 @@ export function parseGuideTurn(text, nowMs = Date.now(), plan = null, selectedCa
     travel.trip_type = 'one_way'; travel.return_window = null;
   }
   if (/[一二两1-9]\s*个?人|独自|一个人/.test(t)) travel.traveler_count = parsed.intent.traveler_count;
-  if (/日期.*(?:不定|取消|不限)|取消日期/.test(t)) {
+  if (/日期.*(?:不定|取消|不限)|取消日期/.test(t) && !/(?:景点|游玩|游览)日期/.test(t)) {
     travel.outbound_window = null; travel.arrival_window = null; travel.return_window = null;
   }
   if (/预算.*(?:不限|取消)|取消预算/.test(t)) constraints.budget_max_cny = null;

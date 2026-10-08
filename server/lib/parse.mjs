@@ -85,7 +85,7 @@ function parseDateRule(text) {
     if (text.includes(kw)) {
       if (!md) return { value: null, note: `${kw}（农历浮动，需人工确认）` };
       const d = iso(md[0], md[1]);
-      if (d < today) d.setFullYear(d.getFullYear() + 1); // 已过顺延下一年
+      if (d < new Date(today.getFullYear(),today.getMonth(),today.getDate())) d.setFullYear(d.getFullYear() + 1); // 过了节日当天才顺延
       return { value: fmtDate(d), note: kw };
     }
   }

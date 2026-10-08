@@ -332,7 +332,7 @@ app.use(async (ctx, next) => {
       ctx.res.once('close', () => controller.abort());
       progressivePlan(body, (data, phase) => {
         if (controller.signal.aborted) return;
-        if (data.candidates.length) data.plan_id = registerJourneyPlan(data);
+        if (data.candidates.length || (data.intent?.origin_place && data.intent?.destination_place)) data.plan_id = registerJourneyPlan(data);
         stream.write(JSON.stringify({ code: 0, phase, data }) + '\n');
       }, {}, controller.signal).catch(() => {
         if (!controller.signal.aborted) stream.write(JSON.stringify({ code: 1, msg: '补充搜索未完成，已有走法仍可查看' }) + '\n');
@@ -340,7 +340,7 @@ app.use(async (ctx, next) => {
       return;
     }
     const data = await planAnywhere(body);
-    if (data.candidates.length) data.plan_id = registerJourneyPlan(data);
+    if (data.candidates.length || (data.intent?.origin_place && data.intent?.destination_place)) data.plan_id = registerJourneyPlan(data);
     ctx.body = { code: 0, data };
     return;
   }
@@ -355,12 +355,13 @@ app.use(async (ctx, next) => {
     return;
   }
 
-  /* 卡 C：客户端只提交用户选择与预算；景观来源和运营状态由服务端目录提供。 */
+  /* 卡 C：来源由服务端目录提供；显式 anchors/constraints 为完整个人快照，省略时才回查 plan_id。 */
   if (path === '/api/anywhere/sights' && ctx.method === 'POST') {
     const body = await readBody(ctx) || {};
     const plan = guidePlanFromId(body.plan_id);
     ctx.body = { code: 0, data: { catalog: sightCatalog(), comparison: compareSights({
-      state: body.state, constraints: { ...plan?.intent?.constraints, ...body.constraints }
+      state: body.state, anchors:Object.prototype.hasOwnProperty.call(body,'anchors')?body.anchors:plan?.anchors,
+      constraints:Object.prototype.hasOwnProperty.call(body,'constraints')?body.constraints:plan?.intent?.constraints
     }) } };
     return;
   }

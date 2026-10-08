@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import { compareSights, normalizeSightState, parseSightChange, sightCatalog } from './lib/sights.mjs';
 import { parseGuideTurn } from './lib/guide.mjs';
+import { sightAccess, validAccessReference } from './lib/sight-access.mjs';
 let count = 0;
 function check(value, label) {assert.ok(value,label);count++;console.log('✓ '+label);}
 const four = compareSights();
@@ -44,4 +45,58 @@ check(!parseSightChange('返程十月八日').patch.full_days,'交通日期不�
 const input = {state:{selected_ids:['nalati','xiata'],full_days:2},anchors:{outbound:{date:'2026-09-30'}},constraints:{lodging_stays:[{city:'伊宁',date:'2026-09-30'}]}};
 const before = structuredClone(input); compareSights(input);
 assert.deepEqual(input,before);check(true,'景点比较不改锚点、住宿或用户输入');
+const fixedNow=Date.parse('2026-10-09T04:00:00Z');
+const publicLead=sightAccess('qiongkushitai','琼库什台',fixedNow);
+check(publicLead.no_car_access==='source_lead' && publicLead.travel_time_hours===null && publicLead.components.every((c)=>c.duration_minutes===null),
+  '线路车报道只作为线索，候车与本次总时长仍未知');
+check(publicLead.components.find((c)=>c.kind==='road').references[0].duration_minutes===155 &&
+  publicLead.components.find((c)=>c.kind==='public_transport').references[0].duration_minutes===null,
+  '驾车资料参考与公共交通时间分别保留，不互相替代');
+check(sightAccess('qiongkushitai','琼库什台',Date.parse('2026-11-01T04:00:00Z')).no_car_access==='unverified',
+  '线路车线索超过复核期不作为新鲜依据');
+check(sightAccess('qiongkushitai','琼库什台',Date.parse('2026-09-01T04:00:00Z')).no_car_access==='unverified',
+  '未来发布或采样的来源不冒充当时已知事实');
+const reference=publicLead.components.find((c)=>c.kind==='public_transport').references[0];
+check(!validAccessReference({...reference,duration_minutes:0}) && !validAccessReference({...reference,mode:'self_drive'}) &&
+  !validAccessReference({...reference,source:{...reference.source,sampled_at:'2026-02-31'}}),
+  '接驳字段拒绝零时长、错方式与不存在日期');
+check(sightCatalog().attractions.every((a)=>sightAccess(a.id,a.name,fixedNow).location?.source?.url),
+  '七处位置都有可追溯资料及精度说明');
+const lock={outbound:{mode:'plane',from_city:'北京',to_city:'伊宁',date:'2026-09-30',arrive_date:'2026-09-30'},
+  return:{mode:'plane',from_city:'乌鲁木齐',to_city:'北京',date:'2026-10-03'}};
+const period={selected_ids:['xiata','kuerdening'],full_days:2,play_window:'2026-10-01 ~ 2026-10-02'};
+const fits=compareSights({state:period,anchors:lock},fixedNow);
+check(fits.window.full_days_bounds.possible_max===2 && fits.window.issues.length===0 && fits.status==='transport_pending',
+  '锚点间两完整游玩日可以检查日期，仍不升级接驳可执行');
+check(compareSights({state:{...period,full_days:3,play_window:null},anchors:lock},fixedNow).status==='window_conflict',
+  '增加天数超过锁定交通期间明确冲突');
+check(compareSights({state:{...period,play_window:'2026-09-30 ~ 2026-10-01'},anchors:lock},fixedNow).window.issues.some((n)=>n.includes('交通日')),
+  '完整游玩日期不能包含交通日');
+check(compareSights({state:{...period,full_days:1},anchors:lock},fixedNow).window.issues.some((n)=>n.includes('不一致')),
+  '游玩日期和日数不一致要求确认');
+const unknown=compareSights({state:period,anchors:{...lock,outbound:{...lock.outbound,arrive_date:undefined}}},fixedNow);
+check(unknown.window.full_days_bounds===null && unknown.window.status==='pending',
+  '未填到达日和时刻不猜到达日期');
+const sameDay={outbound:{mode:'plane',from_city:'北京',to_city:'阿拉木图',date:'2026-10-08',arrive_date:'2026-10-08',arrive_time:'18:00'},
+  return:{mode:'plane',from_city:'阿拉木图',to_city:'北京',date:'2026-10-08'}};
+check(!compareSights({state:period,anchors:sameDay},fixedNow).window.issues.some((n)=>n.includes('晚于返程')),
+  '返程时刻未填不补午夜并误判先后');
+const crossing={outbound:{mode:'plane',from_city:'北京',to_city:'阿拉木图',date:'2026-09-30',arrive_time:'23:00'},
+  return:{mode:'plane',from_city:'乌鲁木齐',to_city:'北京',date:'2026-10-03',depart_time:'08:00'}};
+check(compareSights({state:period,anchors:crossing},fixedNow).window.full_days_bounds.possible_max===1,
+  '跨时区到达跨伊犁当地午夜，完整游玩日按当地日期计算');
+const stay=compareSights({state:period,anchors:lock,constraints:{lodging_stays:[{city:'伊宁',date:'2026-09-30'}],no_self_drive:true}},fixedNow);
+check(stay.window.affected_dates.includes('2026-09-30') && stay.window.notes.some((n)=>n.includes('住宿')&&n.includes('接驳')) && stay.no_self_drive,
+  '保留住宿与无车条件，标出相关日期和接驳待查');
+const kept=structuredClone(lock);compareSights({state:{...period,full_days:14},anchors:lock},fixedNow);
+assert.deepEqual(kept,lock);check(true,'预算冲突不自动修改交通锚点');
+const playTurn=parseGuideTurn('游玩日期改成10月1日至2日',Date.parse('2026-09-20T00:00:00Z'));
+check(playTurn.sights.play_window==='2026-10-01 ~ 2026-10-02' && Object.keys(playTurn.travel).length===0,
+  '游玩日期口语进入景点状态，不改写去程交通窗口');
+const clearTurn=parseGuideTurn('取消游玩日期',fixedNow);
+check(clearTurn.sights.play_window===null && Object.keys(clearTurn.travel).length===0,
+  '取消游玩日期不清空去返日期');
+const lodgingTurn=parseGuideTurn('2026年9月30日住伊宁',fixedNow);
+check(lodgingTurn.constraints.lodging_stays[0].date==='2026-09-30' && !lodgingTurn.travel.outbound_window,
+  '住宿日期保留明确年份，不改写去程出发窗口');
 console.log('✓ 景点比较与时间预算回归通过（'+count+' 项）');

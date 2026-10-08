@@ -9,12 +9,12 @@
   function remember() { if (onChange) onChange(); }
   function refresh(force) {
     if (!box) return;
-    var ctx = context(), key = JSON.stringify({state:state,constraints:ctx.constraints});
+    var ctx = context(), key = JSON.stringify({state:state,constraints:ctx.constraints,anchors:ctx.anchors,plan_id:ctx.plan_id});
     if (!force && key === cacheKey) return;
     cacheKey = key;
     var token = ++sequence;
     fetch('/api/anywhere/sights', { method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({state:state,constraints:ctx.constraints,plan_id:ctx.plan_id}) })
+      body:JSON.stringify({state:state,constraints:ctx.constraints,anchors:ctx.anchors,plan_id:ctx.plan_id}) })
       .then(function (r) { if (!r.ok) throw Error('查询失败'); return r.json(); })
       .then(function (r) {
         if (token !== sequence) return;
@@ -38,7 +38,7 @@
     if (patch.selected_ids) next.selected_ids = patch.selected_ids.slice();
     if (patch.add_ids) next.selected_ids = Array.from(new Set(next.selected_ids.concat(patch.add_ids)));
     if (patch.remove_ids) next.selected_ids = next.selected_ids.filter(function (id) { return patch.remove_ids.indexOf(id) < 0; });
-    ['full_days','preference'].forEach(function (k) { if (patch[k] != null) next[k] = patch[k]; });
+    ['full_days','preference','play_window'].forEach(function (k) { if (Object.prototype.hasOwnProperty.call(patch,k)) next[k] = patch[k]; });
     change(next); document.getElementById('sightDetails').open = true;
     document.getElementById('sightDetails').scrollIntoView({behavior:'smooth',block:'start'});
   }
@@ -47,6 +47,8 @@
     html += '<form id="sightForm"><div class="sight-controls">' +
       '<label>完整游玩日<input id="sightDays" type="number" min="1" max="14" value="'+state.full_days+'"></label>' +
       '<label>每天可用小时<input id="sightDayHours" type="number" min="4" max="12" value="'+state.day_hours+'"></label>' +
+      '<label>游玩起始日（可空）<input id="sightStart" type="date" value="'+esc(state.play_window?state.play_window.slice(0,10):'')+'"></label>' +
+      '<label>游玩结束日（可空）<input id="sightEnd" type="date" value="'+esc(state.play_window?state.play_window.slice(13,23):'')+'"></label>' +
       '<label>景观偏好<select id="sightPreference">'+['不限','草原','森林','雪山河谷','湖泊','村落'].map(function (v) {return '<option '+(state.preference===v?'selected':'')+'>'+v+'</option>';}).join('')+'</select></label></div>';
     html += '<fieldset><legend>想比较的景点与游玩预留小时</legend><div class="sight-choices">'+catalog.map(function (a) {
       return '<div><label><input type="checkbox" name="sightChoice" value="'+a.id+'" '+(state.selected_ids.indexOf(a.id)>=0?'checked':'')+'>'+esc(a.name)+'</label>'+
@@ -57,8 +59,22 @@
     if (data.options.length) html += '<h3>可比较的两处组合</h3><p class="sight-muted">按景观偏好、景观差异和所在县区排序；每个组合的接驳仍待核查。</p>'+data.options.map(function (o,i) {
       return '<div class="sight-option"><p>'+esc(o.names.join('＋'))+'</p><p>'+esc(o.reason)+'</p><button type="button" data-sight-option="'+i+'">保留这两处</button></div>';
     }).join('');
+    html += '<div class="sight-status"><h3>游玩日期与锁定交通</h3><p>'+esc(data.window.basis)+'</p>'+
+      (data.window.full_days_bounds?'<p>锁定期间完整游玩日范围：'+data.window.full_days_bounds.confirmed_min+' 至 '+data.window.full_days_bounds.possible_max+' 天（交通日不计入）</p>':'')+
+      '<ul>'+data.window.issues.concat(data.window.notes).map(function (n) {return '<li>'+esc(n)+'</li>';}).join('')+'</ul>'+
+      (data.window.affected_dates.length?'<p>相关日期：'+data.window.affected_dates.map(esc).join('、')+'</p>':'')+'</div>';
     html += '<div class="sight-grid">'+data.comparisons.map(function (a) {
-      return '<article><h3>'+esc(a.name)+'</h3><p>'+esc(a.landscape)+'</p><p>所在县区：'+esc(a.county)+'</p><p>游玩预留：'+a.visit_hours+' 小时（可调整）</p><p>'+esc(a.travel_note)+'</p><p>'+esc(a.season_note)+'</p><p>'+(data.no_self_drive?'不开车：':'接驳：')+'可达性待核查</p><ul>'+a.access_questions.map(function (q) {return '<li>'+esc(q)+'</li>';}).join('')+'</ul><a href="'+esc(a.source.url)+'" target="_blank" rel="noopener noreferrer">'+esc(a.source.title)+'</a><p class="sight-muted">历史资料 · 发布于 '+esc(a.source.published_at)+'</p></article>';
+      var loc=a.access.location, kinds={road:'道路资料',public_transport:'公共客运',waiting:'候车',local_transfer:'景区内接驳'};
+      var states={historical:'历史参考',source_lead:'来源线索',stale:'待重新核对',unsupported:'来源时间异常'};
+      var details=loc?'<p>位置：'+esc(loc.description)+'</p><p class="sight-muted">'+esc(loc.precision)+'</p><a href="'+esc(loc.source.url)+'" target="_blank" rel="noopener noreferrer">位置来源：'+esc(loc.source.title)+'</a>':'';
+      details+='<details><summary>分项交通依据与缺口</summary>'+a.access.components.map(function (part) {
+        return '<div><p>'+kinds[part.kind]+'：本次耗时未知</p>'+part.references.map(function (ref) {
+          return '<p>'+esc(ref.from)+' → '+esc(ref.to)+' · '+esc(states[ref.evidence_state]||'待核查')+(ref.duration_minutes!==null?' · '+(ref.mode==='self_drive'?'驾车':'行车')+'资料参考 '+ref.duration_minutes+' 分钟':'')+'</p><p>'+esc(ref.method)+'</p>'+
+            '<a href="'+esc(ref.source.url)+'" target="_blank" rel="noopener noreferrer">'+esc(ref.source.title)+'</a><p class="sight-muted">发布：'+esc(ref.source.published_at)+' · 采样：'+esc(ref.source.sampled_at)+'</p>';
+        }).join('')+'<p class="sight-muted">待查：'+part.missing.map(esc).join('、')+'</p></div>';
+      }).join('')+'<p class="sight-muted">'+esc(a.access.basis)+'</p></details>';
+      if(a.access.season) details+='<p>'+esc(a.access.season.note)+'</p><a href="'+esc(a.access.season.source.url)+'" target="_blank" rel="noopener noreferrer">季节资料：'+esc(a.access.season.source.title)+'</a>';
+      return '<article><h3>'+esc(a.name)+'</h3><p>'+esc(a.landscape)+'</p><p>所在县区：'+esc(a.county)+'</p><p>游玩预留：'+a.visit_hours+' 小时（可调整）</p><p>'+esc(a.travel_note)+'</p>'+details+'<p>'+esc(a.season_note)+'</p><p>'+(data.no_self_drive?'不开车：':'接驳：')+'可达性待核查</p>'+(a.access.public_note?'<p>'+esc(a.access.public_note)+'</p>':'')+'<ul>'+a.access_questions.map(function (q) {return '<li>'+esc(q)+'</li>';}).join('')+'</ul><a href="'+esc(a.source.url)+'" target="_blank" rel="noopener noreferrer">'+esc(a.source.title)+'</a><p class="sight-muted">历史景观资料 · 发布于 '+esc(a.source.published_at)+'</p></article>';
     }).join('')+'</div><ul class="sight-muted">'+data.warnings.map(function (w) {return '<li>'+esc(w)+'</li>';}).join('')+'</ul>';
     box.innerHTML = html;
     document.getElementById('sightForm').onsubmit = function (e) {
@@ -66,6 +82,9 @@
       next.selected_ids = Array.from(box.querySelectorAll('[name="sightChoice"]:checked')).map(function (el) {return el.value;});
       next.full_days = Number(document.getElementById('sightDays').value); next.day_hours = Number(document.getElementById('sightDayHours').value);
       next.preference = document.getElementById('sightPreference').value;
+      var start=document.getElementById('sightStart').value,end=document.getElementById('sightEnd').value;
+      if ((start&&!end)||(!start&&end)) {MT.toast('请同时填写游玩起始日和结束日，或全部留空');return;}
+      next.play_window=start&&end?start+' ~ '+end:null;
       catalog.forEach(function (a) {next.visit_hours[a.id] = Number(document.getElementById('sightHours_'+a.id).value);});
       change(next);
     };
