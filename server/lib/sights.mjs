@@ -80,7 +80,7 @@ export function compareSights(input = {}, nowMs=Date.now()) {
   const comparisons = selected.map((a) => ({...a,visit_hours:state.visit_hours[a.id],travel_time_hours:null,access:access[a.id],
     no_car_access:access[a.id].no_car_access,travel_note:'本次道路耗时、候车与景区接驳时间待核查；原方式资料参考不能替代本次交通查询。'}));
   return { state, evidence_state:'explore', no_self_drive:noCar, window,
-    access_checklist:accessChecklist({state,comparisons,anchors:input.anchors,constraints:input.constraints,destination:input.destination}),
+    access_checklist:accessChecklist({state,comparisons,anchors:input.anchors,constraints:input.constraints,destination:input.destination},nowMs),
     budget:{available_hours:available,visit_hours:visitTotal,remaining_hours:available-visitTotal,travel_hours:null,
       basis:'游玩预留时间为可调整的规划预算，默认每处预留六小时；不是实测最短游览时长。完整游玩日不包含已锁定交通日，须由你确认。'},
     status:window.issues.length?'window_conflict':conflict ? 'budget_conflict' : selected.length ? 'transport_pending' : 'empty',

@@ -1,12 +1,13 @@
 /* 接驳核验清单：列出需要查询的方向，不推定线路存在，不从去程反转生成返程证据。 */
 import { sanitizeAnchors, resolvePlace, isValidWindow } from './anywhere.mjs';
+import { transportReferences } from './transport-references.mjs';
 const GATEWAYS = {
   nalati:['新源县城','那拉提景区门区'], kalajun:['特克斯县城','喀拉峻景区门区'],
   xiata:['昭苏县城','夏塔景区门区'], kuerdening:['巩留县城','库尔德宁景区门区'],
   sayram:[null,'赛里木湖门区'], qiaxi:['巩留县城','恰西景区门区'],
   qiongkushitai:['特克斯县客运站','琼库什台村']
 };
-export function accessChecklist({ state, comparisons, anchors:raw, constraints = {}, destination } = {}) {
+export function accessChecklist({ state, comparisons, anchors:raw, constraints = {}, destination } = {}, nowMs=Date.now()) {
   const anchors = sanitizeAnchors(raw), rows = [];
   const dest = resolvePlace(destination)?.name;
   const dates = isValidWindow(state?.play_window) ? state.play_window : null;
@@ -15,7 +16,8 @@ export function accessChecklist({ state, comparisons, anchors:raw, constraints =
     rows.push({ id, from, to, purpose, date_window:window, evidence_state:'explore',
       operator:null, boarding_stop:null, alighting_stop:null, departure_time:null, arrival_time:null,
       timezone:null, duration_minutes:null, fare:null, baggage:null, applicable_dates:null,
-      references:references.filter(r => r.kind === 'public_transport' && r.from === from && r.to === to),
+      references:[...references.filter(r => r.kind === 'public_transport' && r.from === from && r.to === to),...transportReferences(from,to,nowMs,window)],
+      opposite_references:transportReferences(to,from,nowMs,window),
       missing:['本次运营方与具体上下车点','适用日期、出发到达时刻及时区','候车、行李和单人费用口径'],
       query:(purpose.includes('内部')?'向景区管理方查询「'+from+' → '+to+'」的开放范围、内部交通与步行需求；':'向两端客运站或实际运营方查询「'+from+' → '+to+'」'+(window?'在 '+window+' ':' 的计划日期 ')+'是否有客运服务；')+'索取日期对应的公告或运营方答复，记录来源与查询时间。' });
   };

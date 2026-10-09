@@ -306,7 +306,7 @@ async function main() {
   const caps = await (await fetch(BASE + '/api/capabilities')).json();
   if (caps.code === 0 && typeof caps.data.web_search_configured === 'boolean' &&
     ['available', 'quota_exhausted', 'timeout', 'error', 'unknown'].includes(caps.data.web_search_status) &&
-    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.47.0') {
+    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.48.0') {
     console.log('✓ /api/capabilities P1-4：configured 与最近真实状态分开（web_search_configured=' +
       caps.data.web_search_configured + ', status=' + caps.data.web_search_status + '），版本拆分对齐');
   } else { failed++; console.error('✗ /api/capabilities 形状异常：' + JSON.stringify(caps).slice(0, 200)); }
@@ -409,6 +409,11 @@ async function main() {
   if(checklist?.rows.some(r=>r.id==='destination-to-return' && r.from==='阿拉木图' && r.to==='乌鲁木齐') && checklist.executable===false &&
     checklist.rows.every(r=>r.fare===null && r.duration_minutes===null) && !cleared.data.comparison.access_checklist.return_anchor) console.log('✓ 接驳清单保留目的地至返程城市缺口，未知费用和耗时不记零');
   else {failed++;console.error('✗ 接驳核验清单遗漏返程缺口或误填事实');}
+  const toDestination=checklist?.rows.find(r=>r.id==='base-to-destination');
+  const toReturn=checklist?.rows.find(r=>r.id==='destination-to-return');
+  if(toDestination?.references.some(r=>r.id==='yin-ala-air' && r.reported_operator) && toDestination.operator===null &&
+      toReturn?.references.length===0 && toReturn.opposite_references.some(r=>r.id==='urc-ala-road')) console.log('✓ 策展方向资料接入接口，反方向报道与本次运营方隔离');
+  else {failed++;console.error('✗ 策展方向资料与本次事实混淆');}
   console.log(failed ? `\n✗ ${failed} 项不一致` : '\n✓ 全部接口与 mock.js 派生结果一致');
   process.exit(failed ? 1 : 0);
 }

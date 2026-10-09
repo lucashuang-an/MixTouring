@@ -82,8 +82,12 @@
       if (checklist.return_anchor) html+='<p>需衔接你锁定的返程：'+esc(checklist.return_anchor.from_city)+' · '+esc(checklist.return_anchor.date)+' · '+esc(checklist.return_anchor.depart_time || '出发时刻未填')+'（当地时间）；接驳应预留余量，尚未确定出发日期。</p>';
       html+='<ul>'+checklist.missing_context.map(function (n) {return '<li>'+esc(n)+'</li>';}).join('')+'</ul><div class="sight-grid">'+checklist.rows.map(function (row) {
         return '<article><h3>'+esc(row.from)+' → '+esc(row.to)+'</h3><p>'+esc(row.purpose)+'</p><p>计划日期范围：'+esc(row.date_window || '待定')+' · 本次班次、耗时和费用未知</p><p>'+esc(row.query)+'</p><ul>'+row.missing.map(function (m) {return '<li>'+esc(m)+'</li>';}).join('')+'</ul>'+row.references.map(function (r) {
-          return '<a href="'+esc(r.source.url)+'" target="_blank" rel="noopener noreferrer">资料线索：'+esc(r.source.title)+'</a><p>发布 '+esc(r.source.published_at)+' · 采样 '+esc(r.source.sampled_at)+' · '+esc({source_lead:'来源线索',stale:'待重新核对',unsupported:'来源时间异常',historical:'历史参考'}[r.evidence_state])+'；不代表本次运营</p>';
-        }).join('')+'</article>';
+          return '<a href="'+esc(r.source.url)+'" target="_blank" rel="noopener noreferrer">资料线索：'+esc(r.source.title)+'</a><p>发布 '+esc(r.source.published_at || '未注明')+' · 采样 '+esc(r.source.sampled_at)+' · '+esc({source_lead:'来源线索',stale:'待重新核对',unsupported:'来源时间异常',historical:'历史参考'}[r.evidence_state])+'；不代表本次运营</p><p>'+esc(r.method)+'</p>'+
+            (r.reported_operator?'<p>资料中的运营方：'+esc(r.reported_operator)+'；本次运营方待核。</p>':'')+
+            (r.reported_boarding_stop?'<p>资料中的上车点：'+esc(r.reported_boarding_stop)+'；本次站点待核。</p>':'')+
+            (r.reported_until?'<p>页面列出的售期截止：'+esc(r.reported_until)+'；不证明期间每天有班次，之后需重新查证。</p>':'')+
+            (r.date_scope==='outside_reference'?'<p>计划日期超出页面列出的范围，不能用此资料判断本次运营。</p>':'');
+        }).join('')+((row.opposite_references || []).length?'<details><summary>反方向资料（不能证明本段）</summary>'+row.opposite_references.map(function(r){return '<p>'+esc(r.from)+' → '+esc(r.to)+' · '+esc(r.method)+'</p><a href="'+esc(r.source.url)+'" target="_blank" rel="noopener noreferrer">'+esc(r.source.title)+'</a><p>发布 '+esc(r.source.published_at || '未注明')+' · 采样 '+esc(r.source.sampled_at)+'；本段仍需独立取证。</p>';}).join('')+'</details>':'')+'</article>';
       }).join('')+'</div></details>';
     }
     box.innerHTML = html;

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { compareSights, normalizeSightState, parseSightChange, sightCatalog } from './lib/sights.mjs';
 import { parseGuideTurn } from './lib/guide.mjs';
 import { sightAccess, validAccessReference } from './lib/sight-access.mjs';
+import { transportReferences, validTransportReference } from './lib/transport-references.mjs';
 let count = 0;
 function check(value, label) {assert.ok(value,label);count++;console.log('✓ '+label);}
 const four = compareSights();
@@ -118,4 +119,27 @@ check(emptyChecklist.rows.length===0, '不选景点且返程贴目的地时不�
 const missingChecklist=compareSights({state:{selected_ids:['xiata']}}).access_checklist;
 check(missingChecklist.missing_context.length===2 && missingChecklist.rows.every(r=>r.date_window===null),
   '目的地与返程未识别时明示缺口，日期不猜测');
+const airOut=transportReferences('伊宁','阿拉木图',fixedNow).find(r=>r.mode==='plane');
+const airBack=transportReferences('阿拉木图','伊宁',fixedNow).find(r=>r.mode==='plane');
+check(airOut && airBack && airOut.source.url!==airBack.source.url && airOut.reported_operator.includes('FlyArystan'),
+  '航空去返分别采运营方方向页，不镜像去程来源');
+check(airOut.source.published_at===null && airOut.evidence_state==='source_lead' && airOut.duration_minutes===null,
+  '未注明发布时间不填采样日，航线页不提供本次耗时');
+check(transportReferences('阿拉木图','乌鲁木齐',fixedNow).length===0 && transportReferences('乌鲁木齐','阿拉木图',fixedNow)[0].evidence_state==='historical',
+  '乌鲁木齐始发道路报道不冒充阿拉木图始发班次');
+check(transportReferences('伊宁','阿拉木图',Date.parse('2026-10-24T04:00:00Z')).find(r=>r.mode==='plane').evidence_state==='stale',
+  '售期边界过去后航空方向页待重新核查');
+check(transportReferences('伊宁','阿拉木图',Date.parse('2026-10-08T04:00:00Z')).every(r=>r.evidence_state==='unsupported'),
+  '来源未采样时不能冒充当时已查事实');
+check(transportReferences('伊宁','阿拉木图',fixedNow,'2026-10-22 ~ 2026-10-25').find(r=>r.mode==='plane').date_scope==='outside_reference',
+  '日期范围部分超过售期也提示超范围，不认全窗覆盖');
+check(!validTransportReference({...airOut,mode:'cargo'}) && !validTransportReference({...airOut,source:{...airOut.source,sampled_at:'2026-02-31'}}),
+  '货运方式及无效来源日期不进入客运资料');
+airOut.reported_operator='客户端改写';
+check(transportReferences('伊宁','阿拉木图',fixedNow)[0].reported_operator!==airOut.reported_operator,
+  '资料每次独立返回，客户端改写不污染策展库');
+const crossChecklist=compareSights({state:{selected_ids:['xiata']},destination:'阿拉木图',anchors:{return:{mode:'plane',from_city:'乌鲁木齐',to_city:'北京',date:'2026-10-08'}}},fixedNow).access_checklist;
+const crossReturn=crossChecklist.rows.find(r=>r.id==='destination-to-return');
+check(crossReturn.references.length===0 && crossReturn.opposite_references.length===1 && crossReturn.operator===null,
+  '返程缺口展示反方向历史追查材料，保持本段无证据和运营方未知');
 console.log('✓ 景点比较与时间预算回归通过（'+count+' 项）');
