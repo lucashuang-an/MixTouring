@@ -306,7 +306,7 @@
     }
     buildAnchorForms();
     MTSights.init(document.getElementById('sightContent'), function () {
-      return { plan_id:activePlan && activePlan.plan_id, anchors:anchors, constraints:collectConstraints() };
+      return { plan_id:activePlan && activePlan.plan_id, destination:activePlan && activePlan.intent && activePlan.intent.destination_place && activePlan.intent.destination_place.name || lastRequest && lastRequest.destination, anchors:anchors, constraints:collectConstraints() };
     }, function () { rememberSession(); });
 
     function guideSnapshot() {

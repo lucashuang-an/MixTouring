@@ -360,7 +360,8 @@ app.use(async (ctx, next) => {
     const body = await readBody(ctx) || {};
     const plan = guidePlanFromId(body.plan_id);
     ctx.body = { code: 0, data: { catalog: sightCatalog(), comparison: compareSights({
-      state: body.state, anchors:Object.prototype.hasOwnProperty.call(body,'anchors')?body.anchors:plan?.anchors,
+      state: body.state, destination:Object.prototype.hasOwnProperty.call(body,'destination')?body.destination:plan?.intent?.destination_place?.name,
+      anchors:Object.prototype.hasOwnProperty.call(body,'anchors')?body.anchors:plan?.anchors,
       constraints:Object.prototype.hasOwnProperty.call(body,'constraints')?body.constraints:plan?.intent?.constraints
     }) } };
     return;

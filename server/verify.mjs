@@ -306,7 +306,7 @@ async function main() {
   const caps = await (await fetch(BASE + '/api/capabilities')).json();
   if (caps.code === 0 && typeof caps.data.web_search_configured === 'boolean' &&
     ['available', 'quota_exhausted', 'timeout', 'error', 'unknown'].includes(caps.data.web_search_status) &&
-    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.46.0') {
+    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.47.0') {
     console.log('✓ /api/capabilities P1-4：configured 与最近真实状态分开（web_search_configured=' +
       caps.data.web_search_configured + ', status=' + caps.data.web_search_status + '），版本拆分对齐');
   } else { failed++; console.error('✗ /api/capabilities 形状异常：' + JSON.stringify(caps).slice(0, 200)); }
@@ -403,6 +403,12 @@ async function main() {
   const cleared=await (await fetch(BASE+'/api/anywhere/sights',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({plan_id:lockedPlan.data?.plan_id,anchors:null,constraints:{},state:{full_days:2}})})).json();
   if(cleared.data?.comparison.window.full_days_bounds===null && !cleared.data.comparison.no_self_drive && !cleared.data.comparison.window.notes.some((n)=>n.includes('住宿'))) console.log('✓ 景点接口显式撤销锚点和约束不从旧 plan_id 复活');
   else {failed++;console.error('✗ 景点接口撤销锚点异常');}
+  const accessResponse=await (await fetch(BASE+'/api/anywhere/sights',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({plan_id:lockedPlan.data?.plan_id,
+    destination:'阿拉木图',anchors:{return:{mode:'plane',date:'2026-10-08',from_city:'乌鲁木齐',to_city:'北京'}},state:{selected_ids:['qiongkushitai']}})})).json();
+  const checklist=accessResponse.data?.comparison.access_checklist;
+  if(checklist?.rows.some(r=>r.id==='destination-to-return' && r.from==='阿拉木图' && r.to==='乌鲁木齐') && checklist.executable===false &&
+    checklist.rows.every(r=>r.fare===null && r.duration_minutes===null) && !cleared.data.comparison.access_checklist.return_anchor) console.log('✓ 接驳清单保留目的地至返程城市缺口，未知费用和耗时不记零');
+  else {failed++;console.error('✗ 接驳核验清单遗漏返程缺口或误填事实');}
   console.log(failed ? `\n✗ ${failed} 项不一致` : '\n✓ 全部接口与 mock.js 派生结果一致');
   process.exit(failed ? 1 : 0);
 }

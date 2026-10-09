@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { assessSightWindow } from './sight-window.mjs';
 import { sightAccess } from './sight-access.mjs';
 import { buildTravelIntent } from './anywhere.mjs';
+import { accessChecklist } from './access-checklist.mjs';
 const DATA = JSON.parse(readFileSync(new URL('../../pipeline/data/attractions.json', import.meta.url), 'utf8'));
 const BY_ID = new Map(DATA.attractions.map((a) => [a.id, a]));
 const DEFAULT_IDS = ['nalati', 'kalajun', 'xiata', 'kuerdening'];
@@ -76,15 +77,17 @@ export function compareSights(input = {}, nowMs=Date.now()) {
       (p.same_county ? '同属一个县，便于从同一县城核查接驳；不代表已有直达交通。' : '分属不同地区，跨区接驳和路上耗时仍需核查。') +
       p.ids.filter((id)=>access[id].public_note).map((id)=>access[id].public_note).join(''),
     evidence_state:'explore', travel_time_hours:null }));
+  const comparisons = selected.map((a) => ({...a,visit_hours:state.visit_hours[a.id],travel_time_hours:null,access:access[a.id],
+    no_car_access:access[a.id].no_car_access,travel_note:'本次道路耗时、候车与景区接驳时间待核查；原方式资料参考不能替代本次交通查询。'}));
   return { state, evidence_state:'explore', no_self_drive:noCar, window,
+    access_checklist:accessChecklist({state,comparisons,anchors:input.anchors,constraints:input.constraints,destination:input.destination}),
     budget:{available_hours:available,visit_hours:visitTotal,remaining_hours:available-visitTotal,travel_hours:null,
       basis:'游玩预留时间为可调整的规划预算，默认每处预留六小时；不是实测最短游览时长。完整游玩日不包含已锁定交通日，须由你确认。'},
     status:window.issues.length?'window_conflict':conflict ? 'budget_conflict' : selected.length ? 'transport_pending' : 'empty',
     message:window.issues.length?'游玩设置与锁定交通窗口冲突，请修正日期或天数；锚点不会自动移动。':conflict ? '仅游玩预留时间已超过可用预算。请删减景点或增加时间，接驳还需额外占时。'
       : selected.length ? '游玩预算可容纳当前选择，但路上耗时、候车和景区接驳未核实，暂不能判定可完成。' : '选择想比较的景点。',
     minimum_budget_days:Math.ceil(visitTotal/state.day_hours), options,
-    comparisons:selected.map((a) => ({...a,visit_hours:state.visit_hours[a.id],travel_time_hours:null,access:access[a.id],
-      no_car_access:access[a.id].no_car_access,travel_note:'本次道路耗时、候车与景区接驳时间待核查；原方式资料参考不能替代本次交通查询。'})),
+    comparisons,
     warnings:['资料来源只支持历史景观与位置，不代表本次日期开放或客运运营。',
       ...(noCar ? ['已保留不开车条件：只列公共交通和景区接驳待查项，不能将自驾线路视为无车可达。'] : []),
       ...(selected.some((a) => state.visit_hours[a.id] < 4) ? ['游玩预留较短，可能只能走局部范围；这仍不能证明接驳可行。'] : [])] };

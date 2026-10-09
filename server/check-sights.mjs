@@ -99,4 +99,23 @@ check(clearTurn.sights.play_window===null && Object.keys(clearTurn.travel).lengt
 const lodgingTurn=parseGuideTurn('2026年9月30日住伊宁',fixedNow);
 check(lodgingTurn.constraints.lodging_stays[0].date==='2026-09-30' && !lodgingTurn.travel.outbound_window,
   '住宿日期保留明确年份，不改写去程出发窗口');
+const checklist=compareSights({state:{...period,selected_ids:['qiongkushitai']},anchors:crossing,destination:'阿拉木图',constraints:{no_self_drive:true, lodging_stays:[{date:'2026-10-01',city:'伊宁'},{date:'2026-09-30',city:'伊宁'}]}},fixedNow).access_checklist;
+check(checklist.rows.some(r=>r.id==='destination-to-return' && r.from==='阿拉木图' && r.to==='乌鲁木齐' && r.date_window===null),
+  '独立列出目的地至返程城市缺口，不把返程日当接驳出发日');
+check(checklist.rows.some(r=>r.id==='arrival-to-base' && r.from==='阿拉木图' && r.to==='伊宁') && checklist.rows.some(r=>r.id==='base-to-destination'),
+  '游玩地区不同于锁定到达城及目的地时列两端缺口');
+const forward=checklist.rows.find(r=>r.from==='特克斯县客运站' && r.to==='琼库什台村');
+const reverse=checklist.rows.find(r=>r.from==='琼库什台村' && r.to==='特克斯县客运站');
+check(forward.references.length===1 && reverse.references.length===0, '公交报道仅附在相同方向及两端，不反转充当返程依据');
+check(checklist.rows.every(r=>r.duration_minutes===null && r.fare===null && r.operator===null && r.applicable_dates===null) && checklist.executable===false,
+  '线索不填本次运营、时长和费用，不升级可执行');
+check(checklist.rows.some(r=>r.purpose.includes('返回住宿地') && r.date_window==='2026-10-01 ~ 2026-10-01'),
+  '住宿接驳保留日期并明确尚未分配景点日');
+check(!checklist.rows.some(r=>r.purpose.includes('返回住宿地') && r.date_window==='2026-09-30 ~ 2026-09-30'),
+  '住宿日期在明确游玩窗口之外，不生成该日景点返住宿查询');
+const emptyChecklist=compareSights({state:{selected_ids:[]},destination:'伊宁',anchors:{...lock,return:{...lock.return,from_city:'伊宁'}}}).access_checklist;
+check(emptyChecklist.rows.length===0, '不选景点且返程贴目的地时不制造查询路段');
+const missingChecklist=compareSights({state:{selected_ids:['xiata']}}).access_checklist;
+check(missingChecklist.missing_context.length===2 && missingChecklist.rows.every(r=>r.date_window===null),
+  '目的地与返程未识别时明示缺口，日期不猜测');
 console.log('✓ 景点比较与时间预算回归通过（'+count+' 项）');

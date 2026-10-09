@@ -9,12 +9,12 @@
   function remember() { if (onChange) onChange(); }
   function refresh(force) {
     if (!box) return;
-    var ctx = context(), key = JSON.stringify({state:state,constraints:ctx.constraints,anchors:ctx.anchors,plan_id:ctx.plan_id});
+    var ctx = context(), key = JSON.stringify({state:state,constraints:ctx.constraints,anchors:ctx.anchors,plan_id:ctx.plan_id,destination:ctx.destination});
     if (!force && key === cacheKey) return;
     cacheKey = key;
     var token = ++sequence;
     fetch('/api/anywhere/sights', { method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({state:state,constraints:ctx.constraints,anchors:ctx.anchors,plan_id:ctx.plan_id}) })
+      body:JSON.stringify({state:state,constraints:ctx.constraints,anchors:ctx.anchors,plan_id:ctx.plan_id,destination:ctx.destination}) })
       .then(function (r) { if (!r.ok) throw Error('查询失败'); return r.json(); })
       .then(function (r) {
         if (token !== sequence) return;
@@ -76,6 +76,16 @@
       if(a.access.season) details+='<p>'+esc(a.access.season.note)+'</p><a href="'+esc(a.access.season.source.url)+'" target="_blank" rel="noopener noreferrer">季节资料：'+esc(a.access.season.source.title)+'</a>';
       return '<article><h3>'+esc(a.name)+'</h3><p>'+esc(a.landscape)+'</p><p>所在县区：'+esc(a.county)+'</p><p>游玩预留：'+a.visit_hours+' 小时（可调整）</p><p>'+esc(a.travel_note)+'</p>'+details+'<p>'+esc(a.season_note)+'</p><p>'+(data.no_self_drive?'不开车：':'接驳：')+'可达性待核查</p>'+(a.access.public_note?'<p>'+esc(a.access.public_note)+'</p>':'')+'<ul>'+a.access_questions.map(function (q) {return '<li>'+esc(q)+'</li>';}).join('')+'</ul><a href="'+esc(a.source.url)+'" target="_blank" rel="noopener noreferrer">'+esc(a.source.title)+'</a><p class="sight-muted">历史景观资料 · 发布于 '+esc(a.source.published_at)+'</p></article>';
     }).join('')+'</div><ul class="sight-muted">'+data.warnings.map(function (w) {return '<li>'+esc(w)+'</li>';}).join('')+'</ul>';
+    var checklist=data.access_checklist;
+    if (checklist) {
+      html += '<details id="accessChecklist"><summary>逐段接驳核验清单</summary><p>'+esc(checklist.basis)+'</p>';
+      if (checklist.return_anchor) html+='<p>需衔接你锁定的返程：'+esc(checklist.return_anchor.from_city)+' · '+esc(checklist.return_anchor.date)+' · '+esc(checklist.return_anchor.depart_time || '出发时刻未填')+'（当地时间）；接驳应预留余量，尚未确定出发日期。</p>';
+      html+='<ul>'+checklist.missing_context.map(function (n) {return '<li>'+esc(n)+'</li>';}).join('')+'</ul><div class="sight-grid">'+checklist.rows.map(function (row) {
+        return '<article><h3>'+esc(row.from)+' → '+esc(row.to)+'</h3><p>'+esc(row.purpose)+'</p><p>计划日期范围：'+esc(row.date_window || '待定')+' · 本次班次、耗时和费用未知</p><p>'+esc(row.query)+'</p><ul>'+row.missing.map(function (m) {return '<li>'+esc(m)+'</li>';}).join('')+'</ul>'+row.references.map(function (r) {
+          return '<a href="'+esc(r.source.url)+'" target="_blank" rel="noopener noreferrer">资料线索：'+esc(r.source.title)+'</a><p>发布 '+esc(r.source.published_at)+' · 采样 '+esc(r.source.sampled_at)+' · '+esc({source_lead:'来源线索',stale:'待重新核对',unsupported:'来源时间异常',historical:'历史参考'}[r.evidence_state])+'；不代表本次运营</p>';
+        }).join('')+'</article>';
+      }).join('')+'</div></details>';
+    }
     box.innerHTML = html;
     document.getElementById('sightForm').onsubmit = function (e) {
       e.preventDefault(); var next = copy(state);
