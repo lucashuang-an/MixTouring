@@ -6,7 +6,8 @@ import { sightAccess, validAccessReference } from './lib/sight-access.mjs';
 import { transportReferences, validTransportReference } from './lib/transport-references.mjs';
 let count = 0;
 function check(value, label) {assert.ok(value,label);count++;console.log('✓ '+label);}
-const four = compareSights();
+const fourState={selected_ids:['nalati','kalajun','xiata','kuerdening']};
+const four = compareSights({state:fourState});
 check(four.status==='budget_conflict' && four.budget.visit_hours===24 && four.budget.available_hours===16,
   '四处完整游玩预算超过两天，不生成赶路时刻表');
 check(four.options.length===3 && four.options.every((o)=>o.selected_ids.length===2 && o.evidence_state==='explore'),
@@ -28,8 +29,8 @@ check(normalizeSightState({selected_ids:['nalati','nalati','月球景区']}).sel
 const source = sightCatalog(); source.attractions[0].source.url='https://example.org/fake';
 check(sightCatalog().attractions[0].source.url.includes('gov.cn'),'客户端来源修改不污染目录');
 const defaultState = normalizeSightState(); defaultState.selected_ids.pop();
-const response = compareSights(); response.comparisons[0].source.url='https://example.org/fake';
-check(normalizeSightState().selected_ids.length===4 && compareSights().comparisons[0].source.url.includes('gov.cn'),
+const response = compareSights({state:fourState}); response.comparisons[0].source.url='https://example.org/fake';
+check(normalizeSightState().selected_ids.length===0 && compareSights({state:fourState}).comparisons[0].source.url.includes('gov.cn'),
   '比较响应与默认选择互不污染，后续请求仍读原始目录');
 check(sightCatalog().attractions.length===7 && sightCatalog().attractions.every((a)=>a.source.evidence_state==='historical'),
   '七处景点保留原始来源和历史分级');
@@ -47,6 +48,8 @@ const input = {state:{selected_ids:['nalati','xiata'],full_days:2},anchors:{outb
 const before = structuredClone(input); compareSights(input);
 assert.deepEqual(input,before);check(true,'景点比较不改锚点、住宿或用户输入');
 const fixedNow=Date.parse('2026-10-09T04:00:00Z');
+check(compareSights().status==='empty' && compareSights().budget.visit_hours===0,'默认未选景点，不替用户制造预算冲突');
+check(compareSights({relevant:false,state:fourState,destination:'昆明'}).comparisons.length===0,'无关行程不派生伊犁景点比较');
 const publicLead=sightAccess('qiongkushitai','琼库什台',fixedNow);
 check(publicLead.no_car_access==='source_lead' && publicLead.travel_time_hours===null && publicLead.components.every((c)=>c.duration_minutes===null),
   '线路车报道只作为线索，候车与本次总时长仍未知');

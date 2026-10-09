@@ -6,7 +6,7 @@ import { buildTravelIntent } from './anywhere.mjs';
 import { accessChecklist } from './access-checklist.mjs';
 const DATA = JSON.parse(readFileSync(new URL('../../pipeline/data/attractions.json', import.meta.url), 'utf8'));
 const BY_ID = new Map(DATA.attractions.map((a) => [a.id, a]));
-const DEFAULT_IDS = ['nalati', 'kalajun', 'xiata', 'kuerdening'];
+const DEFAULT_IDS = [];
 const THEMES = new Set(['不限', ...DATA.attractions.map((a) => a.theme)]);
 export function sightCatalog() { return structuredClone(DATA); }
 
@@ -14,7 +14,7 @@ export function normalizeSightState(raw = {}) {
   if (!raw || typeof raw !== 'object') raw = {};
   const ids = Array.isArray(raw.selected_ids) ? [...new Set(raw.selected_ids.filter((id) => BY_ID.has(id)))] : [...DEFAULT_IDS];
   const integer = (v, fallback, min, max) => Number.isInteger(Number(v)) && Number(v) >= min && Number(v) <= max ? Number(v) : fallback;
-  return { selected_ids: ids, full_days: integer(raw.full_days, 2, 1, 14),
+  return { selected_ids: ids, requested:raw.requested===true, full_days: integer(raw.full_days, 2, 1, 14),
     day_hours: integer(raw.day_hours, 8, 4, 12), preference: THEMES.has(raw.preference) ? raw.preference : '不限',
     play_window: typeof raw.play_window==='string' && raw.play_window.length<=23 ? raw.play_window : null,
     visit_hours: Object.fromEntries(ids.map((id) => [id, integer(raw.visit_hours?.[id], 6, 1, 12)])) };
@@ -56,7 +56,9 @@ export function parseSightChange(text, nowMs=Date.now()) {
 }
 
 export function compareSights(input = {}, nowMs=Date.now()) {
-  const state = normalizeSightState(input.state), selected = state.selected_ids.map((id) => structuredClone(BY_ID.get(id)));
+  const state = normalizeSightState(input.state);
+  if (input.relevant === false) state.selected_ids = [];
+  const selected = state.selected_ids.map((id) => structuredClone(BY_ID.get(id)));
   const available = state.full_days * state.day_hours;
   const visitTotal = selected.reduce((sum, a) => sum + state.visit_hours[a.id], 0);
   const conflict = visitTotal > available;
@@ -74,18 +76,17 @@ export function compareSights(input = {}, nowMs=Date.now()) {
     names:p.ids.map((id) => BY_ID.get(id).name),
     reason:(p.preferred ? '包含你偏好的' + state.preference + '；' : '') +
       (p.diversity ? '两处主要景观不同，减少重复体验。' : '两处景观接近，适合集中比较同类景观。') +
-      (p.same_county ? '同属一个县，便于从同一县城核查接驳；不代表已有直达交通。' : '分属不同地区，跨区接驳和路上耗时仍需核查。') +
-      p.ids.filter((id)=>access[id].public_note).map((id)=>access[id].public_note).join(''),
+      (p.same_county ? '同属一个县，可以集中安排；当地接驳待补。' : '分属不同地区，跨区交通需额外安排。'),
     evidence_state:'explore', travel_time_hours:null }));
   const comparisons = selected.map((a) => ({...a,visit_hours:state.visit_hours[a.id],travel_time_hours:null,access:access[a.id],
     no_car_access:access[a.id].no_car_access,travel_note:'本次道路耗时、候车与景区接驳时间待核查；原方式资料参考不能替代本次交通查询。'}));
-  return { state, evidence_state:'explore', no_self_drive:noCar, window,
+  return { state, relevant:input.relevant !== false, evidence_state:'explore', no_self_drive:noCar, window,
     access_checklist:accessChecklist({state,comparisons,anchors:input.anchors,constraints:input.constraints,destination:input.destination},nowMs),
     budget:{available_hours:available,visit_hours:visitTotal,remaining_hours:available-visitTotal,travel_hours:null,
       basis:'游玩预留时间为可调整的规划预算，默认每处预留六小时；不是实测最短游览时长。完整游玩日不包含已锁定交通日，须由你确认。'},
     status:window.issues.length?'window_conflict':conflict ? 'budget_conflict' : selected.length ? 'transport_pending' : 'empty',
-    message:window.issues.length?'游玩设置与锁定交通窗口冲突，请修正日期或天数；锚点不会自动移动。':conflict ? '仅游玩预留时间已超过可用预算。请删减景点或增加时间，接驳还需额外占时。'
-      : selected.length ? '游玩预算可容纳当前选择，但路上耗时、候车和景区接驳未核实，暂不能判定可完成。' : '选择想比较的景点。',
+    message:window.issues.length?'游玩日期与已定交通冲突，请调整日期或天数。':conflict ? '这些景点超出游玩预算，建议少选几处或多留一天。'
+      : selected.length ? '已保留这些景点，交通安排还需补齐。' : '先选你感兴趣的景点，再一起安排。',
     minimum_budget_days:Math.ceil(visitTotal/state.day_hours), options,
     comparisons,
     warnings:['资料来源只支持历史景观与位置，不代表本次日期开放或客运运营。',

@@ -21,6 +21,7 @@ import { planAnywhere } from './lib/anywhere.mjs';
 import { registerJourneyPlan, journeyDetailFromPlanId, guidePlanFromId } from './lib/journey.mjs';
 import { webSearchStatus } from './lib/llm.mjs';
 import { parseGuideTurn } from './lib/guide.mjs';
+import planningGuide from '../mixtouring-hifi/assets/trip-guide.js';
 import { sightCatalog, compareSights } from './lib/sights.mjs';
 import { progressivePlan } from './lib/progressive.mjs';
 import { listInspirations } from './lib/inspirations.mjs';
@@ -351,7 +352,7 @@ app.use(async (ctx, next) => {
   }
   if (path === '/api/anywhere/guide' && ctx.method === 'POST') {
     const body = await readBody(ctx) || {};
-    ctx.body = { code: 0, data: parseGuideTurn(body.text, Date.now(), guidePlanFromId(body.plan_id), body.candidate_id) };
+    ctx.body = { code: 0, data: parseGuideTurn(body.text, Date.now(), guidePlanFromId(body.plan_id), body.candidate_id, {preferences:body.preferences,sights:body.sights,sight_requested:body.sight_requested}) };
     return;
   }
 
@@ -360,7 +361,8 @@ app.use(async (ctx, next) => {
     const body = await readBody(ctx) || {};
     const plan = guidePlanFromId(body.plan_id);
     ctx.body = { code: 0, data: { catalog: sightCatalog(), comparison: compareSights({
-      state: body.state, destination:Object.prototype.hasOwnProperty.call(body,'destination')?body.destination:plan?.intent?.destination_place?.name,
+      state: body.state, relevant:planningGuide.sightRelevant(plan,body.sight_requested===true?'伊犁':body.destination) || (!plan && !body.destination),
+      destination:Object.prototype.hasOwnProperty.call(body,'destination')?body.destination:plan?.intent?.destination_place?.name,
       anchors:Object.prototype.hasOwnProperty.call(body,'anchors')?body.anchors:plan?.anchors,
       constraints:Object.prototype.hasOwnProperty.call(body,'constraints')?body.constraints:plan?.intent?.constraints
     }) } };

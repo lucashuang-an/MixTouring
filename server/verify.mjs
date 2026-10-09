@@ -306,7 +306,7 @@ async function main() {
   const caps = await (await fetch(BASE + '/api/capabilities')).json();
   if (caps.code === 0 && typeof caps.data.web_search_configured === 'boolean' &&
     ['available', 'quota_exhausted', 'timeout', 'error', 'unknown'].includes(caps.data.web_search_status) &&
-    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.48.0') {
+    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.49.0') {
     console.log('✓ /api/capabilities P1-4：configured 与最近真实状态分开（web_search_configured=' +
       caps.data.web_search_configured + ', status=' + caps.data.web_search_status + '），版本拆分对齐');
   } else { failed++; console.error('✗ /api/capabilities 形状异常：' + JSON.stringify(caps).slice(0, 200)); }
@@ -380,7 +380,7 @@ async function main() {
     else { failed++; console.error('✗ 渐进灵感详情契约不一致'); }
   } else { failed++; console.error('✗ 路线灵感或渐进输出契约不一致'); }
   const sightResponse = await (await fetch(BASE + '/api/anywhere/sights', { method:'POST', headers:{'content-type':'application/json'},
-    body:JSON.stringify({state:{full_days:2},constraints:{no_self_drive:true}}) })).json();
+    body:JSON.stringify({state:{full_days:2,selected_ids:['nalati','kalajun','xiata','kuerdening']},constraints:{no_self_drive:true}}) })).json();
   const sightData = sightResponse.data;
   if (sightResponse.code===0 && sightData.catalog.attractions.length===7 && sightData.comparison.status==='budget_conflict' &&
       sightData.comparison.no_self_drive && sightData.comparison.budget.travel_hours===null) {
@@ -414,6 +414,12 @@ async function main() {
   if(toDestination?.references.some(r=>r.id==='yin-ala-air' && r.reported_operator) && toDestination.operator===null &&
       toReturn?.references.length===0 && toReturn.opposite_references.some(r=>r.id==='urc-ala-road')) console.log('✓ 策展方向资料接入接口，反方向报道与本次运营方隔离');
   else {failed++;console.error('✗ 策展方向资料与本次事实混淆');}
+  const unrelated=await (await fetch(BASE+'/api/anywhere/sights',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({destination:'昆明',state:{selected_ids:['xiata']}})})).json();
+  const initial=await (await fetch(BASE+'/api/anywhere/sights',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({destination:'伊宁'})})).json();
+  const recommendation=await (await fetch(BASE+'/api/anywhere/guide',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({plan_id:lockedPlan.data?.plan_id,text:'只去两个景点，轻松一些',sights:{selected_ids:[]}})})).json();
+  if(unrelated.data?.comparison.relevant===false && unrelated.data.comparison.comparisons.length===0 &&
+    initial.data?.comparison.status==='empty' && recommendation.data?.sights.selected_ids.length===2) console.log('✓ 无关行程不出伊犁景点，默认不制造冲突，自然追问可推荐两处');
+  else {failed++;console.error('✗ 景点上下文或自然推荐异常');}
   console.log(failed ? `\n✗ ${failed} 项不一致` : '\n✓ 全部接口与 mock.js 派生结果一致');
   process.exit(failed ? 1 : 0);
 }

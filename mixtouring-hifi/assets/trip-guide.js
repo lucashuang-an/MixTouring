@@ -12,7 +12,7 @@
   }
   function parse(text) {
     var t = String(text || ''), patch = {}, notes = [];
-    if (/省心|少折腾|尽快到|优先直达|直接到|不想绕路|只看直达|只要直达/.test(t)) patch.pace = 'simple';
+    if (/省心|轻松|少折腾|尽快到|优先直达|直接到|不想绕路|只看直达|只要直达/.test(t)) patch.pace = 'simple';
     if (/只看直达|只要直达/.test(t)) notes.push('当前会把直达方向排在前面，仍保留其他走法供比较。');
     if (/沿途|顺路玩|多玩|愿意停|可以停|想停|想绕/.test(t)) patch.pace = 'explore';
     if (/都看看|都可以|先看全部|取消偏好|重新比较/.test(t)) patch.pace = 'any';
@@ -79,7 +79,18 @@
   function routeKey(c) {
     return JSON.stringify((c && c.legs || []).map(function (l) { return [l.from, l.to, l.mode_guess || '?', l.via || '']; }));
   }
-  var api = { clean: clean, parse: parse, summary: summary, question: question, rank: rank, routeKey: routeKey };
+  function sightRelevant(plan, text) {
+    var names = [plan && plan.intent && plan.intent.origin, plan && plan.intent && plan.intent.destination];
+    (plan && plan.candidates || []).forEach(function(c) {(c.legs || []).forEach(function(l) {names.push(l.from,l.to);});});
+    if (plan && plan.anchors) ['outbound','return'].forEach(function(k) {var a=plan.anchors[k];if(a) names.push(a.from_city,a.to_city);});
+    return /伊犁|伊宁|昭苏|特克斯|巩留|那拉提|喀拉峻|夏塔|库尔德宁|赛里木湖|恰西|琼库什台/.test(names.join(' ')+' '+(text || ''));
+  }
+  function reason(c) {
+    if(c.kind==='direct') return '适合想省心抵达的人，先从直达开始比较。';
+    var hub=c.legs[0].to, end=c.legs[c.legs.length-1].to;
+    return '把'+hub+'也加入旅行，再前往'+end+'。'+(c.kind==='mixed'?'适合愿意尝试铁路与航班组合的人。':'适合愿意在途中多留一站的人。');
+  }
+  var api = { clean: clean, parse: parse, summary: summary, question: question, rank: rank, routeKey: routeKey, sightRelevant:sightRelevant,reason:reason };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.MTGuide = api;
 })(typeof window !== 'undefined' ? window : globalThis);

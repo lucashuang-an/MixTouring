@@ -2,6 +2,14 @@
 import { readFileSync } from 'node:fs';
 import { buildServiceDB } from '../../pipeline/lib/derive.mjs';
 const data = new URL('../../pipeline/data/', import.meta.url);
+const EDITORIAL = {
+  'tpl-001':'在银川停一站，再经阿克苏继续到喀什，把铁路与航班分成不同阶段。',
+  'tpl-002':'在兰州暂停一下，把前往乌鲁木齐的铁路旅程分成两段。',
+  'tpl-003':'去昆明之前，先把贵阳留作另一座想逛的城市。',
+  'tpl-004':'先在海口停留，再研究沿铁路继续到三亚的安排。',
+  'tpl-005':'把沈阳和哈尔滨放进同一次旅程，给中途停留留出空间。',
+  'tpl-006':'先到西宁，再探索铁路进拉萨的方向，中途停留可以独立安排。'
+};
 
 export function listInspirations() {
   const store = JSON.parse(readFileSync(new URL('plans.json', data), 'utf8'));
@@ -9,8 +17,8 @@ export function listInspirations() {
     id: t.id, scope: 'domestic', from: t.from, to: t.to,
     stops: t.stops.map((s) => s.name), modes: t.segs.map((s) => s.mode === 'train' ? 'rail' : 'plane'),
     title: '经' + t.stops.slice(1, -1).map((s) => s.name).join('、') + '慢慢抵达',
-    reason: '把途中城市留作可选停留，比较不同交通组合。',
-    tradeoff: '换乘与接驳增加；历史组合需按本次日期重新查询。',
+    reason: EDITORIAL[t.id] || '把'+t.stops.slice(1,-1).map(s=>s.name).join('、')+'也加入旅行，再继续前往'+t.to+'。',
+    tradeoff: '需要在'+t.stops.slice(1,-1).map(s=>s.name).join('、')+'安排换乘'+(new Set(t.segs.map(s=>s.mode)).size>1?'，并衔接铁路与航班':'，适合愿意把旅程分段的人')+'。',
     evidence_state: 'historical', preferences: { pace: 'explore' },
     sources: [{ title: '库内历史路线结构，班期与费用不作当期依据', link: null }]
   }));

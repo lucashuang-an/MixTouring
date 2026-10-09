@@ -311,12 +311,14 @@
           '<div style="font-size:12px;color:var(--mixtouring-muted-foreground,#7C8089);margin-top:4px;line-height:1.7;">' + MT.esc(summary.join(' · ')) + ' · ' + d.versions.length + ' 个版本</div>' +
           (d.corrupted_version_count ? '<div style="font-size:11.5px;color:#A16207;margin-top:4px;">另有 ' + d.corrupted_version_count + ' 个版本损坏，原始记录已保留；其他版本仍可恢复。</div>' : '') +
           '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">' +
-          '<button type="button" class="btnDraftOpen" data-id="' + MT.esc(d.id) + '" style="min-height:40px;padding:8px 14px;border:1px solid var(--mixtouring-ring,#C86A4B);border-radius:9px;background:#fff;color:var(--mixtouring-ring,#C86A4B);font-family:inherit;font-size:12.5px;cursor:pointer;">版本与恢复</button>' +
+          '<button type="button" class="btnDraftContinue" data-id="' + MT.esc(d.id) + '" style="min-height:44px;padding:8px 14px;border:0;border-radius:9px;background:var(--mixtouring-primary);color:#fff;font-family:inherit;cursor:pointer;">继续规划</button>' +
+          '<button type="button" class="btnDraftOpen" data-id="' + MT.esc(d.id) + '" style="min-height:44px;padding:8px 14px;border:1px solid var(--mixtouring-border,#E5E7EB);border-radius:9px;background:#fff;font-family:inherit;font-size:12.5px;cursor:pointer;">历史版本</button>' +
           '<button type="button" class="btnDraftRename" data-id="' + MT.esc(d.id) + '" style="min-height:40px;padding:8px 14px;border:1px solid var(--mixtouring-border,#E5E7EB);border-radius:9px;background:#fff;font-family:inherit;font-size:12.5px;cursor:pointer;">重命名</button>' +
           '<button type="button" class="btnDraftDel" data-id="' + MT.esc(d.id) + '" style="min-height:40px;padding:8px 14px;border:1px solid #E5B4B4;border-radius:9px;background:#fff;color:#A8543A;font-family:inherit;font-size:12.5px;cursor:pointer;">删除</button>' +
           '</div><div class="draftDetail" style="display:none;margin-top:12px;"></div></div>';
       });
       wrap.innerHTML = html;
+      wrap.querySelectorAll('.btnDraftContinue').forEach(function(btn){btn.onclick=function(){var d=MTDrafts.get(btn.getAttribute('data-id'));if(d && d.versions.length) restoreDraft(d.id,d.versions[d.versions.length-1].vid);};});
       wrap.querySelectorAll('.btnDraftOpen').forEach(function (btn) {
         btn.addEventListener('click', function () { toggleDraftDetail(btn.getAttribute('data-id')); });
       });
@@ -364,10 +366,10 @@
           '<div style="font-size:12.5px;">版本 ' + v.version + ' · ' + MT.esc(savedDate(v.saved_at)) + ' · ' + MT.esc(sum.join(' · ')) + '</div>' +
           (s.confirmed_note && (s.confirmed_note.origin || s.confirmed_note.destination)
             ? '<div style="font-size:11.5px;color:#A16207;margin-top:3px;">保存时含开放地点确认——恢复时须重新核验确认。</div>' : '') +
-          '<button type="button" class="btnDraftRestore" data-id="' + MT.esc(d.id) + '" data-vid="' + MT.esc(v.vid) + '" style="min-height:40px;margin-top:6px;padding:7px 14px;border:1px solid var(--mixtouring-ring,#C86A4B);border-radius:9px;background:#fff;color:var(--mixtouring-ring,#C86A4B);font-family:inherit;font-size:12px;cursor:pointer;">恢复此版本（重新规划）</button>' +
+          '<button type="button" class="btnDraftRestore" data-id="' + MT.esc(d.id) + '" data-vid="' + MT.esc(v.vid) + '" style="min-height:44px;margin-top:6px;padding:7px 14px;border:1px solid var(--mixtouring-ring,#C86A4B);border-radius:9px;background:#fff;color:var(--mixtouring-ring,#C86A4B);font-family:inherit;font-size:12px;cursor:pointer;">从此版本继续</button>' +
           '</div>';
       });
-      html += '<div style="font-size:11.5px;color:var(--mixtouring-muted-foreground,#7C8089);margin-top:8px;line-height:1.6;">恢复＝回填输入并按当前供给重新规划：开放地点会重新核验并要求确认；若原走法已无等价候选，会保留旧摘要供对照并提示重新选择。</div>';
+      html += '<div style="font-size:11.5px;color:var(--mixtouring-muted-foreground,#7C8089);margin-top:8px;line-height:1.6;">继续时保留你的安排，并更新路线信息。</div>';
       box.innerHTML = html;
       box.style.display = 'block';
       box.querySelectorAll('.btnDraftRestore').forEach(function (btn) {

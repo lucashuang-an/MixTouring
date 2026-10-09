@@ -2,14 +2,21 @@
 import guide from '../../mixtouring-hifi/assets/trip-guide.js';
 import { buildTravelIntent, extractConstraints, extractReturnDate, extractLodgingStays } from './anywhere.mjs';
 import { loadPlaces } from './trip-service.mjs';
-import { parseSightChange } from './sights.mjs';
+import { parseSightChange, compareSights, sightCatalog } from './sights.mjs';
 
 const CITY_NAMES = loadPlaces().filter((p) => p.kind === 'city').map((p) => p.name);
 
-function answerRouteQuestion(text, plan, selectedCandidateId) {
+function answerRouteQuestion(text, plan, selectedCandidateId, preferences) {
   const candidates = plan?.candidates || [];
   if (!candidates.length) return null;
   const selected = candidates.find((c) => c.id === selectedCandidateId);
+  if (/推荐|选哪|哪条好|怎么选|比较一下/.test(text) && !/为什么|为何|依据|来源/.test(text)) {
+    const choice=guide.rank(candidates,preferences).items[0]?.candidate;
+    if (!choice) return '当前条件下没有合适走法。要不要先放宽交通方式，再比较？';
+    const path=choice.legs.map(l=>l.from).concat(choice.legs.at(-1).to).join(' → ');
+    return '建议先看 '+path+'。'+(choice.kind==='direct'?'不用换乘，安排更省心。':
+      '可以在'+choice.legs[0].to+'停留，把途中城市也加入旅行。')+'具体交通安排见详情。';
+  }
   if (/(?:班次|航班号|车次|票价|多少钱|价格|能买|能订|能成行)/.test(text)) {
     return '当前只有路线探索线索，尚无这条走法指定日期的逐段班次、价格和衔接证据。打开走法详情可按清单逐段核对。';
   }
@@ -39,12 +46,21 @@ function answerRouteQuestion(text, plan, selectedCandidateId) {
   return null;
 }
 
-export function parseGuideTurn(text, nowMs = Date.now(), plan = null, selectedCandidateId = null) {
+export function parseGuideTurn(text, nowMs = Date.now(), plan = null, selectedCandidateId = null, context = {}) {
   const t = String(text || '').trim().slice(0, 500);
   const preferences = guide.parse(t);
   const parsed = buildTravelIntent(t, null, nowMs);
   const travel = {}, constraints = extractConstraints(t), labels = guide.summary(preferences.patch);
   const sightChange = parseSightChange(t,nowMs);
+  let suggestion=null;
+  if (/(?:推荐|只去|只选|保留|少选).*(?:两|二|2|几个).*(?:景点|处)|(?:两|二|2)个景点/.test(t) && !/为什么|为何|依据|来源|不用推荐|不要推荐/.test(t) && !sightChange.patch.selected_ids) {
+    if (guide.sightRelevant(plan,t) || context.sight_requested === true) {
+      const ids=context.sights?.selected_ids?.length>=2?context.sights.selected_ids:sightCatalog().attractions.map(a=>a.id);
+      const comparison=compareSights({state:{...context.sights,selected_ids:ids},constraints:{...plan?.intent?.constraints,...extractConstraints(t)}},nowMs);
+      const pair=comparison.options[0];
+      if (pair) {sightChange.patch.selected_ids=pair.selected_ids;sightChange.labels.push('建议保留：'+pair.names.join('、'));suggestion=pair.reason;}
+    } else suggestion='想比较哪个城市的景点？';
+  }
   labels.push(...sightChange.labels);
   /* 卡 B：住宿约束口语（城市须已收录）；「不住 X 了 / 取消住宿」撤销 */
   const lodging = extractLodgingStays(t, CITY_NAMES, nowMs);
@@ -89,9 +105,12 @@ export function parseGuideTurn(text, nowMs = Date.now(), plan = null, selectedCa
     labels.push('住宿：' + stay.date + ' 住 ' + stay.city);
   }
   if (constraints.lodging_stays === null) labels.push('住宿：已取消');
-  const answer = labels.length ? null : answerRouteQuestion(t, plan, selectedCandidateId);
+  const answer = labels.length ? null : answerRouteQuestion(t, plan, selectedCandidateId,context.preferences);
+  const requiresConfirmation = Object.keys(travel).length>0 || Object.keys(constraints).length>0 ||
+    Object.prototype.hasOwnProperty.call(sightChange.patch,'selected_ids') || Object.prototype.hasOwnProperty.call(sightChange.patch,'play_window') || Object.prototype.hasOwnProperty.call(sightChange.patch,'full_days');
   return { preferences: preferences.patch, travel, constraints, sights: sightChange.patch, labels, notes: preferences.notes,
+    requires_confirmation:requiresConfirmation,
     recognized: labels.length > 0,
-    message: labels.length ? '我理解到下面这些调整，确认后应用。其余表达暂未转成条件。'
-      : answer || preferences.notes[0] || '我还没理解你想调整什么。可以问当前走法的依据或待查项，也可以说明停留晚数、交通偏好、日期和预算。' };
+    message: suggestion || (labels.length ? requiresConfirmation?'确认后更新这些安排。':'已更新，可以随时撤销。'
+      : answer || preferences.notes[0] || '想调整路线、景点还是日期？告诉我其中一项就好。') };
 }
