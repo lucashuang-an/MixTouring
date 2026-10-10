@@ -1,0 +1,18 @@
+/* 规划与路线灵感共用的卡片和动作。 */
+.mt-route-card { background: var(--mixtouring-card); border: 1px solid var(--mixtouring-border); border-radius: 18px; padding: 20px; box-shadow: var(--shadow-card-soft); overflow-wrap: anywhere; }
+.mt-route-card h2, .mt-route-card h3 { font-size: 18px; font-weight: 400; margin: 8px 0 14px; }
+.mt-route-label { color: #82503F; font-size: 12px; margin: 0 0 8px; }
+.mt-route-path { font-size: 16px; line-height: 1.8; }
+.mt-route-muted { color: #626873; font-size: 13px; line-height: 1.8; }
+.mt-route-action { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-height: 44px; border-radius: 10px; padding: 10px 16px; background: var(--mixtouring-primary); color: #fff; text-decoration: none; font-size: 13px; }
+.mt-route-card details { margin: 14px 0; font-size: 13px; line-height: 1.8; }
+.mt-route-card summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: #626873; }
+.mt-route-card a:not(.mt-route-action) { color: #82503F; }
+.library-page { margin: 0; background: var(--mixtouring-background); color: var(--mixtouring-foreground); font-family: var(--mixtouring-font-sans); }
+.library-page .app-shell { box-sizing: border-box; max-width: 1160px; margin: 0 auto; padding: 32px 24px 110px; }
+.library-page h1 { font-size: 28px; font-weight: 400; margin: 8px 0; }
+.library-page .library-filters { display: flex; gap: 8px; flex-wrap: wrap; margin: 24px 0; }
+.library-page .library-filters button { min-height: 44px; border: 1px solid var(--mixtouring-border); background: #fff; border-radius: 24px; padding: 10px 20px; font: inherit; cursor: pointer; }
+.library-page .library-filters button[aria-pressed="true"] { background: #111; color: #fff; }
+.library-page #tplList { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 310px), 1fr)); gap: 20px; align-items: start; }
+@media (max-width: 767px) { .library-page .app-shell { padding: 24px 16px 110px; } }

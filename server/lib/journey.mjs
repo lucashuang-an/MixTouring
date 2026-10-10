@@ -1,6 +1,7 @@
 /* G3 探索行程详情：只消费服务端本次规划的候选，不把浏览器传来的路线当事实。 */
 import { randomBytes } from 'node:crypto';
 import { buildCandidateSkeletons, resolvePlace } from './anywhere.mjs';
+import { transportReferences } from './transport-references.mjs';
 
 const plans = new Map();
 const TTL_MS = 30 * 60 * 1000;
@@ -18,14 +19,14 @@ function checklistRow(leg, direction, plan) {
   const countryOf = (name) => {
     if (name === plan.intent.origin_place?.name) return plan.intent.origin_place.country;
     if (name === plan.intent.destination_place?.name) return plan.intent.destination_place.country;
-    return resolvePlace(name)?.country || null;
+    return resolvePlace(name)?.country || (name === leg.from ? leg.from_country : leg.to_country) || null;
   };
   const fromCountry = countryOf(leg.from), toCountry = countryOf(leg.to);
   const missing = ['指定日期班次与当地起落时间', '当期价格及行李／退改口径', '站点接驳'];
   if (fromCountry && toCountry && fromCountry !== toCountry) missing.push('出入境条件');
   return {
     direction,
-    segment: `${leg.from} → ${leg.to}`,
+    segment: `${leg.from} → ${leg.to}` + (leg.via ? `（途经${leg.via}）` : ''),
     mode_guess: leg.mode_guess || null,
     evidence_state: leg.evidence_state || 'explore',
     search_leads: leg.evidence_state === 'source_lead' ? (leg.sources || []) : [],
@@ -42,13 +43,15 @@ export function buildJourneyDetail(plan, candidateId, stopoverNights = 0) {
   const candidate = plan.candidates.find((c) => c.id === candidateId);
   if (!candidate) throw new Error('走法不在本次规划中，请重新选择');
   const outbound = candidate.legs.map((leg) => ({ ...leg }));
-  const stopCity = candidate.kind !== 'direct' && outbound.length === 2 ? outbound[0].to : null;
+  const stopCity = candidate.kind !== 'direct' && outbound.length >= 2 ? outbound[0].to : null;
   if (nights && !stopCity) throw new Error('这条走法没有中途城市，无法安排停留');
 
   const roundTrip = plan.intent.trip_type === 'round_trip';
   let inbound = [];
   if (roundTrip) {
-    const reverse = buildCandidateSkeletons(plan.intent.destination_place, plan.intent.origin_place, { max_transfers: 0 }, {});
+    const returnPlace=plan.anchors?.return?resolvePlace(plan.anchors.return.from_city):plan.intent.origin_place;
+    const reverse = returnPlace && returnPlace.name!==plan.intent.destination_place?.name?
+      buildCandidateSkeletons(plan.intent.destination_place, returnPlace, { max_transfers: 0 }, {}):{candidates:[]};
     const returnHypothesis = reverse.candidates.find((c) => c.kind === 'direct');
     inbound = returnHypothesis ? returnHypothesis.legs.map((leg) => ({ ...leg })) : [];
   }
@@ -71,11 +74,17 @@ export function buildJourneyDetail(plan, candidateId, stopoverNights = 0) {
     outbound,
     inbound,
     return_note: roundTrip
-      ? '返程为按相反出行方向独立生成的探索假设；未取得返程班期，不以去程班次反转充当返程证据。'
+      ? plan.anchors?.return?'保留已定返程；前往返程出发城的接驳单独安排。':'返程为按相反出行方向独立生成的探索假设；未取得返程班期，不以去程班次反转充当返程证据。'
       : null,
+    return_anchor:plan.anchors?.return?structuredClone(plan.anchors.return):null,
+    outbound_anchor:plan.anchors?.outbound?structuredClone(plan.anchors.outbound):null,
     stopover: nights ? { city: stopCity, nights, scheduling_state: '待两段当地班期核实', accommodation_cost: null } : null,
     cost: { known_total: null, unknown_items: unknownCosts },
     checklist,
+    transport_references:[...outbound.map((leg,i)=>({direction:'outbound',from:leg.from,to:leg.to,mode:leg.mode_guess,
+      references:transportReferences(leg.from,leg.to,Date.now(),i===0 && !plan.anchors?.outbound?plan.intent.outbound_window:null).filter(r=>!leg.mode_guess || (leg.mode_guess==='road'?r.mode==='road_passenger':r.mode===leg.mode_guess))})),
+      ...inbound.map(leg=>({direction:'inbound',from:leg.from,to:leg.to,mode:leg.mode_guess,
+        references:transportReferences(leg.from,leg.to,Date.now(),plan.anchors?.return?null:plan.intent.return_window).filter(r=>!leg.mode_guess || (leg.mode_guess==='road'?r.mode==='road_passenger':r.mode===leg.mode_guess))}))],
     warnings: [
       '本详情只是完整路线结构的探索草案，所有段的指定日期班期、衔接和价格均待核验。',
       ...(nights ? ['停留会占用旅行时间；后半程、住宿及返程需核实后才能判断是否成行和增加多少费用。'] : []),
@@ -91,4 +100,14 @@ export function journeyDetailFromPlanId(planId, candidateId, stopoverNights = 0,
     throw new Error('规划已失效，请重新规划');
   }
   return buildJourneyDetail(entry.plan, candidateId, stopoverNights);
+}
+
+/** 对话追问只读取服务端保存的本次规划，避免采纳浏览器提交的候选事实。 */
+export function guidePlanFromId(planId, now = Date.now()) {
+  const entry = plans.get(planId);
+  if (!entry || entry.expires_at <= now) {
+    if (entry) plans.delete(planId);
+    return null;
+  }
+  return entry.plan;
 }

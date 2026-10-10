@@ -4,6 +4,7 @@
  * 与 api.js 桩注释的映射：/api/routes/:routeId ≙ /api/plans?from=&to=（route_id = `${from}-${to}`）；
  * /api/item/:id ≙ /api/items/:id；/api/cities 合并入 /api/bootstrap（search 页同步渲染约束） */
 import Koa from 'koa';
+import { PassThrough } from 'node:stream';
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, normalize, sep } from 'node:path';
@@ -17,8 +18,13 @@ import { addWish, listWishes, removeWish } from './lib/wishlist.mjs';
 import { llmConfigured, llmModel } from './lib/llm.mjs';
 import { parseTripIntent, searchTripStrategies, buildVerificationChecklist, resolveRoute, capabilities, webSearchConfigured } from './lib/trip-service.mjs';
 import { planAnywhere } from './lib/anywhere.mjs';
-import { registerJourneyPlan, journeyDetailFromPlanId } from './lib/journey.mjs';
+import { registerJourneyPlan, journeyDetailFromPlanId, guidePlanFromId } from './lib/journey.mjs';
 import { webSearchStatus } from './lib/llm.mjs';
+import { parseGuideTurn } from './lib/guide.mjs';
+import planningGuide from '../mixtouring-hifi/assets/trip-guide.js';
+import { sightCatalog, compareSights } from './lib/sights.mjs';
+import { progressivePlan } from './lib/progressive.mjs';
+import { listInspirations } from './lib/inspirations.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT) || 3000;
@@ -319,9 +325,47 @@ app.use(async (ctx, next) => {
       ctx.body = { code: 1, msg: '缺少 text 或 origin/destination' };
       return;
     }
+    if (body.progressive === true) {
+      const stream = new PassThrough(), controller = new AbortController();
+      ctx.type = 'application/x-ndjson';
+      ctx.set('Cache-Control', 'no-store');
+      ctx.body = stream;
+      ctx.res.once('close', () => controller.abort());
+      progressivePlan(body, (data, phase) => {
+        if (controller.signal.aborted) return;
+        if (data.candidates.length || (data.intent?.origin_place && data.intent?.destination_place)) data.plan_id = registerJourneyPlan(data);
+        stream.write(JSON.stringify({ code: 0, phase, data }) + '\n');
+      }, {}, controller.signal).catch(() => {
+        if (!controller.signal.aborted) stream.write(JSON.stringify({ code: 1, msg: '补充搜索未完成，已有走法仍可查看' }) + '\n');
+      }).finally(() => stream.end());
+      return;
+    }
     const data = await planAnywhere(body);
-    if (data.candidates.length) data.plan_id = registerJourneyPlan(data);
+    if (data.candidates.length || (data.intent?.origin_place && data.intent?.destination_place)) data.plan_id = registerJourneyPlan(data);
     ctx.body = { code: 0, data };
+    return;
+  }
+
+  if (path === '/api/inspirations' && ctx.method === 'GET') {
+    ctx.body = { code: 0, data: listInspirations() };
+    return;
+  }
+  if (path === '/api/anywhere/guide' && ctx.method === 'POST') {
+    const body = await readBody(ctx) || {};
+    ctx.body = { code: 0, data: parseGuideTurn(body.text, Date.now(), guidePlanFromId(body.plan_id), body.candidate_id, {preferences:body.preferences,sights:body.sights,sight_requested:body.sight_requested}) };
+    return;
+  }
+
+  /* 卡 C：来源由服务端目录提供；显式 anchors/constraints 为完整个人快照，省略时才回查 plan_id。 */
+  if (path === '/api/anywhere/sights' && ctx.method === 'POST') {
+    const body = await readBody(ctx) || {};
+    const plan = guidePlanFromId(body.plan_id);
+    ctx.body = { code: 0, data: { catalog: sightCatalog(), comparison: compareSights({
+      state: body.state, relevant:planningGuide.sightRelevant(plan,body.sight_requested===true?'伊犁':body.destination) || (!plan && !body.destination),
+      destination:Object.prototype.hasOwnProperty.call(body,'destination')?body.destination:plan?.intent?.destination_place?.name,
+      anchors:Object.prototype.hasOwnProperty.call(body,'anchors')?body.anchors:plan?.anchors,
+      constraints:Object.prototype.hasOwnProperty.call(body,'constraints')?body.constraints:plan?.intent?.constraints
+    }) } };
     return;
   }
 

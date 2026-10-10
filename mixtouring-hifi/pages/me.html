@@ -168,7 +168,7 @@
     <!-- 页头 -->
     <header class="px-4" style="padding-top: 26px;">
       <h1 style="font-size: 24px; color: var(--mixtouring-foreground, #1E2022); letter-spacing: -0.02em;">我的</h1>
-      <p style="font-size: 13.5px; color: var(--mixtouring-muted-foreground, #7C8089); margin-top: 6px;">匿名使用中 · 收藏与回填只存在这台设备上</p>
+      <p style="font-size: 13.5px; color: var(--mixtouring-muted-foreground, #7C8089); margin-top: 6px;">匿名使用中 · 私人草案、收藏与回填仅保存在当前浏览器</p>
     </header>
 
     <!-- 私人草案（卡 A：本机私密保存，恢复须重新规划并重新确认开放地点） -->
@@ -206,7 +206,7 @@
             <circle cx="19" cy="7.5" r="1.6" fill="#FFFFFF" />
           </svg>
           <span style="font-size: 15px; color: var(--mixtouring-foreground, #1E2022);">Mix<span style="color: var(--mixtouring-ring, #C86A4B);">Touring</span></span>
-          <span id="verLine" style="font-size: 12px; color: var(--mixtouring-muted-foreground, #7C8089);">MVP 原型</span>
+          <span id="verLine" style="font-size: 12px; color: var(--mixtouring-muted-foreground, #7C8089);">探索预览版 · 交通班期与费用待核验</span>
         </div>
         <p style="font-size: 12.5px; color: var(--mixtouring-muted-foreground, #7C8089); line-height: 1.7; margin-top: 10px;">帮助独立旅行者发现值得探索的走法、理解取舍与待查项。这里保留的是旧路线收藏和心愿；当前班期、费用需回规划页逐段核验。MixTouring 不提供购票服务。</p>
       </div>
@@ -238,11 +238,13 @@
   <script src="../assets/draft-store.js"></script>
   <script>
   (function () {
+    function savedDate(value) {
+      var d = new Date(value), parts = {};
+      if (!Number.isFinite(d.getTime())) return '时间未知';
+      new Intl.DateTimeFormat('en-CA', { timeZone:'Asia/Shanghai', year:'numeric',month:'2-digit',day:'2-digit' }).formatToParts(d).forEach(function (p) { parts[p.type]=p.value; });
+      return parts.year+'-'+parts.month+'-'+parts.day+'（北京时间）';
+    }
     MT.wireNav();
-    /* 版本号动态读取（P1：勿在页面写死） */
-    var verEl = document.getElementById('verLine');
-    if (verEl) verEl.textContent = '原型 ' + (window.MT && MT.VERSION ? MT.VERSION : '');
-
     /* ---------- 私人草案（卡 A）---------- */
     function renderDrafts() {
       var wrap = document.getElementById('draftWrap');
@@ -295,7 +297,8 @@
       res.drafts.forEach(function (d) {
         var latest = d.versions[d.versions.length - 1];
         var s = latest.snapshot;
-        var summary = [s.candidate ? s.candidate.label : '待重新选择走法'];
+        var summary = [s.candidate ? s.candidate.label : s.scope === 'task' ? '交通锚点与景点草案' : '待重新选择走法'];
+        if (s.sights && Array.isArray(s.sights.selected_ids)) summary.push('已选 ' + s.sights.selected_ids.length + ' 处景点');
         if (s.travel && s.travel.trip_type === 'round_trip') summary.push('往返');
         else if (s.travel && s.travel.trip_type === 'one_way') summary.push('单程');
         if (s.travel && s.travel.outbound_window) summary.push('去 ' + s.travel.outbound_window);
@@ -304,16 +307,18 @@
         html += '<div class="detail-card p-4" data-draft="' + MT.esc(d.id) + '">' +
           '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;">' +
           '<div style="font-size:14px;font-weight:500;">' + MT.esc(d.name) + '</div>' +
-          '<div style="font-size:11px;color:var(--mixtouring-muted-foreground,#7C8089);">更新于 ' + MT.esc(String(d.updated_at || '').slice(0, 10)) + '</div></div>' +
+          '<div style="font-size:11px;color:var(--mixtouring-muted-foreground,#7C8089);">更新于 ' + MT.esc(savedDate(d.updated_at)) + '</div></div>' +
           '<div style="font-size:12px;color:var(--mixtouring-muted-foreground,#7C8089);margin-top:4px;line-height:1.7;">' + MT.esc(summary.join(' · ')) + ' · ' + d.versions.length + ' 个版本</div>' +
           (d.corrupted_version_count ? '<div style="font-size:11.5px;color:#A16207;margin-top:4px;">另有 ' + d.corrupted_version_count + ' 个版本损坏，原始记录已保留；其他版本仍可恢复。</div>' : '') +
           '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">' +
-          '<button type="button" class="btnDraftOpen" data-id="' + MT.esc(d.id) + '" style="min-height:40px;padding:8px 14px;border:1px solid var(--mixtouring-ring,#C86A4B);border-radius:9px;background:#fff;color:var(--mixtouring-ring,#C86A4B);font-family:inherit;font-size:12.5px;cursor:pointer;">版本与恢复</button>' +
+          '<button type="button" class="btnDraftContinue" data-id="' + MT.esc(d.id) + '" style="min-height:44px;padding:8px 14px;border:0;border-radius:9px;background:var(--mixtouring-primary);color:#fff;font-family:inherit;cursor:pointer;">继续规划</button>' +
+          '<button type="button" class="btnDraftOpen" data-id="' + MT.esc(d.id) + '" style="min-height:44px;padding:8px 14px;border:1px solid var(--mixtouring-border,#E5E7EB);border-radius:9px;background:#fff;font-family:inherit;font-size:12.5px;cursor:pointer;">历史版本</button>' +
           '<button type="button" class="btnDraftRename" data-id="' + MT.esc(d.id) + '" style="min-height:40px;padding:8px 14px;border:1px solid var(--mixtouring-border,#E5E7EB);border-radius:9px;background:#fff;font-family:inherit;font-size:12.5px;cursor:pointer;">重命名</button>' +
           '<button type="button" class="btnDraftDel" data-id="' + MT.esc(d.id) + '" style="min-height:40px;padding:8px 14px;border:1px solid #E5B4B4;border-radius:9px;background:#fff;color:#A8543A;font-family:inherit;font-size:12.5px;cursor:pointer;">删除</button>' +
           '</div><div class="draftDetail" style="display:none;margin-top:12px;"></div></div>';
       });
       wrap.innerHTML = html;
+      wrap.querySelectorAll('.btnDraftContinue').forEach(function(btn){btn.onclick=function(){var d=MTDrafts.get(btn.getAttribute('data-id'));if(d && d.versions.length) restoreDraft(d.id,d.versions[d.versions.length-1].vid);};});
       wrap.querySelectorAll('.btnDraftOpen').forEach(function (btn) {
         btn.addEventListener('click', function () { toggleDraftDetail(btn.getAttribute('data-id')); });
       });
@@ -351,19 +356,20 @@
       var html = '';
       d.versions.slice().reverse().forEach(function (v) {
         var s = v.snapshot;
-        var sum = [s.candidate ? s.candidate.label : '待重新选择走法'];
+        var sum = [s.candidate ? s.candidate.label : s.scope === 'task' ? '交通锚点与景点草案' : '待重新选择走法'];
+        if (s.sights && Array.isArray(s.sights.selected_ids)) sum.push('已选 ' + s.sights.selected_ids.length + ' 处景点');
         if (s.travel && s.travel.trip_type === 'round_trip') sum.push('往返');
         if (s.travel && s.travel.outbound_window) sum.push('去 ' + s.travel.outbound_window);
         if (s.travel && s.travel.return_window) sum.push('返 ' + s.travel.return_window);
         if (s.nights) sum.push('停 ' + s.nights + ' 晚');
         html += '<div style="padding:10px 0;border-bottom:1px solid var(--mixtouring-border,#E5E7EB);">' +
-          '<div style="font-size:12.5px;">版本 ' + v.version + ' · ' + MT.esc(String(v.saved_at).slice(0, 10)) + ' · ' + MT.esc(sum.join(' · ')) + '</div>' +
+          '<div style="font-size:12.5px;">版本 ' + v.version + ' · ' + MT.esc(savedDate(v.saved_at)) + ' · ' + MT.esc(sum.join(' · ')) + '</div>' +
           (s.confirmed_note && (s.confirmed_note.origin || s.confirmed_note.destination)
             ? '<div style="font-size:11.5px;color:#A16207;margin-top:3px;">保存时含开放地点确认——恢复时须重新核验确认。</div>' : '') +
-          '<button type="button" class="btnDraftRestore" data-id="' + MT.esc(d.id) + '" data-vid="' + MT.esc(v.vid) + '" style="min-height:40px;margin-top:6px;padding:7px 14px;border:1px solid var(--mixtouring-ring,#C86A4B);border-radius:9px;background:#fff;color:var(--mixtouring-ring,#C86A4B);font-family:inherit;font-size:12px;cursor:pointer;">恢复此版本（重新规划）</button>' +
+          '<button type="button" class="btnDraftRestore" data-id="' + MT.esc(d.id) + '" data-vid="' + MT.esc(v.vid) + '" style="min-height:44px;margin-top:6px;padding:7px 14px;border:1px solid var(--mixtouring-ring,#C86A4B);border-radius:9px;background:#fff;color:var(--mixtouring-ring,#C86A4B);font-family:inherit;font-size:12px;cursor:pointer;">从此版本继续</button>' +
           '</div>';
       });
-      html += '<div style="font-size:11.5px;color:var(--mixtouring-muted-foreground,#7C8089);margin-top:8px;line-height:1.6;">恢复＝回填输入并按当前供给重新规划：开放地点会重新核验并要求确认；若原走法已无等价候选，会保留旧摘要供对照并提示重新选择。</div>';
+      html += '<div style="font-size:11.5px;color:var(--mixtouring-muted-foreground,#7C8089);margin-top:8px;line-height:1.6;">继续时保留你的安排，并更新路线信息。</div>';
       box.innerHTML = html;
       box.style.display = 'block';
       box.querySelectorAll('.btnDraftRestore').forEach(function (btn) {

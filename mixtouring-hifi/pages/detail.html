@@ -584,9 +584,9 @@
 
       var reuseBtn = document.getElementById('btnReuse');
       if (reuseBtn) {
-        /* 一键复用：只复用路线结构（起终点），日期由用户在搜索页重新选择后询价 */
+        /* 一键复用：带入途经节点与交通方式，日期和价格不继承。 */
         reuseBtn.addEventListener('click', function () {
-          MT.go(fromTrip ? 'trip.html' : 'search.html', { from: it.from, to: it.to });
+          MT.go('trip.html', { inspiration: it.id });
         });
       }
 

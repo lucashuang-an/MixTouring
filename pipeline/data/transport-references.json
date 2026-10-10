@@ -1,0 +1,342 @@
+{
+  "sampled_at": "2026-10-11",
+  "references": [
+    {
+      "id": "yin-ala-air",
+      "kind": "public_transport",
+      "from": "伊宁",
+      "to": "阿拉木图",
+      "mode": "plane",
+      "method": "运营方伊宁至阿拉木图方向页面；未取指定日航班",
+      "evidence_state": "source_lead",
+      "reported_operator": "飞狮航空（FlyArystan）",
+      "reported_boarding_stop": null,
+      "reported_until": "2026-10-23",
+      "duration_minutes": null,
+      "source": {
+        "title": "飞狮航空：伊宁至阿拉木图航线介绍",
+        "url": "https://flyarystan.com/en/directions/yining/yining-almaty",
+        "published_at": null,
+        "sampled_at": "2026-10-09"
+      },
+      "review_by": "2026-10-24"
+    },
+    {
+      "id": "ala-yin-air",
+      "kind": "public_transport",
+      "from": "阿拉木图",
+      "to": "伊宁",
+      "mode": "plane",
+      "method": "独立查阅运营方阿拉木图至伊宁方向页面；未由去程反转",
+      "evidence_state": "source_lead",
+      "reported_operator": "飞狮航空（FlyArystan）",
+      "reported_boarding_stop": null,
+      "reported_until": "2026-10-23",
+      "duration_minutes": null,
+      "source": {
+        "title": "飞狮航空：阿拉木图至伊宁航线介绍",
+        "url": "https://flyarystan.com/en/directions/almaty/almaty-yining",
+        "published_at": null,
+        "sampled_at": "2026-10-09"
+      },
+      "review_by": "2026-10-24"
+    },
+    {
+      "id": "yin-ala-road",
+      "kind": "public_transport",
+      "from": "伊宁",
+      "to": "阿拉木图",
+      "mode": "road_passenger",
+      "method": "官方报道的伊宁经都拉塔至阿拉木图客运业务；仅支持历史查询方向",
+      "evidence_state": "historical",
+      "reported_operator": "霍尔果斯华鑫交通服务有限责任公司",
+      "reported_boarding_stop": "伊犁州汽车客运中心／都拉塔国际汽车站（报道当时）",
+      "reported_until": null,
+      "duration_minutes": null,
+      "source": {
+        "title": "都拉塔国际汽车站投运",
+        "url": "https://www.xjyl.gov.cn/xjylz/c112426/202308/3c69599981e2477ebcfe283fee654f6a.shtml",
+        "published_at": "2023-08-03",
+        "sampled_at": "2026-10-09"
+      }
+    },
+    {
+      "id": "urc-ala-road",
+      "kind": "public_transport",
+      "from": "乌鲁木齐",
+      "to": "阿拉木图",
+      "mode": "road_passenger",
+      "method": "交通运输厅乌鲁木齐始发报道；不能支持阿拉木图始发返程",
+      "evidence_state": "historical",
+      "reported_operator": null,
+      "reported_boarding_stop": "乌鲁木齐市高铁国际汽车站（报道当时）",
+      "reported_until": null,
+      "duration_minutes": null,
+      "source": {
+        "title": "乌鲁木齐至阿拉木图国际道路旅客运输班线正式发车",
+        "url": "https://jtyst.xinjiang.gov.cn/xjjtysj/jtyw/202311/68952f89120b4986a185884df0464d75.shtml",
+        "published_at": "2023-11-04",
+        "sampled_at": "2026-10-09"
+      }
+    },
+    {
+      "id": "khorgos-ala-road",
+      "kind": "public_transport",
+      "from": "霍尔果斯",
+      "to": "阿拉木图",
+      "mode": "road_passenger",
+      "method": "官方报道霍尔果斯国际客运站出境线路；未提供本次班次及回程",
+      "evidence_state": "historical",
+      "reported_operator": null,
+      "reported_boarding_stop": "霍尔果斯国际客运站（报道当时）",
+      "reported_until": null,
+      "duration_minutes": null,
+      "source": {
+        "title": "冰雪季遇互免签证 霍尔果斯出境游热度飙升",
+        "url": "https://www.xjyl.gov.cn/xjylz/c112427/202602/a86fa92215814dba99c21e482e01dd5e.shtml",
+        "published_at": "2026-02-03",
+        "sampled_at": "2026-10-09"
+      }
+    },
+    {
+      "id": "pkx-ala-cz5097",
+      "kind": "public_transport",
+      "from": "北京",
+      "to": "阿拉木图",
+      "mode": "plane",
+      "method": "官方季节时刻表逐行核对；不含余票、价格与行李口径",
+      "evidence_state": "dated_partial",
+      "reported_operator": "中国南方航空",
+      "reported_boarding_stop": "北京大兴机场",
+      "reported_until": "2026-10-24",
+      "duration_minutes": null,
+      "schedule": {
+        "service_no": "CZ5097",
+        "depart_time": "18:30",
+        "arrive_time": "21:10",
+        "arrival_day_offset": 0,
+        "start": "2026-03-29",
+        "end": "2026-10-24",
+        "weekdays": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "from_tz": "Asia/Shanghai",
+        "to_tz": "Asia/Almaty"
+      },
+      "source": {
+        "title": "南航官方季节时刻表 · CZ5097",
+        "url": "https://csair.cn/en/bookings/flight_times/resource/hangbanshikebiaoyingwenxin.pdf",
+        "published_at": null,
+        "sampled_at": "2026-10-11",
+        "page": 66
+      },
+      "review_by": "2026-10-12"
+    },
+    {
+      "id": "ala-pkx-cz5098",
+      "kind": "public_transport",
+      "from": "阿拉木图",
+      "to": "北京",
+      "mode": "plane",
+      "method": "官方季节时刻表逐行核对；不含余票、价格与行李口径",
+      "evidence_state": "dated_partial",
+      "reported_operator": "中国南方航空",
+      "reported_boarding_stop": "阿拉木图机场",
+      "reported_until": "2026-10-24",
+      "duration_minutes": null,
+      "schedule": {
+        "service_no": "CZ5098",
+        "depart_time": "22:40",
+        "arrive_time": "06:20",
+        "arrival_day_offset": 1,
+        "start": "2026-03-29",
+        "end": "2026-10-24",
+        "weekdays": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "from_tz": "Asia/Almaty",
+        "to_tz": "Asia/Shanghai"
+      },
+      "source": {
+        "title": "南航官方季节时刻表 · CZ5098",
+        "url": "https://csair.cn/en/bookings/flight_times/resource/hangbanshikebiaoyingwenxin.pdf",
+        "published_at": null,
+        "sampled_at": "2026-10-11",
+        "page": 3
+      },
+      "review_by": "2026-10-12"
+    },
+    {
+      "id": "urc-ala-cz6075",
+      "kind": "public_transport",
+      "from": "乌鲁木齐",
+      "to": "阿拉木图",
+      "mode": "plane",
+      "method": "官方季节时刻表逐行核对；不含余票、价格与行李口径",
+      "evidence_state": "dated_partial",
+      "reported_operator": "中国南方航空",
+      "reported_boarding_stop": "乌鲁木齐机场",
+      "reported_until": "2026-10-24",
+      "duration_minutes": null,
+      "schedule": {
+        "service_no": "CZ6075",
+        "depart_time": "09:05",
+        "arrive_time": "08:05",
+        "arrival_day_offset": 0,
+        "start": "2026-07-01",
+        "end": "2026-10-24",
+        "weekdays": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "from_tz": "Asia/Shanghai",
+        "to_tz": "Asia/Almaty"
+      },
+      "source": {
+        "title": "南航官方季节时刻表 · CZ6075",
+        "url": "https://csair.cn/en/bookings/flight_times/resource/hangbanshikebiaoyingwenxin.pdf",
+        "published_at": null,
+        "sampled_at": "2026-10-11",
+        "page": 84
+      },
+      "review_by": "2026-10-12"
+    },
+    {
+      "id": "ala-urc-cz6076",
+      "kind": "public_transport",
+      "from": "阿拉木图",
+      "to": "乌鲁木齐",
+      "mode": "plane",
+      "method": "官方季节时刻表逐行核对；不含余票、价格与行李口径",
+      "evidence_state": "dated_partial",
+      "reported_operator": "中国南方航空",
+      "reported_boarding_stop": "阿拉木图机场",
+      "reported_until": "2026-10-24",
+      "duration_minutes": null,
+      "schedule": {
+        "service_no": "CZ6076",
+        "depart_time": "09:35",
+        "arrive_time": "14:15",
+        "arrival_day_offset": 0,
+        "start": "2026-04-10",
+        "end": "2026-10-24",
+        "weekdays": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "from_tz": "Asia/Almaty",
+        "to_tz": "Asia/Shanghai"
+      },
+      "source": {
+        "title": "南航官方季节时刻表 · CZ6076",
+        "url": "https://csair.cn/en/bookings/flight_times/resource/hangbanshikebiaoyingwenxin.pdf",
+        "published_at": null,
+        "sampled_at": "2026-10-11",
+        "page": 3
+      },
+      "review_by": "2026-10-12"
+    },
+    {
+      "id": "urc-ala-cz6011",
+      "kind": "public_transport",
+      "from": "乌鲁木齐",
+      "to": "阿拉木图",
+      "mode": "plane",
+      "method": "官方季节时刻表逐行核对；不含余票、价格与行李口径",
+      "evidence_state": "dated_partial",
+      "reported_operator": "中国南方航空",
+      "reported_boarding_stop": "乌鲁木齐机场",
+      "reported_until": "2026-10-24",
+      "duration_minutes": null,
+      "schedule": {
+        "service_no": "CZ6011",
+        "depart_time": "20:30",
+        "arrive_time": "19:20",
+        "arrival_day_offset": 0,
+        "start": "2026-03-29",
+        "end": "2026-10-24",
+        "weekdays": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "from_tz": "Asia/Shanghai",
+        "to_tz": "Asia/Almaty"
+      },
+      "source": {
+        "title": "南航官方季节时刻表 · CZ6011",
+        "url": "https://csair.cn/en/bookings/flight_times/resource/hangbanshikebiaoyingwenxin.pdf",
+        "published_at": null,
+        "sampled_at": "2026-10-11",
+        "page": 84
+      },
+      "review_by": "2026-10-12"
+    },
+    {
+      "id": "ala-urc-cz6012",
+      "kind": "public_transport",
+      "from": "阿拉木图",
+      "to": "乌鲁木齐",
+      "mode": "plane",
+      "method": "官方季节时刻表逐行核对；不含余票、价格与行李口径",
+      "evidence_state": "dated_partial",
+      "reported_operator": "中国南方航空",
+      "reported_boarding_stop": "阿拉木图机场",
+      "reported_until": "2026-10-24",
+      "duration_minutes": null,
+      "schedule": {
+        "service_no": "CZ6012",
+        "depart_time": "20:50",
+        "arrive_time": "01:30",
+        "arrival_day_offset": 1,
+        "start": "2026-03-29",
+        "end": "2026-10-24",
+        "weekdays": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "from_tz": "Asia/Almaty",
+        "to_tz": "Asia/Shanghai"
+      },
+      "source": {
+        "title": "南航官方季节时刻表 · CZ6012",
+        "url": "https://csair.cn/en/bookings/flight_times/resource/hangbanshikebiaoyingwenxin.pdf",
+        "published_at": null,
+        "sampled_at": "2026-10-11",
+        "page": 3
+      },
+      "review_by": "2026-10-12"
+    }
+  ]
+}

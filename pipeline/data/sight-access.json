@@ -1,0 +1,21 @@
+{
+  "sampled_at": "2026-10-09",
+  "locations": {
+    "nalati": {"description":"伊犁河谷东端，新源县那拉提镇旅游风景区","precision":"景区地址，游客入口坐标待核查","source":{"title":"那拉提旅游风景区简介","url":"https://www.xinyuan.gov.cn/xinyuan/c113962/202606/01a5d90c98c24896beefaf5590850482.shtml","published_at":"2026-06-18","sampled_at":"2026-10-09"}},
+    "kalajun": {"description":"特克斯县南部喀拉峻山，草原与峡谷入口需分别核对","precision":"景区范围，非道路路线","source":{"title":"特克斯县概况","url":"https://www.xjyl.gov.cn/xjylz/c112407/201603/3afea40795ca4c9fb421c1ea7ff9073e.shtml","published_at":"2016-03","sampled_at":"2026-10-09"}},
+    "xiata": {"description":"昭苏县城西南方向的夏塔景区","precision":"乡镇及景区方向，入口待核查","source":{"title":"昭苏天马文化体验游","url":"https://zhuanti.mct.gov.cn/xcszbwg2022/xinjiang/detail/2003.html","published_at":"2022","sampled_at":"2026-10-09"}},
+    "kuerdening": {"description":"巩留县东南林区","precision":"景区范围，入口待核查","source":{"title":"库尔德宁--世界自然遗产地，国家级水利风景区，国家AAAA级景区","url":"https://www.xjgl.gov.cn/xjgl/c114150/202108/cc7a4e3de3bf4498b55c161cc5341565.shtml","published_at":"2021-08-26","sampled_at":"2026-10-09"}},
+    "sayram": {"description":"博乐市西南、果子沟方向的高山湖泊","precision":"湖区，非环湖路线或门区","source":{"title":"赛里木湖","url":"https://www.xinjiang.gov.cn/xinjiang/tsxj/201111/4d92b7ede52e4b64b557013b39e215a8.shtml","published_at":"2011-11","sampled_at":"2026-10-09"}},
+    "qiaxi": {"description":"巩留县与特克斯县东南部山区的森林公园范围","precision":"公园范围，不是游客入口坐标","source":{"title":"关于《新疆巩留恰西国家森林公园总体规划（2021-2030）年》的公示","url":"https://www.xjgl.gov.cn/xjgl/c116033/202203/06eade1961084165b4fa9074b05d88dd.shtml","published_at":"2022-03-14","sampled_at":"2026-10-09"}},
+    "qiongkushitai": {"description":"特克斯县喀拉达拉镇琼库什台村","precision":"村落位置，非后山游览点","source":{"title":"秋日伊犁｜琼库什台","url":"https://www.xjyl.gov.cn/xjylz/c112431/202609/bcea37d2fb954a6eb04c437c40785efb.shtml","published_at":"2026-09-24","sampled_at":"2026-10-09"}}
+  },
+  "references": [
+    {"attraction_id":"xiata","kind":"road","from":"昭苏县城","to":"夏塔景区","mode":"road_reference","duration_minutes":75,"method":"官方专题历史车程参考（未说明具体客运班次）","evidence_state":"historical","operator":null,"applicable_dates":null,"source":{"title":"昭苏天马文化体验游","url":"https://zhuanti.mct.gov.cn/xcszbwg2022/xinjiang/detail/2003.html","published_at":"2022","sampled_at":"2026-10-09"}},
+    {"attraction_id":"qiongkushitai","kind":"road","from":"特克斯县城","to":"琼库什台村","mode":"self_drive","duration_minutes":155,"method":"官方报道中的导航预计耗时","evidence_state":"source_lead","operator":null,"applicable_dates":null,"source":{"title":"秋日伊犁｜琼库什台","url":"https://www.xjyl.gov.cn/xjylz/c112431/202609/bcea37d2fb954a6eb04c437c40785efb.shtml","published_at":"2026-09-24","sampled_at":"2026-10-09"},"review_by":"2026-10-24"},
+    {"attraction_id":"qiongkushitai","kind":"public_transport","from":"特克斯县客运站","to":"琼库什台村","mode":"road_passenger","duration_minutes":null,"method":"官方报道的线路车线索，候车为人满即发","evidence_state":"source_lead","operator":null,"applicable_dates":null,"source":{"title":"秋日伊犁｜琼库什台","url":"https://www.xjyl.gov.cn/xjylz/c112431/202609/bcea37d2fb954a6eb04c437c40785efb.shtml","published_at":"2026-09-24","sampled_at":"2026-10-09"},"review_by":"2026-10-24"}
+  ],
+  "season_notes": {
+    "nalati":{"note":"新源县简介只列夏季营业口径，其他季节另行通知；本次日期开放范围需核查。","source":{"title":"那拉提旅游风景区简介","url":"https://www.xinyuan.gov.cn/xinyuan/c113962/202606/01a5d90c98c24896beefaf5590850482.shtml","published_at":"2026-06-18","sampled_at":"2026-10-09"}},
+    "qiongkushitai":{"note":"秋季资料提示天气和山地道路可能影响出行；季节景观介绍不等于本次日期开放或车辆运营确认。","source":{"title":"秋日伊犁｜琼库什台","url":"https://www.xjyl.gov.cn/xjylz/c112431/202609/bcea37d2fb954a6eb04c437c40785efb.shtml","published_at":"2026-09-24","sampled_at":"2026-10-09"}}
+  }
+}

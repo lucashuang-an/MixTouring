@@ -223,6 +223,15 @@ const snap = (over = {}) => Object.assign({
     '旧键隔离（修正）：同一假存储中操作草案后旧收藏/心愿逐字节不变');
 }
 
+/* 候选为空的任务草案仍完整保存个人条件，不生成交通段。 */
+{
+  const env=makeEnv();
+  const task=snap({scope:'task',candidate:null,anchors:{outbound:{from_city:'北京',to_city:'伊宁',date:'2026-09-30'},return:{from_city:'伊宁',to_city:'北京',date:'2026-10-08'}},
+    sights:{selected_ids:['xiata','kuerdening'],full_days:2,play_window:'2026-10-01 ~ 2026-10-02'},constraints:{no_self_drive:true,lodging_stays:[{city:'伊宁',date:'2026-09-30'}]}});
+  const result=env.MTDrafts.save('零候选任务',task);
+  const saved=env.MTDrafts.get(result.draft.id).versions.find((v)=>v.vid===result.vid).snapshot;
+  ok(result.ok && saved.candidate===null && JSON.stringify(saved)===JSON.stringify(task),'任务级草案：零候选仍保存景点、日期、住宿和锚点');
+}
 console.log(fail === 0
   ? `\n✓ 私人草案存储层确定性测试全部通过（${total} 项断言）`
   : `\n✗ 失败 ${fail} 项（共 ${total} 项断言）`);

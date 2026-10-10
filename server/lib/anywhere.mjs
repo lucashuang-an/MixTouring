@@ -11,15 +11,18 @@
  * 防幻觉契约（延续 v0.30.0）：候选一律 candidate_hypothesis、无未取证数字；LLM 提名只从清单选；
  *   识别不了、核验不了 → 明确阻断，不猜。 */
 
-import { callJson as callJsonDefault, searchWeb as searchWebDefault, webSearchStatus as webSearchStatusDefault } from './llm.mjs';
+import { callJson as callJsonDefault, searchWeb as searchWebDefault, webSearchStatus as webSearchStatusDefault, composeJson as composeJsonDefault } from './llm.mjs';
 import { assignFromTo } from './parse.mjs';
 import { loadPlaces, webSearchConfigured, extractIntentFields } from './trip-service.mjs';
+import { zonedToUtc } from './trip.mjs';
 import { candidatesBetween, haversineKm } from '../../pipeline/lib/geo-skill.mjs';
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { ANYWHERE_PLANNER_VERSION } from './versions.mjs';
+import { discoverRoutes, sourceSupportsLeg, sourceLegConnectionExcerpt } from './route-discovery.mjs';
+import { inspirationFor, inspirationRoute, listInspirations } from './inspirations.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -99,19 +102,20 @@ export function scanPlaceMentions(text) {
 
 const NIGHT_AVOID_RE = [
   /(?:不|别|不想|拒绝|避免|不接受)[^。！？，,]{0,6}(?:半夜|凌晨|夜间|夜里|红眼)[^。！？，,]{0,4}(?:到|到达|抵达|落地|航班)/,
-  /红眼(?:航班)?[^。！？，,]{0,4}(?:不|不想|拒绝)/
+  /红眼(?:航班)?[^。！？，,]{0,4}(?:不|不想|拒绝)/,
+  /(?:半夜|凌晨|夜间|夜里)(?:到|到达|抵达|落地)[^。！？，,]{0,4}(?:不要|不行|不接受|避免)/
 ];
 const NIGHT_ALLOW_RE = [
   /(?:可以|接受|能接受|无所谓|不介意|没关系)[^。！？，,]{0,6}(?:半夜|凌晨|夜间|夜里|红眼)/,
   /红眼(?:航班)?(?:也行|无所谓|可以|OK|ok)/
 ];
 
-/** 从一句话提取四类约束（预算/最长中转时长/夜间到达/换乘次数）。确定性；识别不到的字段不出现。 */
+/** 从一句话提取约束（预算/最长中转时长/夜间到达/换乘次数/不开车）。确定性；识别不到的字段不出现。 */
 export function extractConstraints(text) {
   const t = String(text || '');
   const c = {};
   let m;
-  if ((m = t.match(/预算\s*(?:不超过|最多|约|大概|为)?\s*(\d{3,6})\s*(?:元|块|人民币|CNY)/i)) ||
+  if ((m = t.match(/预算\s*(?:不超过|最多|约|大概|为|改到|改成|调整到|提高到|降到)?\s*(\d{3,6})\s*(?:元|块|人民币|CNY)/i)) ||
       (m = t.match(/(\d{3,6})\s*(?:元|块)\s*(?:以内|之内|的?预算)/))) c.budget_max_cny = +m[1];
   if ((m = t.match(/(?:中转|转机)[^。！？，,]{0,10}?(?:不超过|最多|少于|短于)?\s*(\d{1,2}(?:\.\d)?)\s*个?小时/))) c.max_layover_hours = +m[1];
   if (NIGHT_AVOID_RE.some((re) => re.test(t))) c.night_arrival = 'avoid';
@@ -119,7 +123,34 @@ export function extractConstraints(text) {
   if ((m = t.match(/(?:最多|不超过|至多|少于)\s*(?:换乘|转乘|中转|转机|换)\s*([零一二0-2])\s*次/)) ||
       (m = t.match(/(?:换乘|转乘|中转|转机)[^。！？，,]{0,8}?(?:不超过|最多|少于)?\s*([零一二0-2])\s*次/))) c.max_transfers = ({ 零: 0, 一: 1, 二: 2 })[m[1]] ?? +m[1];
   else if (/不想换乘|不换乘|不转乘|拒绝换乘/.test(t)) c.max_transfers = 0;
+  /* 卡 B（v0.44.2）：不会开车——公共交通（铁路/航班/公路班线）不受影响，自驾/租车类走法须排除。
+   * 否定词须紧邻方式词（≤2 字），避免「坐火车不会累，自己开车」这类跨句共现误报。 */
+  if (/(?:不会|不能|没法|无法|不|没有)[^。！？，,]{0,2}(?:开车|自驾|驾车)/.test(t) ||
+      /(?:没有?|未(?:取得|考))驾照/.test(t) || /自驾[^。！？，,]{0,3}(?:不行|不了|不能|没法)/.test(t)) c.no_self_drive = true;
   return c;
+}
+
+/** 住宿约束（卡 B）：「9 月 30 日住伊宁」→ [{date, city}]。城市必须在已收录清单（不猜），
+ *  日期规则与返程提取一致（显式年份保留；未写年份目标日已过则次年；真实日历校验）。 */
+export function extractLodgingStays(text, cityNames, nowMs = Date.now()) {
+  const t = String(text || '');
+  const date = '(?:(?<year>20\\d{2})\\s*(?:年|[/-])\\s*)?(?<month>\\d{1,2})\\s*(?:月|[/-])\\s*(?<day>\\d{1,2})\\s*(?:日|号)?';
+  const re = new RegExp(date + '[^。！？，,]{0,6}?(?:住在?|夜宿|过夜在?)\\s*(?<city>[\\u4e00-\\u9fa5]{2,8})', 'g');
+  const names = new Set(cityNames || []);
+  const stays = [];
+  for (const m of t.matchAll(re)) {
+    const month = Number(m.groups.month), day = Number(m.groups.day);
+    if (!(month >= 1 && month <= 12 && day >= 1 && day <= 31)) continue;
+    if (!names.has(m.groups.city)) continue;
+    const now = new Date(nowMs);
+    let year = m.groups.year ? Number(m.groups.year) : now.getFullYear();
+    const build = (y) => new Date(Date.UTC(y, month - 1, day));
+    if (!m.groups.year && build(year) < new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()))) year += 1;
+    if (build(year).getUTCMonth() !== month - 1 || build(year).getUTCDate() !== day) continue;
+    stays.push({ date: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`, city: m.groups.city });
+    if (stays.length >= 3) break;
+  }
+  return stays;
 }
 
 /** 约束 chips（展示文案；数字全部来自用户输入值，非编造）。 */
@@ -131,6 +162,11 @@ export function constraintChips(c) {
   if (c.night_arrival === 'avoid') chips.push({ key: 'night', label: '夜间到达：不接受' });
   else if (c.night_arrival === 'allow') chips.push({ key: 'night', label: '夜间到达：可接受' });
   if (c.max_transfers != null) chips.push({ key: 'transfers', label: '换乘 ≤ ' + c.max_transfers + ' 次' });
+  if (c.no_self_drive === true) chips.push({ key: 'no_self_drive', label: '不开车（不含自驾/租车）' });
+  for (const stay of (Array.isArray(c.lodging_stays) ? c.lodging_stays : [])) {
+    const md = String(stay.date || '').slice(5).replace('-', '月') + '日';
+    chips.push({ key: 'lodging', label: md + ' 住 ' + stay.city });
+  }
   return chips;
 }
 
@@ -144,8 +180,81 @@ function sanitizeConstraints(raw) {
   if (Number.isFinite(l) && l > 0 && l <= 48) c.max_layover_hours = Math.round(l * 10) / 10;
   if (raw.night_arrival === 'avoid' || raw.night_arrival === 'allow') c.night_arrival = raw.night_arrival;
   const tr = Number(raw.max_transfers);
-  if (Number.isInteger(tr) && tr >= 0 && tr <= 2) c.max_transfers = tr;
+  if (raw.max_transfers != null && Number.isInteger(tr) && tr >= 0 && tr <= 2) c.max_transfers = tr;
+  if (raw.no_self_drive === true || raw.no_self_drive === false) c.no_self_drive = raw.no_self_drive;
+  if (Array.isArray(raw.lodging_stays)) {
+    /* 空数组是显式清空（二十七轮 P1-4：撤销必须能覆盖旧文本提取，不能被白名单丢弃） */
+    const stays = raw.lodging_stays.filter((s) => s && typeof s.city === 'string' && s.city.length <= 24 &&
+      typeof s.date === 'string' && ISO_DATE_OK(s.date)).slice(0, 3)
+      .map((s) => ({ date: s.date, city: s.city }));
+    c.lodging_stays = stays;
+  }
   return c;
+}
+
+/** ISO 日期外形 + 真实日历（复用窗口校验：单日窗即两端同日）。 */
+function ISO_DATE_OK(s) {
+  return isValidWindow(s + ' ~ ' + s);
+}
+
+/* ---------- 交通锚点（卡 B v0.44.2）：用户确认的去/返交通事实 ---------- */
+
+const ANCHOR_MODES = new Set(['plane', 'rail', 'road']);
+const ANCHOR_MODE_LABEL = { plane: '航班', rail: '火车', road: '公路班线' };
+const ANCHOR_NO_RE = /^[A-Za-z0-9]{1,12}$/;
+const ANCHOR_TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** 地点当地日期/时刻的 UTC 可能范围；未填时刻表示全天未知，不补成午夜事实。 */
+function anchorTimeRange(date, time, city) {
+  const tz = resolvePlace(city)?.tz;
+  if (!tz) return null;
+  try {
+    const first = zonedToUtc(date, time || '00:00', tz).getTime();
+    const last = time ? first : zonedToUtc(date, '23:59', tz).getTime();
+    return { first, last };
+  } catch { return null; }
+}
+
+function sanitizeAnchorOne(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  if (!ANCHOR_MODES.has(raw.mode) || typeof raw.date !== 'string' || !ISO_DATE_OK(raw.date)) return null;
+  const from_city = typeof raw.from_city === 'string' ? raw.from_city.trim().slice(0, 24) : '';
+  const to_city = typeof raw.to_city === 'string' ? raw.to_city.trim().slice(0, 24) : '';
+  if (!from_city || !to_city || from_city === to_city) return null;
+  const a = { mode: raw.mode, date: raw.date, from_city, to_city, source: 'user_entry' };
+  /* 可选字段：用户没填就留空，不从截图或上下文猜测（卡 B 首版不做图片识别） */
+  if (typeof raw.service_no === 'string' && ANCHOR_NO_RE.test(raw.service_no)) a.service_no = raw.service_no.toUpperCase();
+  for (const key of ['depart_time', 'arrive_time']) {
+    if (typeof raw[key] === 'string' && ANCHOR_TIME_RE.test(raw[key])) a[key] = raw[key];
+  }
+  if (typeof raw.arrive_date === 'string' && ISO_DATE_OK(raw.arrive_date)) a.arrive_date = raw.arrive_date;
+  if (raw.arrive_date == null && a.arrive_time && ANCHOR_TIME_RE.test(a.arrive_time) &&
+      raw.arrive_next_day === true) a.arrive_date = nextDayISO(raw.date);
+  /* 起落各按当地时区转 UTC；只有到达的最晚可能时点仍早于出发的最早可能时点才拒绝。 */
+  const dep = anchorTimeRange(a.date, a.depart_time, a.from_city);
+  const arr = anchorTimeRange(a.arrive_date || a.date, a.arrive_time, a.to_city);
+  if (dep && arr && arr.last < dep.first) return null;
+  if (typeof raw.note === 'string' && raw.note.trim()) a.note = raw.note.trim().slice(0, 60);
+  return a;
+}
+
+function nextDayISO(iso) {
+  const d = new Date(iso + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+/** 锚点白名单化（UI 传入）：单方向字段不完整即整条拒绝并记入 invalid——锚点是已确认交通事实，
+ *  缺方式/日期/起讫城市就不能当事实用，不猜。返回 {outbound, return, invalid: ['outbound'|'return']} */
+export function sanitizeAnchors(raw) {
+  const out = { outbound: null, return: null, invalid: [] };
+  if (!raw || typeof raw !== 'object') return out;
+  for (const dir of ['outbound', 'return']) {
+    if (raw[dir] == null) continue;
+    const a = sanitizeAnchorOne(raw[dir]);
+    if (a) out[dir] = a; else out.invalid.push(dir);
+  }
+  return out;
 }
 
 /* ---------- 行程意图（v0.35.0 十轮 P0：往返/日期/人数不回退） ----------
@@ -167,21 +276,21 @@ export function isValidWindow(s) {
   return pa <= pb;
 }
 
-/** 从一句话提取返程日期（M月D日 / M-D / M/D 紧跟或前接「回来/返回/回程/返程」），代码计算年份。
+/** 从一句话提取返程日期（可带年份的 M月D日 / M-D / M/D 紧跟或前接「回来/返回/回程/返程」），代码计算缺失年份。
  *  十二轮 P1：产出日期须过真实日历校验（Date 溢出回读一致）——2月31日/4月31日等不存在日期返回 null。 */
 export function extractReturnDate(text, nowMs = Date.now()) {
   const t = String(text || '');
-  const m = t.match(/(\d{1,2})\s*月\s*(\d{1,2})\s*日?[^。！？，,]{0,8}?(?:回来|返回|回程|返程|回)/) ||
-    t.match(/(?:回来|返回|回程|返程)[^。！？，,]{0,4}(\d{1,2})\s*月\s*(\d{1,2})\s*日?/) ||
-    t.match(/(\d{1,2})\s*[\/\-]\s*(\d{1,2})[^。！？，,]{0,8}?(?:回来|返回|回程|返程)/);
+  const date = '(?:(?<year>20\\d{2})\\s*(?:年|[/-])\\s*)?(?<month>\\d{1,2})\\s*(?:月|[/-])\\s*(?<day>\\d{1,2})\\s*(?:日|号)?';
+  const m = t.match(new RegExp(date + '[^。！？，,]{0,8}?(?:回来|返回|回程|返程|回)')) ||
+    t.match(new RegExp('(?:回来|返回|回程|返程)[^。！？，,]{0,4}?' + date));
   if (!m) return null;
-  const month = +m[1], day = +m[2];
+  const month = Number(m.groups.month), day = Number(m.groups.day);
   if (!(month >= 1 && month <= 12 && day >= 1 && day <= 31)) return null;
-  /* 年份代码推算：目标日已过（当年口径）则次年（禁心算） */
+  /* 显式年份保留；未写年份时目标日已过则次年（禁心算）。 */
   const now = new Date(nowMs);
-  let year = now.getFullYear();
+  let year = m.groups.year ? Number(m.groups.year) : now.getFullYear();
   const build = (y) => new Date(Date.UTC(y, month - 1, day));
-  if (build(year) < new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()))) year += 1;
+  if (!m.groups.year && build(year) < new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()))) year += 1;
   /* 真实日历校验：Date 会把 02-31 卷到 03-03，回读不一致即非法（十二轮 P1） */
   const built = build(year);
   if (built.getUTCMonth() !== month - 1 || built.getUTCDate() !== day) return null;
@@ -196,6 +305,7 @@ function sanitizeIntentFields(raw) {
   if (['pending', 'round_trip', 'one_way'].includes(raw.trip_type)) out.trip_type = raw.trip_type;
   if (isValidWindow(raw.outbound_window)) out.outbound_window = raw.outbound_window;
   if (isValidWindow(raw.return_window)) out.return_window = raw.return_window;
+  if (isValidWindow(raw.arrival_window)) out.arrival_window = raw.arrival_window;
   const n = Number(raw.traveler_count);
   if (Number.isInteger(n) && n >= 1 && n <= 9) out.traveler_count = n;
   return out;
@@ -216,6 +326,7 @@ export function buildTravelIntent(text, explicit, nowMs = Date.now()) {
   const finalIntent = {
     trip_type: exp.trip_type || fields.trip_type || 'pending',
     outbound_window: exp.outbound_window || fields.outbound_window || null,
+    arrival_window: exp.arrival_window || fields.arrival_window || null,
     return_window: exp.return_window || retFromText,
     traveler_count: exp.traveler_count ?? traveler ?? 1
   };
@@ -236,6 +347,7 @@ export function buildTravelIntent(text, explicit, nowMs = Date.now()) {
   }
   const needs = [];
   if (finalIntent.trip_type === 'pending') needs.push('行程类型未识别（单程/往返）：可先用单程做方向探索，或补充说明');
+  if (finalIntent.arrival_window && !finalIntent.outbound_window) needs.push('已记录希望到达时间；当前走法尚未按班次筛选，出发日期待定');
   if (finalIntent.trip_type === 'round_trip') {
     if (!finalIntent.outbound_window) needs.push('往返行程请补去程日期或大致窗口');
     if (!finalIntent.return_window) needs.push('往返行程请补返程日期（未补前不展示返程样本）');
@@ -511,6 +623,7 @@ function newLeg(seq, fromPlace, toPlace, modeGuess) {
     seq,
     from: fromPlace.name, from_kind: fromPlace.kind,
     to: toPlace.name, to_kind: toPlace.kind,
+    from_country: fromPlace.country || null, to_country: toPlace.country || null,
     via: null,
     mode_guess: modeGuess, /* 假设的交通方式（guess：待取证确认，非事实） */
     evidence_state: 'explore', /* explore | source_lead（P0-2：搜索线索，非取证） */
@@ -521,6 +634,8 @@ function newLeg(seq, fromPlace, toPlace, modeGuess) {
       ? railManualCheck(fromPlace.country, toPlace.country)
       : modeGuess === 'plane'
         ? '到航司官网/平台核对该段航班'
+        : modeGuess === 'road'
+          ? '到客运站或运营方核对该方向班线、口岸与当期班期'
         : '到平台核对该段班期'
   };
 }
@@ -533,7 +648,7 @@ function geoCityName(place) {
 
 const HUB_SOURCE_LABEL = { 'rule:geo': '按地理顺路筛选（确定性估算，非班期事实）', 'llm': '由 AI 从已收录城市中提名（待验证假设）' };
 
-export const KIND_LABEL = { direct: '直达', one_transfer: '一次中转', mixed: '混合交通' };
+export const KIND_LABEL = { direct: '直达', one_transfer: '一次中转', mixed: '混合交通', discovered: '沿途探索' };
 export const DIRECT_VARIANT_LABEL = { plane: '直达航班假设', rail: '直达铁路假设' };
 
 /* ---------- v0.33.0（八轮评审）：直达铁路判定 = 负向粗筛 + 正向依据 ----------
@@ -821,6 +936,13 @@ function buildTradeoffs(c) {
     mk('风险', '无中转衔接风险', '无衔接风险；班期待取证', 'structural');
     return t;
   }
+  if (c.kind === 'discovered') {
+    mk('时间', '单段直达，总时长即段时长', '各段时长、实际换乘与停留时间待按班期核查', 'structural');
+    mk('费用', '需要先查询直达方向的当期票价作为基准', '需逐段查询交通、接驳和可能的过夜费用，再与直达同口径比较', 'structural');
+    mk('体验', '一次到达，无换乘', '可沿途停留；各段是否同车经过或需换乘待查', 'qualitative');
+    mk('风险', '无中转衔接风险', '可能存在衔接风险，具体换乘与口岸流程待核查；脆弱段见本卡「脆弱段与备选」', 'qualitative');
+    return t;
+  }
   mk('时间', '单段直达，总时长即段时长', '两段时长加衔接余量；是否反而更快待取证（部分方向中转总时长更短）', 'structural');
   mk('费用', '需要先查询直达方向的当期票价作为基准', '需要查询两段票价及联程/分段出票形式（未知哪种更省——这正是取证比较的核心）；另查中转是否有过夜等附加成本', 'structural');
   mk('体验', '一次到达，无换乘', '多一次换乘（行李搬运/候转）；经停枢纽可顺路体验', 'qualitative');
@@ -861,7 +983,7 @@ function buildFragileLegs(c, o, d, ctx) {
       const others = otherRouteCards.filter((r) => r.id !== c.id);
       const diffHub = others.filter((r) => r.hub && r.hub !== (c.legs[1] ? c.legs[1].from : null) && r.hasBasis);
       const sameHub = others.filter((r) => r.hub && r.hub === (c.legs[1] ? c.legs[1].from : null));
-      if (diffHub.length) fallbacks.push('或参考其它枢纽方向：' + diffHub.map((r) => r.hub).join('、') + '（各自卡内已标注连接依据）');
+      if (diffHub.length) fallbacks.push('或参考其它枢纽方向：' + [...new Set(diffHub.map((r) => r.hub))].join('、') + '（各自卡内已标注连接依据）');
       else if (sameHub.length) fallbacks.push('同结果页还有同枢纽的另一种方式组合卡，可对照查看');
       if (hasExplorations) fallbacks.push('或参考本结果页的铁路/陆路方向探索提示（泛化方向参考，非已标注枢纽走法）');
       fallbacks.push('该段核实成立后，本方案的衔接假设才升级');
@@ -933,8 +1055,14 @@ export function buildCandidateSkeletons(o, d, constraints, llmHints = {}) {
     });
   }
 
-  /* ②③ 中转/混合骨架：pickTransferHubs 依据驱动（段+方向绑定；依据与路段不一致时缺依据降级） */
+  /* ②③ 中转/混合骨架：pickTransferHubs 依据驱动（段+方向绑定；依据与路段不一致时缺依据降级）。
+   * 锚点重映射后枢纽可能与端点同域（如端点被映射到乌鲁木齐、geo 提名也是乌鲁木齐）——同城两段不是跨城中转；
+   * 仅锚点场景过滤，直查行为保持基线（校准样本乌鲁木齐→阿拉木图含同名枢纽中转）。 */
   const picked = pickTransferHubs(o, d, llmHints, degradations);
+  if (llmHints.anchorRemapped) {
+    if (picked.one.name === o.name || picked.one.name === d.name) picked.one = { name: null };
+    if (picked.mixed.name === o.name || picked.mixed.name === d.name) picked.mixed = { name: null };
+  }
   if (picked.one.name) {
     const hubPlace = hubNode(picked.one.name);
     /* 末段方式由可用依据 scope 决定（air→plane；rail→rail 且枢纽在中国大陆铁路网内） */
@@ -982,6 +1110,38 @@ export function buildCandidateSkeletons(o, d, constraints, llmHints = {}) {
     degradations.push('混合交通骨架需要「起点→枢纽」铁路依据与「枢纽→目的地」航空依据双齐的中转城市，当前不可用：该骨架未生成');
   }
 
+  /* 搜索先发现走廊，模型按来源组合城市；路段方式仍为猜测，逐段再查。 */
+  const routeSignature = (stops, modes, via) => JSON.stringify([stops, modes.map((m) => m || 'unknown'), via || '']);
+  const existingStops = new Map(candidates.filter((c) => c.legs.length > 1)
+    .map((c) => [routeSignature(c.legs.slice(0, -1).map((leg) => leg.to), c.legs.map((l) => l.mode_guess), c.legs.at(-1).via), c]));
+  for (const route of (llmHints.discovered_routes || [])) {
+    if (!Array.isArray(route.stops) || !Array.isArray(route.modes) || route.modes.length !== route.stops.length + 1 ||
+      !Array.isArray(route.sources) || !route.sources.length) continue;
+    const signature = routeSignature(route.stops, route.modes, (route.via || []).join('、'));
+    if (existingStops.has(signature)) {
+      if (route.inspiration_id) existingStops.get(signature).inspiration_id = route.inspiration_id;
+      continue;
+    }
+    const nodes = [o, ...route.stops.map(hubNode), d];
+    const legs = nodes.slice(0, -1).map((node, i) => newLeg(i + 1, node, nodes[i + 1], route.modes[i] === 'unknown' ? null : route.modes[i]));
+    if (Array.isArray(route.via) && route.via.length) legs[legs.length - 1].via = route.via.join('、');
+    const historical = route.origin === 'historical';
+    candidates.push({
+      id: 'cand-discovered-' + candidates.length, kind: 'discovered', hypothesis: true,
+      transfers: route.stops.length, builder: historical ? 'historical-template' : route.inspiration_id ? 'curated-inspiration' : 'search+llm',
+      basis: { rule: historical ? 'historical-inspiration' : route.inspiration_id ? 'curated-inspiration' : 'search-discovery', sources: route.sources }, legs,
+      ...(route.inspiration_id ? { inspiration_id: route.inspiration_id } : {}),
+      explanation: (historical ? '库内历史路线结构提示可经' : route.inspiration_id ? '所选路线灵感保留经' : '搜索资料提示可经') +
+        route.stops.join('、') + '方向探索；逐段交通、实际换乘与日期衔接仍需确认',
+      why_explore: '经' + route.stops.join('、') + '方向可比较沿途体验与直达的取舍；路线依据见详情',
+      uncertain_leg: nodes.slice(0, -1).map((node, i) => segUncertain(node, nodes[i + 1])).join('；'),
+      next_checks: ['核实各段客运连接与实际换乘点', '按本次日期核对班期、口岸流程和衔接时间']
+    });
+    existingStops.set(signature, candidates[candidates.length - 1]);
+  }
+  const priority = { direct: 0, discovered: 1, one_transfer: 2, mixed: 3 };
+  candidates.sort((a, b) => priority[a.kind] - priority[b.kind]);
+
   /* 约束应用：换乘次数可直接校验（结构事实）；预算/中转时长/夜间到达需取证到数字或时刻才能评估——如实说明 */
   if (constraints.max_transfers != null) {
     const kept = candidates.filter((c2) => c2.transfers <= constraints.max_transfers);
@@ -1005,11 +1165,12 @@ export function buildCandidateSkeletons(o, d, constraints, llmHints = {}) {
     hasDirectCard: candidates.some((c) => c.kind === 'direct'),
     hasExplorations: explorations.length > 0,
     otherRouteCards: candidates
-      .filter((c) => c.kind === 'one_transfer' || c.kind === 'mixed')
+      .filter((c) => c.kind === 'one_transfer' || c.kind === 'mixed' || c.kind === 'discovered')
       .map((c) => ({
         id: c.id,
         hub: c.legs[1] ? c.legs[1].from : null,
-        hasBasis: !!(c.basis && Array.isArray(c.basis.whys) && c.basis.whys.some((w) => w.leg || (w.scope && w.scope !== 'llm'))),
+        hasBasis: !!(c.basis && ((Array.isArray(c.basis.whys) && c.basis.whys.some((w) => w.leg || (w.scope && w.scope !== 'llm'))) ||
+          (c.basis.rule === 'search-discovery' && Array.isArray(c.basis.sources) && c.basis.sources.length))),
         modes: c.legs.map((l) => l.mode_guess).join('+')
       }))
   };
@@ -1035,7 +1196,8 @@ function candidateTitle(c) {
 /* ---------- 逐段搜索线索（P0-2：source_lead ≠ 取证；相关性门槛；失败保持探索态） ---------- */
 
 function searchQueryFor(leg) {
-  const modeWord = leg.mode_guess === 'rail' ? '火车' : leg.mode_guess === 'plane' ? '航班' : '交通';
+  const modeWord = leg.mode_guess === 'rail' ? '火车' : leg.mode_guess === 'plane' ? '航班' :
+    leg.mode_guess === 'road' ? '公路客运' : '交通';
   return leg.from + ' 到 ' + leg.to + ' ' + modeWord + ' 怎么走';
 }
 
@@ -1045,44 +1207,57 @@ export function resultRelevance(r, leg) {
   const from = String(leg.from).toLowerCase();
   const to = String(leg.to).toLowerCase();
   const modeRe = leg.mode_guess === 'rail'
-    ? /火车|铁路|高铁|动车|train|rail/
+    ? /列车|火车|铁路|高铁|动车|train|rail/
     : leg.mode_guess === 'plane'
       ? /航班|飞机|直飞|air\s|airline|flight|fly/
+      : leg.mode_guess === 'road'
+        ? /客运|班车|大巴|公路|汽车|bus|coach/
       : null;
   return {
     from_hit: !!from && hay.includes(from),
     to_hit: !!to && hay.includes(to),
-    mode_hit: modeRe ? modeRe.test(hay) : true
+    mode_hit: modeRe ? modeRe.test(hay) : true,
+    connection_hit: !leg.mode_guess || leg.mode_guess === 'unknown'
+      ? ['plane', 'rail', 'road'].some((mode) => sourceSupportsLeg(r, leg.from, leg.to, mode))
+      : sourceSupportsLeg(r, leg.from, leg.to, leg.mode_guess)
   };
 }
 
 /** 逐段搜索线索：同查询缓存（限速纪律）；来源只保留 https 且通过相关性判定（v0.31.0 P0-2）；
- *  记录查询词与逐源相关性；不展示摘要防数字误引；无相关结果保持探索态。 */
-export async function verifyLegs(candidates, searchFn) {
+ *  记录查询词与逐源相关性；不展示摘要防数字误引；无相关结果保持探索态。
+ *  唯一查询并行发起（2026-09-28）：串行时每段独占一个超时窗口，25s 渐进预算内三段以上必超时。 */
+export async function verifyLegs(candidates, searchFn, sharedCache) {
   if (!searchFn) return { leads: 0 };
-  const cache = new Map();
+  const cache = sharedCache || new Map();
+  const jobs = [];
+  const queueSearch = (q) => {
+    if (cache.has(q)) return;
+    cache.set(q, null);
+    jobs.push((async () => { cache.set(q, await searchFn(q).catch(() => null)); })());
+  };
+  for (const cand of candidates) for (const leg of cand.legs) queueSearch(searchQueryFor(leg));
+  await Promise.all(jobs);
   let leads = 0;
   for (const cand of candidates) {
     for (const leg of cand.legs) {
       const q = searchQueryFor(leg);
       leg.lead_query = q;
-      let res = cache.get(q);
-      if (res === undefined) {
-        res = await searchFn(q);
-        cache.set(q, res);
-      }
+      const res = cache.get(q);
       const relevant = [];
       for (const r of (res || [])) {
         if (!(r && typeof r.link === 'string' && /^https:/.test(r.link))) continue;
         const rel = resultRelevance(r, leg);
-        if (rel.from_hit && rel.to_hit && rel.mode_hit) {
-          relevant.push({ title: String(r.title || '').slice(0, 120), link: r.link, sampled_at: new Date().toISOString(), relevance: rel });
+        if (rel.from_hit && rel.to_hit && rel.mode_hit && rel.connection_hit) {
+          const modes = !leg.mode_guess || leg.mode_guess === 'unknown' ? ['plane', 'rail', 'road'] : [leg.mode_guess];
+          const excerpt = modes.map((mode) => sourceLegConnectionExcerpt(r, leg.from, leg.to, mode)).find(Boolean);
+          relevant.push({ title: String(r.title || '').slice(0, 120), link: r.link,
+            sampled_at: new Date().toISOString(), relevance: rel, connection_excerpt: excerpt });
         }
       }
       if (relevant.length) {
         leg.evidence_state = 'source_lead';
         leg.sources = relevant.slice(0, 3);
-        leg.evidence_note = '搜索线索（命中该段两端与方式；非班期核验）';
+        leg.evidence_note = '搜索线索（同句描述该段客运连接与方式；非班期核验）';
         leads++;
       }
     }
@@ -1207,10 +1382,18 @@ export async function planAnywhere(input, deps = {}) {
     if (!d && destRaw) await openResolve('destination', destRaw);
   }
 
-  const constraints = { ...extractConstraints(text), ...sanitizeConstraints(input.constraints) };
+  /* 卡 B（二十七轮 P1-4 修订）：显式传入（含撤销值 false/空数组）逐键覆盖旧文本提取；
+   * 文本住宿提取仅在未显式传入时生效；最终把撤销值从结果移除（键不存在=无约束）。 */
+  const constraints = { ...extractConstraints(text) };
+  const explicitConstraints = sanitizeConstraints(input.constraints);
+  for (const key of Object.keys(explicitConstraints)) constraints[key] = explicitConstraints[key];
+  const textStays = extractLodgingStays(text || '', cityNames, deps.nowMs);
+  if (textStays.length && explicitConstraints.lodging_stays === undefined) constraints.lodging_stays = textStays;
+  if (constraints.no_self_drive === false) delete constraints.no_self_drive;
+  if (Array.isArray(constraints.lodging_stays) && !constraints.lodging_stays.length) delete constraints.lodging_stays;
   const chips = constraintChips(constraints);
   /* P0（十轮）：往返/日期/人数意图——文本确定性提取 + UI 显式字段覆盖，经消歧/重新规划不回退 */
-  const travel = buildTravelIntent(text || '', input.travel || null);
+  const travel = buildTravelIntent(text || '', input.travel || null, deps.nowMs);
   const intent = {
     origin: o ? o.name : (rawOrigin || null),
     destination: d ? d.name : (rawDest || null),
@@ -1221,6 +1404,7 @@ export async function planAnywhere(input, deps = {}) {
     parse_engine,
     trip_type: travel.intent.trip_type,
     outbound_window: travel.intent.outbound_window,
+    arrival_window: travel.intent.arrival_window,
     return_window: travel.intent.return_window,
     traveler_count: travel.intent.traveler_count
   };
@@ -1239,6 +1423,8 @@ export async function planAnywhere(input, deps = {}) {
       constraint_notes: [],
       degradations,
       explorations: [],
+      anchors: null,
+      anchor_notes: [],
       next_steps: place_candidates.origin.length || place_candidates.destination.length
         ? ['在确认卡中选择正确地点（含重名消歧）后重新生成', '候选均来自 OpenStreetMap 核验，可点击来源核对']
         : ['补全或修正地点后重新规划', '识别不了的地点待核验通道可用后再试，或使用已收录地点'],
@@ -1246,31 +1432,221 @@ export async function planAnywhere(input, deps = {}) {
     };
   }
 
-  const route = { route_type: routeTypeOf(o, d) };
+  /* ---------- 卡 B（v0.44.2）：交通锚点——用户确认的去/返交通事实 ----------
+   * 锚点段不参与重新计算；双锚点时规划端点重映射到锚点内侧（去程到达城 → 返程出发城），
+   * 进出城市可以不同。锚点是「用户确认事实」，与模型推测的候选分开呈现，不进假设候选池。
+   * 二十七轮修复：四端点城市均须已收录（P1-3）；去返锚点日期先后校验（P0-2）；
+   * 单返程锚点不重映射终点——保留去目的地的去程探索，返程接驳段诚实提示（P0-1）。 */
+  const anchors = sanitizeAnchors(input.anchors);
+  for (const dir of anchors.invalid) {
+    needs.push((dir === 'outbound' ? '去程' : '返程') + '锚点信息不完整（需方式、日期、出发与到达城市），该锚点已忽略：' +
+      '锚点是已确认交通事实，不从截图或上下文猜测缺失字段');
+  }
+  const anchorNotes = [];
+  let anchorRemapped = false; /* 供骨架构建过滤同域枢纽（仅锚点场景） */
+  const inWindow = (iso, win) => !win || (win.slice(0, 10) <= iso && win.slice(13, 23) >= iso);
+  /* P1-3：四个端点城市逐一校验（外侧=去程出发城/返程到达城同样须已收录，未收录整条拒绝） */
+  const anchorUnresolved = (a) => ['from_city', 'to_city'].filter((k) => !resolvePlace(a[k]));
+  if (anchors.outbound) {
+    const ob = anchors.outbound, bad = anchorUnresolved(ob);
+    if (bad.length) {
+      anchors.outbound = null;
+      needs.push('去程锚点城市「' + bad.map((k) => ob[k]).join('」「') + '」未收录：锚点四个端点城市均须为已收录地点（不进开放地点核验），请修正后再锁定');
+    }
+  }
+  if (anchors.return) {
+    const rt = anchors.return, bad = anchorUnresolved(rt);
+    if (bad.length) {
+      anchors.return = null;
+      needs.push('返程锚点城市「' + bad.map((k) => rt[k]).join('」「') + '」未收录：锚点四个端点城市均须为已收录地点（不进开放地点核验），请修正后再锁定');
+    }
+  }
+  if (anchors.outbound) {
+    const p = resolvePlace(anchors.outbound.to_city);
+    if (o && anchors.outbound.from_city !== o.name) {
+      anchorNotes.push('去程锚点从「' + anchors.outbound.from_city + '」出发——按你的输入保留（出发城市变化）；与行程出发地「' + o.name + '」不同，如非本意请修改锚点');
+    }
+    anchorNotes.push('去程已锁定「' + anchors.outbound.from_city + '→' + anchors.outbound.to_city + ' ' +
+      ANCHOR_MODE_LABEL[anchors.outbound.mode] + ' ' + anchors.outbound.date + '」（你确认的事实，不重算）；待规划段从' + p.name + '开始');
+    o = p;
+    anchorRemapped = true;
+  }
+  /* 用户目的地是必须经过的行程节点（二十八轮 P0-1）：d 永不因锚点改变；
+   * 规划主段 = 去程锚点到达城（若有）→ 目的地；目的地 → 返程锚点出发城的返程段单卡契约不能表达，诚实提示。 */
+  if (anchors.return) {
+    const p = resolvePlace(anchors.return.from_city);
+    anchorNotes.push('返程已锁定「' + anchors.return.from_city + '→' + anchors.return.to_city + ' ' +
+      ANCHOR_MODE_LABEL[anchors.return.mode] + ' ' + anchors.return.date + '」（你确认的事实，不重算）');
+    if (intent.origin_place && resolvePlace(anchors.return.to_city)?.name !== intent.origin_place.name) {
+      anchorNotes.push('返程锚点回到「' + anchors.return.to_city + '」——与原出发地「' + intent.origin_place.name + '」不同：这是你输入的进出城市变化，已保留，请核对');
+    }
+    if (d && p && p.name !== d.name) {
+      anchorNotes.push('本次规划 ' + (o ? o.name : '起点') + ' → ' + d.name + ' 的去程侧（目的地不因锚点跳过）；' +
+        '详情会单独列出「' + d.name + ' → ' + p.name + '」的返程接驳方向，日期、班次与衔接需独立确认');
+    }
+  }
+  const anchorScope = anchors.outbound ? 'after_outbound_anchor' : 'full';
+  /* 跨城按各自当地时区比较 UTC 范围；缺时刻只在整日范围也无法成立时判矛盾。 */
+  const outArriveAt = anchors.outbound
+    ? anchorTimeRange(anchors.outbound.arrive_date || anchors.outbound.date,
+      anchors.outbound.arrive_time, anchors.outbound.to_city) : null;
+  const retStartAt = anchors.return
+    ? anchorTimeRange(anchors.return.date, anchors.return.depart_time, anchors.return.from_city) : null;
+  const anchorDatesInverted = !!(outArriveAt && retStartAt && outArriveAt.first > retStartAt.last);
+  if (anchorDatesInverted) {
+    const outLabel = (anchors.outbound.arrive_date || anchors.outbound.date) +
+      (anchors.outbound.arrive_time ? ' ' + anchors.outbound.arrive_time : '（时刻未填）');
+    const retLabel = anchors.return.date +
+      (anchors.return.depart_time ? ' ' + anchors.return.depart_time : '（时刻未填）');
+    anchorNotes.push('去程锚点到达时间 ' + outLabel + ' 晚于返程锚点出发时间 ' + retLabel +
+      '，去返先后矛盾：请修正锚点后再看覆盖与候选');
+  } else if (anchors.outbound && anchors.return &&
+      (!outArriveAt || !retStartAt || !anchors.outbound.arrive_time || !anchors.return.depart_time)) {
+    anchorNotes.push('去程到达或返程出发的时刻／时区信息不全，去返先后尚待确认；当前仅排除可确定的时间矛盾');
+  }
+  /* 锚点日期与意图窗口的结构一致性（可判定事实；窗口缺省不判定） */
+  if (anchors.outbound?.date && travel.intent.outbound_window && !inWindow(anchors.outbound.date, travel.intent.outbound_window)) {
+    anchorNotes.push('注意：去程锚点日期 ' + anchors.outbound.date + ' 不在出发窗口 ' + travel.intent.outbound_window + ' 内，请核对');
+  }
+  if (anchors.return?.date && travel.intent.return_window && !inWindow(anchors.return.date, travel.intent.return_window)) {
+    anchorNotes.push('注意：返程锚点日期 ' + anchors.return.date + ' 不在返回窗口 ' + travel.intent.return_window + ' 内，请核对');
+  }
+  /* 住宿约束：与锚点可判定的结构冲突优先；候选级当晚位置需班次核实，如实说明不冒充已满足 */
+  for (const stay of (Array.isArray(constraints.lodging_stays) ? constraints.lodging_stays : [])) {
+    const arriveDay = anchors.outbound ? (anchors.outbound.arrive_date || anchors.outbound.date) : null;
+    if (arriveDay === stay.date && anchors.outbound.to_city !== stay.city) {
+      anchorNotes.push('「' + stay.date + ' 住 ' + stay.city + '」与去程锚点当日到达「' + anchors.outbound.to_city + '」冲突：请调整锚点或住宿日期');
+    } else if (anchors.return && anchors.return.date === stay.date && anchors.return.from_city !== stay.city) {
+      anchorNotes.push('「' + stay.date + ' 住 ' + stay.city + '」与返程锚点当日从「' + anchors.return.from_city + '」出发冲突：请调整锚点或住宿日期');
+    } else {
+      anchorNotes.push('已记录「' + stay.date + ' 住 ' + stay.city + '」：当晚能否住该城需按班次与停留安排核实，当前只做记录与冲突检查');
+    }
+  }
+  if (constraints.no_self_drive === true) {
+    anchorNotes.push('已记录不开车：当前候选均为公共交通（航班/铁路/公路班线），不包含自驾/租车走法；该约束在后续修改中保持');
+  }
+  const anchorPayload = anchors.outbound || anchors.return
+    ? {
+        outbound: anchors.outbound, return: anchors.return,
+        recompute_scope: anchorScope,
+        confirmed_note: '锚点为你确认的交通事实，与待验证候选分开呈现；重新规划、修改约束或恢复草案都不改变锚点段'
+      }
+    : null;
+  /* P0-2：去返日期矛盾时阻止覆盖结论并拦截候选（不能在矛盾事实上规划） */
+  if (anchorDatesInverted) {
+    return {
+      intent,
+      route: { route_type: routeTypeOf(o, d) },
+      needs_confirmation: needs,
+      place_candidates,
+      candidates: [],
+      constraint_notes: [],
+      degradations,
+      explorations: [],
+      anchors: anchorPayload,
+      anchor_notes: anchorNotes,
+      web_search: { configured: webSearchConfigured(env).configured, status: 'not_needed' },
+      next_steps: ['请修正去程或返程锚点的日期后再重新规划'],
+      planner_version: ANYWHERE_VERSION
+    };
+  }
+  /* 去返锚点覆盖全程（二十八轮 P0-1 收紧）：仅当两锚点都贴着目的地
+   * （去程锚点到达城=目的地 且 返程锚点出发城=目的地）才判全覆盖；否则目的地必经，按去程侧规划。 */
+  if (anchors.outbound && anchors.return && o.name === d.name && anchors.return.from_city === d.name) {
+    if (intent.trip_type==='pending' && resolvePlace(anchors.outbound.from_city)?.name===intent.origin_place.name && resolvePlace(anchors.return.to_city)?.name===intent.origin_place.name) {
+      intent.trip_type='round_trip';
+    }
+    if (intent.trip_type==='round_trip') {
+      intent.outbound_window ||= anchors.outbound.date+' ~ '+anchors.outbound.date;
+      intent.return_window ||= anchors.return.date+' ~ '+anchors.return.date;
+      for(let i=needs.length-1;i>=0;i--) if(/^行程类型未识别|^往返行程请补/.test(needs[i])) needs.splice(i,1);
+    }
+    return {
+      intent,
+      route: { route_type: routeTypeOf(o, d) },
+      needs_confirmation: needs,
+      place_candidates,
+      candidates: [],
+      constraint_notes: [],
+      degradations,
+      explorations: [],
+      anchors: { ...anchorPayload, full_cover: true },
+      anchor_notes: [...anchorNotes, '去程与返程之间的跨城交通已全部由你确认，本次没有待重算的跨城段；可继续比较景点和住宿，城市内接驳仍待核查'],
+      web_search: { configured: webSearchConfigured(env).configured, status: 'not_needed' },
+      next_steps: ['可继续比较景点、检查游玩日期并保存当前任务草案', '如需继续探索中间段，可撤销任一锚点后重新规划', '锚点信息可在修改时更正；撤销锚点后该段回到待规划状态'],
+      planner_version: ANYWHERE_VERSION
+    };
+  }
 
-  /* LLM 中转提名（geo 覆盖不到时才需要；一次调用覆盖两类骨架；清单校验在 buildCandidateSkeletons 消费点） */
+  const route = { route_type: routeTypeOf(o, d) };
+  const inspiration = input.inspiration_id ? inspirationFor(input.inspiration_id, o.name, d.name) : null;
+  const inspiredRoutes = inspiration ? [inspirationRoute(inspiration)] : listInspirations()
+    .filter((item) => item.scope === 'domestic' && item.from === o.name && item.to === d.name)
+    .map((item) => {
+      const { inspiration_id, ...shape } = inspirationRoute(item);
+      return { ...shape, origin: 'historical' };
+    });
+
+  /* 先输出可用的规则方向，真实检索随后补充；所有快照使用同一份地点与意图。 */
+  const baseline = deps.onProgress ? buildCandidateSkeletons(o, d, constraints, { discovered_routes: inspiredRoutes, anchorRemapped }) : null;
+  if (baseline) deps.onProgress({
+    intent, route, needs_confirmation: needs, place_candidates,
+    candidates: baseline.candidates, constraint_notes: baseline.constraint_notes,
+    degradations: baseline.degradations, explorations: baseline.explorations,
+    next_steps: [], planner_version: ANYWHERE_VERSION
+  });
+
+  const wsReady = webSearchConfigured(env).configured;
+  const rawSearch = deps.searchWeb !== undefined ? deps.searchWeb : searchWebDefault;
+  /* 本请求搜索状态聚合：两组发现查询并行时一次超时一次可用，按「最近一次」会误报 timeout；
+   * 有任何一次取得结果即如实报 available，全失败时透传最近失败原因（P1-4 不谎报口径不变）。 */
+  let searchHadHit = false;
+  const searchFn = wsReady && rawSearch
+    ? async (q, opts) => { const res = await rawSearch(q, opts); if (res && res.length) searchHadHit = true; return res; }
+    : null;
+  /* 骨架段验证与发现链（搜索+组合）并行（v0.44.0）：组合/hub 模型慢时不再阻塞段线索；
+   * 共享查询缓存——buildCandidateSkeletons 合并后重叠段不重复搜索，只补新增段。 */
+  const legCache = new Map();
+  const baseLegsPromise = baseline && searchFn ? verifyLegs(baseline.candidates, searchFn, legCache) : null;
+  const composeFn = deps.composeJson || deps.callJson || composeJsonDefault;
+  const discovery = wsReady && searchFn
+    ? await discoverRoutes(o, d, { searchFn, modelFn: composeFn, useCache: deps.useDiscoveryCache ?? (deps.searchWeb === undefined && deps.callJson === undefined) })
+    : { routes: [], searched: false, leads: 0 };
+
+  /* LLM 中转提名（geo 覆盖不到时才需要；一次调用覆盖两类骨架；清单校验在 buildCandidateSkeletons 消费点；
+   * 10s 上限：默认 30s 会吃满渐进预算，把逐段验证挤掉） */
   const llmHints = {};
-  if (!isDomesticPair(o, d) || !(geoCityName(o) && geoCityName(d))) {
+  if (!discovery.routes.length && (!isDomesticPair(o, d) || !(geoCityName(o) && geoCityName(d)))) {
     const hubOut = await callJson({
       schema_prompt: llmHubPrompt(JSON.stringify(cityNames), o.name, d.name),
       user: '为 ' + o.name + ' → ' + d.name + ' 提名中转城市',
-      kind: 'anywhere'
+      kind: 'anywhere', timeoutMs: 10000
     });
     if (hubOut && typeof hubOut === 'object') {
       if (hubOut.one_transfer_city) llmHints.one_transfer_city = hubOut.one_transfer_city;
       if (hubOut.mixed_rail_city) llmHints.mixed_rail_city = hubOut.mixed_rail_city;
     }
   }
+  if (baseLegsPromise) await baseLegsPromise;
 
+  llmHints.discovered_routes = [...inspiredRoutes, ...discovery.routes];
+  llmHints.anchorRemapped = anchorRemapped;
   const built = buildCandidateSkeletons(o, d, constraints, llmHints);
+  if (baseline) {
+    const key = (c) => JSON.stringify(c.legs.map((l) => [l.from, l.to, l.mode_guess, l.via || '']));
+    const keys = new Set(built.candidates.map(key));
+    for (const candidate of baseline.candidates) {
+      if (!keys.has(key(candidate))) built.candidates.push({ ...candidate, id: 'cand-retained-' + built.candidates.length });
+    }
+  }
   degradations.push(...built.degradations);
 
-  /* 逐段搜索线索：只在 web_search 已配置时进行；状态在取证后读取（如实反映本次调用结果，P1-4） */
-  const wsReady = webSearchConfigured(env).configured;
+  /* 逐段搜索线索：只在 web_search 已配置时进行；状态在取证后读取（如实反映本次调用结果，P1-4）。
+   * 共享 legCache：骨架阶段已验证的段不重复搜索，仅对发现新增段补查询。 */
   let leadStat = { leads: 0 };
   if (wsReady) {
-    leadStat = await verifyLegs(built.candidates, deps.searchWeb !== undefined ? deps.searchWeb : searchWebDefault);
-    if (!leadStat.leads) {
+    leadStat = await verifyLegs(built.candidates, searchFn, legCache);
+    if (!leadStat.leads && !discovery.leads) {
       const wsStateNow = deps.webSearchStatus ? deps.webSearchStatus() : webSearchStatusDefault();
       degradations.push('联网检索未取得相关线索（web_search 最近状态：' + (wsStateNow.status || 'unknown') +
         '）：全部段保持探索态（未取证，不模拟证据）');
@@ -1279,17 +1655,20 @@ export async function planAnywhere(input, deps = {}) {
     degradations.push('web_search 未配置：全部候选段保持探索态（未取证），不模拟证据');
   }
   const wsState = deps.webSearchStatus ? deps.webSearchStatus() : webSearchStatusDefault();
+  const wsStatus = searchHadHit ? 'available' : (wsState.status || 'unknown');
 
   return {
     intent,
     route,
-    needs_confirmation: travel.needs,
+    needs_confirmation: needs,
     place_candidates,
     candidates: built.candidates,
     constraint_notes: built.constraint_notes,
     degradations,
     explorations: built.explorations,
-    web_search: { configured: wsReady, status: wsState.status || 'unknown' },
+    anchors: anchorPayload,
+    anchor_notes: anchorNotes,
+    web_search: { configured: wsReady, status: wsStatus },
     next_steps: [
       '所有候选均为待验证假设：请按每段的核对入口到原平台确认班期',
       '段的「搜索线索」只说明找到相关来源，不是班期核验；取得班次/适用日期等结构化事实后才进入既有证据链',

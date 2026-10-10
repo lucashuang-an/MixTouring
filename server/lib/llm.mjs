@@ -9,6 +9,9 @@
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { searchVolc } from './search-volc.mjs';
+
+const VOLC_CHAT = 'https://ark.cn-beijing.volces.com/api/v3/chat/completions';
 
 const DEFAULT_BASE = 'https://api.openai.com/v1';
 const DEFAULT_MODEL = 'gpt-4o-mini';
@@ -51,13 +54,67 @@ function logUsage(kind, usage, model) {
  * capabilities 据此如实报告——配置成功不等于可用（智谱 429 余额不足期间 configured=true 但不可用）。
  * @returns {Promise<Array|null>} [{ title, link, content, media, date }]；失败 null */
 let SEARCH_STATE = { status: 'unknown', at: null };
-function markSearch(status) { SEARCH_STATE = { status, at: new Date().toISOString() }; }
+let SEARCH_QUOTA_UNTIL = 0;
+let PUBLIC_SEARCH_RETRY_AT = 0;
+function markSearch(status, provider = null) { SEARCH_STATE = { status, provider, at: new Date().toISOString() }; }
+
+function searchText(value) {
+  return String(value || '').replace(/<[^>]+>/g, '').replace(/&(?:amp|nbsp|lt|gt|quot|apos|#39|#x27);/g, (entity) => ({
+      '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&apos;': "'", '&#39;': "'", '&#x27;': "'"
+    })[entity] || (entity === '&nbsp;' ? ' ' : entity)).replace(/\s+/g, ' ').trim();
+}
+
+async function searchPublicIndex(query, limit, timeoutMs, signal) {
+  if (Date.now() < PUBLIC_SEARCH_RETRY_AT) return null;
+  try {
+    const url = 'https://www.so.com/s?' + new URLSearchParams({ q: String(query).slice(0, 100) });
+    const timeout = AbortSignal.timeout(Math.min(timeoutMs, 8000));
+    const res = await fetch(url, { signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
+    if (!res.ok || !/html/i.test(res.headers.get('content-type') || '')) return null;
+    const html = (await res.text()).slice(0, 600000);
+    if (html.includes('<title>访问异常页面</title>')) {
+      PUBLIC_SEARCH_RETRY_AT = Date.now() + 5 * 60 * 1000;
+      return null;
+    }
+    const blocks = html.split(/<li\s+class=["']res-list["']/i).slice(1, 16);
+    const results = blocks.map((block) => {
+      const head = block.match(/<h3\s+class=["']res-title["'][^>]*>([\s\S]*?)<\/h3>/i)?.[1] || '';
+      const directUrl = head.match(/data-mdurl=["']([^"']+)["']/i)?.[1] || '';
+      const summary = block.match(/<span\s+class=["']res-list-summary["'][^>]*>([\s\S]*?)<\/span>/i)?.[1] || '';
+      return {
+        title: searchText(head).slice(0, 120), link: searchText(directUrl),
+        content: searchText(summary).slice(0, 300), media: 'public-search', date: null
+      };
+    }).filter((r) => /^https:\/\//i.test(r.link) && r.title);
+    const seen = new Set();
+    const unique = results.filter((r) => !seen.has(r.link) && seen.add(r.link)).slice(0, limit);
+    if (!unique.length) PUBLIC_SEARCH_RETRY_AT = Date.now() + 5 * 60 * 1000;
+    return unique.length ? unique : null;
+  } catch (err) {
+    console.error('✗ 公开搜索备用通道失败：' + err.message);
+    return null;
+  }
+}
 
 /** 最近一次 searchWeb 真实调用的状态（浅拷贝，不泄露凭据）；从未调用过为 unknown */
 export function webSearchStatus() { return { ...SEARCH_STATE }; }
 
-export async function searchWeb(query, { limit = 5, timeoutMs = 30000 } = {}) {
+export async function searchWeb(query, { limit = 5, timeoutMs = 30000, signal } = {}) {
+  if (process.env.VOLC_SEARCH_API_KEY) {
+    const outcome = await searchVolc(query, {
+      key: process.env.VOLC_SEARCH_API_KEY,
+      model: process.env.VOLC_SEARCH_MODEL || 'doubao-seed-2-1-lite-260915',
+      limit, timeoutMs, signal
+    });
+    markSearch(outcome.status, 'volc-search');
+    return outcome.results;
+  }
   if (!llmConfigured()) return null;
+  if (Date.now() < SEARCH_QUOTA_UNTIL) {
+    const fallback = await searchPublicIndex(query, limit, timeoutMs, signal);
+    markSearch(fallback ? 'available' : 'quota_exhausted', fallback ? 'public-search' : null);
+    return fallback;
+  }
   try {
     const res = await fetch(`${BASE}/web_search`, {
       method: 'POST',
@@ -66,14 +123,14 @@ export async function searchWeb(query, { limit = 5, timeoutMs = 30000 } = {}) {
         search_engine: process.env.LLM_SEARCH_ENGINE || 'search_std',
         search_query: String(query).slice(0, 100)
       }),
-      signal: AbortSignal.timeout(timeoutMs)
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs)
     });
     if (!res.ok) {
       markSearch(res.status === 429 ? 'quota_exhausted' : 'error');
       throw new Error('search HTTP ' + res.status);
     }
     const body = await res.json();
-    markSearch('available');
+    markSearch('available', 'zhipu');
     return (body.search_result || []).slice(0, limit).map((r) => ({
       title: r.title || '',
       link: r.link || '',
@@ -82,10 +139,59 @@ export async function searchWeb(query, { limit = 5, timeoutMs = 30000 } = {}) {
       date: r.publish_date || null
     }));
   } catch (err) {
+    if (err && err.message === 'search HTTP 429') {
+      SEARCH_QUOTA_UNTIL = Date.now() + 10 * 60 * 1000;
+      const fallback = await searchPublicIndex(query, limit, timeoutMs, signal);
+      if (fallback) {
+        markSearch('available', 'public-search');
+        return fallback;
+      }
+    }
     if (!(err && err.message && err.message.startsWith('search HTTP'))) {
       markSearch(err && (err.name === 'TimeoutError' || err.name === 'AbortError') ? 'timeout' : 'error');
     }
     console.error('✗ 联网检索失败（' + query + '）：' + err.message);
+    return null;
+  }
+}
+
+/**
+ * 路线组合专用通道（v0.44.0）：Coding Plan 模型（ark-code-latest）对组合任务实测经常 >12s
+ * 不返回，渐进 25s 预算内不可用（2026-09-28 回放 7/7 超时）。配置了火山普通推理
+ * （VOLC_SEARCH_API_KEY）时，组合与搜索走同一账户的 chat/completions（同计费口径），
+ * 模型默认与搜索同款，可用 VOLC_COMPOSE_MODEL 单独覆盖；失败返回 null 落回规则/策展组合，
+ * 不再串行等待慢通道。未配置火山 key 时回落 callJson（行为与 v0.43.x 一致）。
+ */
+export async function composeJson(opts) {
+  if (!process.env.VOLC_SEARCH_API_KEY) return callJson(opts);
+  const model = process.env.VOLC_COMPOSE_MODEL || process.env.VOLC_SEARCH_MODEL || 'deepseek-v4-flash-ga-260731';
+  try {
+    const timeout = AbortSignal.timeout(opts.timeoutMs || 12000);
+    const res = await fetch(VOLC_CHAT, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${process.env.VOLC_SEARCH_API_KEY}` },
+      body: JSON.stringify({
+        model, temperature: 0.2,
+        messages: [
+          { role: 'system', content: opts.schema_prompt || '只输出 JSON 对象。' },
+          { role: 'user', content: opts.user }
+        ],
+        /* 与 searchVolc 同款适配（v0.43.7）：deepseek 默认开思考，12s 渐进预算内回不来；
+         * 组合是结构化小任务，关思考实测可数秒返回。 */
+        thinking: { type: 'disabled' },
+        response_format: { type: 'json_object' }
+      }),
+      signal: opts.signal ? AbortSignal.any([opts.signal, timeout]) : timeout
+    });
+    if (!res.ok) throw new Error('VOLC compose HTTP ' + res.status);
+    const body = await res.json();
+    logUsage(opts.kind, body.usage, model);
+    const raw = body.choices?.[0]?.message?.content;
+    if (!raw) return null;
+    const m = raw.match(/\{[\s\S]*\}/);
+    return m ? JSON.parse(m[0]) : null;
+  } catch (err) {
+    console.error('✗ 火山组合调用失败，落回规则/策展组合：' + err.message);
     return null;
   }
 }
@@ -122,7 +228,7 @@ export async function callJson(opts) {
         authorization: `Bearer ${KEY}`
       },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(opts.timeoutMs || 30000)
+      signal: opts.signal ? AbortSignal.any([opts.signal, AbortSignal.timeout(opts.timeoutMs || 30000)]) : AbortSignal.timeout(opts.timeoutMs || 30000)
     });
     if (!res.ok) throw new Error('LLM HTTP ' + res.status);
     const resBody = await res.json();
