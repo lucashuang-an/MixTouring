@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { compareSights, normalizeSightState, parseSightChange, sightCatalog } from './lib/sights.mjs';
 import { parseGuideTurn } from './lib/guide.mjs';
 import { sightAccess, validAccessReference } from './lib/sight-access.mjs';
-import { transportReferences, validTransportReference } from './lib/transport-references.mjs';
+import { transportReferences, validTransportReference, validSchedule } from './lib/transport-references.mjs';
 let count = 0;
 function check(value, label) {assert.ok(value,label);count++;console.log('✓ '+label);}
 const fourState={selected_ids:['nalati','kalajun','xiata','kuerdening']};
@@ -128,7 +128,7 @@ check(airOut && airBack && airOut.source.url!==airBack.source.url && airOut.repo
   '航空去返分别采运营方方向页，不镜像去程来源');
 check(airOut.source.published_at===null && airOut.evidence_state==='source_lead' && airOut.duration_minutes===null,
   '未注明发布时间不填采样日，航线页不提供本次耗时');
-check(transportReferences('阿拉木图','乌鲁木齐',fixedNow).length===0 && transportReferences('乌鲁木齐','阿拉木图',fixedNow)[0].evidence_state==='historical',
+check(transportReferences('阿拉木图','乌鲁木齐',fixedNow).filter(r=>r.mode==='road_passenger').length===0 && transportReferences('乌鲁木齐','阿拉木图',fixedNow)[0].evidence_state==='historical',
   '乌鲁木齐始发道路报道不冒充阿拉木图始发班次');
 check(transportReferences('伊宁','阿拉木图',Date.parse('2026-10-24T04:00:00Z')).find(r=>r.mode==='plane').evidence_state==='stale',
   '售期边界过去后航空方向页待重新核查');
@@ -143,6 +143,17 @@ check(transportReferences('伊宁','阿拉木图',fixedNow)[0].reported_operator
   '资料每次独立返回，客户端改写不污染策展库');
 const crossChecklist=compareSights({state:{selected_ids:['xiata']},destination:'阿拉木图',anchors:{return:{mode:'plane',from_city:'乌鲁木齐',to_city:'北京',date:'2026-10-08'}}},fixedNow).access_checklist;
 const crossReturn=crossChecklist.rows.find(r=>r.id==='destination-to-return');
-check(crossReturn.references.length===0 && crossReturn.opposite_references.length===1 && crossReturn.operator===null,
+check(crossReturn.references.filter(r=>r.evidence_state!=='unsupported').length===0 && crossReturn.opposite_references.filter(r=>r.mode==='road_passenger').length===1 && crossReturn.operator===null,
   '返程缺口展示反方向历史追查材料，保持本段无证据和运营方未知');
+const current=Date.parse('2026-10-11T04:00:00Z');
+const dated=transportReferences('阿拉木图','乌鲁木齐',current,'2026-10-22 ~ 2026-10-22').find(r=>r.id==='ala-urc-cz6012');
+check(dated.evidence_state==='dated_partial' && dated.schedule_dates[0]==='2026-10-22' && dated.schedule.arrival_day_offset===1,'独立返程时刻表按适用日期匹配，保留到达次日');
+check(transportReferences('北京','阿拉木图',current,'2026-10-15 ~ 2026-10-15').some(r=>r.schedule?.service_no==='CZ5097'),'直达基准有独立运营方时刻表');
+check(transportReferences('阿拉木图','乌鲁木齐',current,'2026-10-25 ~ 2026-10-25').find(r=>r.id==='ala-urc-cz6012').evidence_state==='unsupported','超出时刻表适用期不升级日期证据');
+check(!validSchedule({...dated.schedule,arrival_day_offset:0}) && !validSchedule({...dated.schedule,from_tz:'错误时区'}),'时刻表拒绝丢跨日和非法时区');
+const assigned={selected_ids:['xiata','kuerdening'],visit_dates:{xiata:'2026-10-16',kuerdening:'2026-10-16'},full_days:2};
+check(compareSights({state:assigned},current).window.issues.some(n=>n.includes('当天预算')),'同一天多景点检查分日预算，不只算总小时');
+check(compareSights({state:{...assigned,play_window:'2026-10-17 ~ 2026-10-18'}},current).window.issues.some(n=>n.includes('超出游玩')),'分配日期超出游玩窗口明确提示');
+check(normalizeSightState({selected_ids:['xiata'],visit_dates:{xiata:'2026-02-31'}}).visit_dates.xiata===null,'非法景点日期不保存为真实日期');
+check(compareSights({state:{selected_ids:['kuerdening','xiata'],visit_dates:{kuerdening:'2026-10-17',xiata:'2026-10-16'}}},current).window.issues.some(n=>n.includes('顺序与日期')),'重排不暗改日期，顺序与日期倒置时明确提示');
 console.log('✓ 景点比较与时间预算回归通过（'+count+' 项）');

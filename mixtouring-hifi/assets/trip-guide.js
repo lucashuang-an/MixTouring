@@ -7,6 +7,7 @@
       pace: ['simple', 'explore', 'any'].includes(raw.pace) ? raw.pace : null,
       road: ['open', 'prefer_other', 'exclude'].includes(raw.road) ? raw.road : null,
       nights: [0, 1, 2].includes(raw.nights) ? raw.nights : null,
+      preferred_mode:['rail','plane'].includes(raw.preferred_mode)?raw.preferred_mode:null,
       skipped: Array.isArray(raw.skipped) ? raw.skipped.filter(function (x) { return ['pace', 'nights', 'road'].includes(x); }) : []
     };
   }
@@ -28,6 +29,8 @@
     }
     if (/不想沿途|不愿停留|不想多玩/.test(t)) { patch.pace = 'simple'; delete patch.nights; }
     if (/停(?:留)?\s*[一二两12]\s*天/.test(t)) { patch.pace = 'explore'; notes.push('停留天数已看到，住宿晚数请在下一题确认。'); }
+    if(/(?:想坐|想乘|优先|更想).*(?:火车|铁路|高铁)/.test(t) && !/不想|不坐/.test(t)) patch.preferred_mode='rail';
+    if(/(?:想坐|想乘|优先|更想).*(?:飞机|航班)/.test(t) && !/不想|不坐/.test(t)) patch.preferred_mode='plane';
     return { patch: patch, notes: notes };
   }
   function summary(raw) {
@@ -39,6 +42,7 @@
     if (s.road === 'exclude') labels.push('不坐公路客运');
     if (s.road === 'open') labels.push('愿意了解公路走法');
     if (s.nights != null) labels.push(s.nights ? '中途停 ' + s.nights + ' 晚' : '不安排中途停留');
+    if(s.preferred_mode) labels.push(s.preferred_mode==='rail'?'优先铁路':'优先航班');
     return labels;
   }
   function question(raw, candidates) {
@@ -72,6 +76,7 @@
       if (s.pace === 'explore' && c.kind !== 'direct') { score += 20; reason = '可以继续考虑沿途停留'; }
       if (s.road === 'prefer_other' && road) score -= 40;
       if (s.road === 'open' && road) score += 5;
+      if(s.preferred_mode && c.legs.every(function(l){return l.mode_guess===s.preferred_mode;})){score+=15;reason=s.preferred_mode==='rail'?'符合你优先铁路的想法':'符合你优先航班的想法';}
       return { candidate: c, score: score, reason: reason, index: i };
     }).filter(Boolean).sort(function (a, b) { return b.score - a.score || a.index - b.index; });
     return { items: ranked, omitted: omitted };
@@ -88,9 +93,17 @@
   function reason(c) {
     if(c.kind==='direct') return '适合想省心抵达的人，先从直达开始比较。';
     var hub=c.legs[0].to, end=c.legs[c.legs.length-1].to;
+    if(/伊宁|伊犁/.test(hub)) return '给伊犁留一段游玩时间，再研究前往'+end+'的公共交通。';
+    if(c.kind==='mixed') return '先乘铁路到'+hub+'，再研究接航班到'+end+'；适合愿意把长途分段的人。';
     return '把'+hub+'也加入旅行，再前往'+end+'。'+(c.kind==='mixed'?'适合愿意尝试铁路与航班组合的人。':'适合愿意在途中多留一站的人。');
   }
-  var api = { clean: clean, parse: parse, summary: summary, question: question, rank: rank, routeKey: routeKey, sightRelevant:sightRelevant,reason:reason };
+  function groups(items) {
+    var out=[],map=new Map();
+    items.forEach(function(item){var c=item.candidate,key=JSON.stringify(c.legs.map(function(l){return l.from;}).concat(c.legs[c.legs.length-1].to));
+      if(!map.has(key)){var group={key:key,items:[]};out.push(group);map.set(key,group);}map.get(key).items.push(item);
+    });return out;
+  }
+  var api = { clean: clean, parse: parse, summary: summary, question: question, rank: rank, routeKey: routeKey, sightRelevant:sightRelevant,reason:reason,groups:groups };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.MTGuide = api;
 })(typeof window !== 'undefined' ? window : globalThis);

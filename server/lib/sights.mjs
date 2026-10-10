@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { assessSightWindow } from './sight-window.mjs';
 import { sightAccess } from './sight-access.mjs';
-import { buildTravelIntent } from './anywhere.mjs';
+import { buildTravelIntent, isValidWindow } from './anywhere.mjs';
 import { accessChecklist } from './access-checklist.mjs';
 const DATA = JSON.parse(readFileSync(new URL('../../pipeline/data/attractions.json', import.meta.url), 'utf8'));
 const BY_ID = new Map(DATA.attractions.map((a) => [a.id, a]));
@@ -17,6 +17,7 @@ export function normalizeSightState(raw = {}) {
   return { selected_ids: ids, requested:raw.requested===true, full_days: integer(raw.full_days, 2, 1, 14),
     day_hours: integer(raw.day_hours, 8, 4, 12), preference: THEMES.has(raw.preference) ? raw.preference : '不限',
     play_window: typeof raw.play_window==='string' && raw.play_window.length<=23 ? raw.play_window : null,
+    visit_dates:Object.fromEntries(ids.map(id=>[id,typeof raw.visit_dates?.[id]==='string' && isValidWindow(raw.visit_dates[id]+' ~ '+raw.visit_dates[id])?raw.visit_dates[id]:null])),
     visit_hours: Object.fromEntries(ids.map((id) => [id, integer(raw.visit_hours?.[id], 6, 1, 12)])) };
 }
 

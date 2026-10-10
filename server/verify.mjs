@@ -306,7 +306,7 @@ async function main() {
   const caps = await (await fetch(BASE + '/api/capabilities')).json();
   if (caps.code === 0 && typeof caps.data.web_search_configured === 'boolean' &&
     ['available', 'quota_exhausted', 'timeout', 'error', 'unknown'].includes(caps.data.web_search_status) &&
-    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.49.0') {
+    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.50.0') {
     console.log('✓ /api/capabilities P1-4：configured 与最近真实状态分开（web_search_configured=' +
       caps.data.web_search_configured + ', status=' + caps.data.web_search_status + '），版本拆分对齐');
   } else { failed++; console.error('✗ /api/capabilities 形状异常：' + JSON.stringify(caps).slice(0, 200)); }
@@ -412,7 +412,7 @@ async function main() {
   const toDestination=checklist?.rows.find(r=>r.id==='base-to-destination');
   const toReturn=checklist?.rows.find(r=>r.id==='destination-to-return');
   if(toDestination?.references.some(r=>r.id==='yin-ala-air' && r.reported_operator) && toDestination.operator===null &&
-      toReturn?.references.length===0 && toReturn.opposite_references.some(r=>r.id==='urc-ala-road')) console.log('✓ 策展方向资料接入接口，反方向报道与本次运营方隔离');
+      toReturn?.references.some(r=>r.id==='ala-urc-cz6076') && toReturn.references.every(r=>r.mode==='plane') && toReturn.opposite_references.some(r=>r.id==='urc-ala-road')) console.log('✓ 独立返程时刻表接入接口，反方向道路报道与本次运营方隔离');
   else {failed++;console.error('✗ 策展方向资料与本次事实混淆');}
   const unrelated=await (await fetch(BASE+'/api/anywhere/sights',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({destination:'昆明',state:{selected_ids:['xiata']}})})).json();
   const initial=await (await fetch(BASE+'/api/anywhere/sights',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({destination:'伊宁'})})).json();

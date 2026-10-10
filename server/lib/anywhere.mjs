@@ -1482,7 +1482,7 @@ export async function planAnywhere(input, deps = {}) {
     }
     if (d && p && p.name !== d.name) {
       anchorNotes.push('本次规划 ' + (o ? o.name : '起点') + ' → ' + d.name + ' 的去程侧（目的地不因锚点跳过）；' +
-        '「' + d.name + ' → ' + p.name + '」的返程接驳段当前不能与去程同卡生成，请另行单独规划，或确认后再锁定返程锚点');
+        '详情会单独列出「' + d.name + ' → ' + p.name + '」的返程接驳方向，日期、班次与衔接需独立确认');
     }
   }
   const anchorScope = anchors.outbound ? 'after_outbound_anchor' : 'full';

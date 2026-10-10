@@ -3,10 +3,11 @@ import guide from '../../mixtouring-hifi/assets/trip-guide.js';
 import { buildTravelIntent, extractConstraints, extractReturnDate, extractLodgingStays } from './anywhere.mjs';
 import { loadPlaces } from './trip-service.mjs';
 import { parseSightChange, compareSights, sightCatalog } from './sights.mjs';
+import { transportReferences } from './transport-references.mjs';
 
 const CITY_NAMES = loadPlaces().filter((p) => p.kind === 'city').map((p) => p.name);
 
-function answerRouteQuestion(text, plan, selectedCandidateId, preferences) {
+function answerRouteQuestion(text, plan, selectedCandidateId, preferences,nowMs) {
   const candidates = plan?.candidates || [];
   if (!candidates.length) return null;
   const selected = candidates.find((c) => c.id === selectedCandidateId);
@@ -18,6 +19,10 @@ function answerRouteQuestion(text, plan, selectedCandidateId, preferences) {
       '可以在'+choice.legs[0].to+'停留，把途中城市也加入旅行。')+'具体交通安排见详情。';
   }
   if (/(?:班次|航班号|车次|票价|多少钱|价格|能买|能订|能成行)/.test(text)) {
+    const choice=selected || guide.rank(candidates,preferences).items[0]?.candidate;
+    const refs=(choice?.legs || []).flatMap((l,i)=>transportReferences(l.from,l.to,nowMs,i===0?plan.intent?.outbound_window:null)
+      .filter(r=>r.schedule && !['unsupported','stale'].includes(r.evidence_state) && (!l.mode_guess || l.mode_guess==='plane')));
+    if(refs.length) return '已有运营方时刻表参考：'+refs.slice(0,2).map(r=>r.schedule.service_no+' '+r.schedule.depart_time+' → '+r.schedule.arrive_time+(r.schedule.arrival_day_offset?'（到达次日）':'')).join('；')+'，均为两端当地时间。详情可看适用日期；余票、价格和行李仍待查询。';
     return '当前只有路线探索线索，尚无这条走法指定日期的逐段班次、价格和衔接证据。打开走法详情可按清单逐段核对。';
   }
   if (/(?:直达|直飞)/.test(text) && /(?:有|呢|怎么|为什么|是否)/.test(text)) {
@@ -105,7 +110,7 @@ export function parseGuideTurn(text, nowMs = Date.now(), plan = null, selectedCa
     labels.push('住宿：' + stay.date + ' 住 ' + stay.city);
   }
   if (constraints.lodging_stays === null) labels.push('住宿：已取消');
-  const answer = labels.length ? null : answerRouteQuestion(t, plan, selectedCandidateId,context.preferences);
+  const answer = labels.length ? null : answerRouteQuestion(t, plan, selectedCandidateId,context.preferences,nowMs);
   const requiresConfirmation = Object.keys(travel).length>0 || Object.keys(constraints).length>0 ||
     Object.prototype.hasOwnProperty.call(sightChange.patch,'selected_ids') || Object.prototype.hasOwnProperty.call(sightChange.patch,'play_window') || Object.prototype.hasOwnProperty.call(sightChange.patch,'full_days');
   return { preferences: preferences.patch, travel, constraints, sights: sightChange.patch, labels, notes: preferences.notes,

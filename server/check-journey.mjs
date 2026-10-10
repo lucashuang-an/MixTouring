@@ -20,6 +20,11 @@ assert.equal(JSON.stringify(task),original,'草案预览不改变当前条件');
 const restored=taskPreview.derive(JSON.parse(JSON.stringify(task)),[{id:'xiata',name:'夏塔'}]);
 assert.deepEqual(restored,preview,'私人版本保存再读取派生同一预览');
 assert.equal(taskPreview.derive({request:{origin:'上海',destination:'昆明'},sights:{selected_ids:[]}}).dates.length,0,'没有日期不生成精确逐日安排');
+const scheduled=structuredClone(task);scheduled.sights.visit_dates={xiata:'2026-10-01'};
+assert.ok(taskPreview.derive(scheduled,[{id:'xiata',name:'夏塔'}]).dates.some(r=>r.date==='2026-10-01' && r.label==='游玩 夏塔'));
+assert.deepEqual(taskPreview.affected(task,scheduled),['2026-10-01']);
+const changed=structuredClone(scheduled);changed.sights.visit_dates.xiata='2026-10-02';
+assert.deepEqual(taskPreview.affected(scheduled,changed),['2026-10-01','2026-10-02']);
 
 const deps = { callJson: async () => null, env: {}, searchWeb: null, webSearchStatus: () => ({ status: 'unavailable' }) };
 const plan = await planAnywhere({
@@ -29,6 +34,11 @@ const plan = await planAnywhere({
 const mixed = plan.candidates.find((c) => c.kind === 'mixed');
 assert.ok(mixed, '北京→阿拉木图应有可探索的混合方向');
 const detail = buildJourneyDetail(plan, mixed.id, 2);
+const anchored={...plan,anchors:{return:{mode:'plane',from_city:'乌鲁木齐',to_city:'北京',date:'2026-10-22'}}};
+const withReturn=buildJourneyDetail(anchored,mixed.id,2);
+assert.equal(withReturn.inbound.at(-1).to,'乌鲁木齐','返程接驳接到锁定出发城');
+assert.equal(withReturn.return_anchor.from_city,'乌鲁木齐');
+assert.equal(withReturn.transport_references.find(r=>r.direction==='inbound').references.find(r=>r.id==='ala-urc-cz6076').date_scope,'unverified','返程航班日不代替接驳日期');
 assert.equal(detail.evidence_state, 'explore');
 assert.equal(detail.outbound.length, 2);
 assert.equal(detail.outbound[0].to, detail.outbound[1].from, '停留前后两段必须连续');

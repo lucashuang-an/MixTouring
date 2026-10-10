@@ -189,6 +189,7 @@
     var arrivalWindow = null, planSequence = 0, planController = null, guideSequence = 0, journeySequence = 0;
     var SESSION_KEY = 'mt:planning-session';
     var planning = false;
+    var previewImpact=[];
 
     /* ---------- 卡 B（v0.44.2）：交通锚点（用户确认事实）与会话级新约束 ----------
      * anchors.outbound/return：已锁定的去/返交通；extraConstraints：不开车与住宿约束（无输入框，由对话确认进入）。
@@ -353,12 +354,19 @@
       if(view.no_self_drive) html+='<p>不开车</p>';
       if(view.nights) html+='<p>中途停留 '+view.nights+' 晚，住宿待安排</p>';
       if(view.dates.length) html+='<h3>已定安排</h3><div class="preview-dates">'+view.dates.map(function(row){return '<article><p>'+MT.esc(row.date)+' · '+MT.esc(row.label)+'</p><p class="sight-muted">'+MT.esc(row.note)+'</p></article>';}).join('')+'</div><p class="sight-muted">日期按各地点当地时间显示。</p>';
-      if(view.sights.length) html+='<h3>想去的景点</h3><p>'+view.sights.map(MT.esc).join('、')+'</p><p class="sight-muted">'+MT.esc(view.play_window || '游玩日期待定')+' · 顺序待安排</p>';
+      if(view.sights.length) html+='<h3>想去的景点</h3><p>'+view.sights.map(MT.esc).join('、')+'</p><p class="sight-muted">'+MT.esc(view.play_window || (view.has_visit_dates?'景点日期见上方安排':'游玩日期待定'))+' · 顺序可调整</p>';
+      if(view.sights.length) html+='<details><summary>调整景点日期与顺序</summary><form id="previewSightForm">'+(snap.sights.selected_ids || []).map(function(id,i){var a=MTSights.getCatalog().find(function(x){return x.id===id;});return '<div class="preview-edit-row"><label>'+MT.esc(a?a.name:id)+'<input type="date" data-visit-id="'+MT.esc(id)+'" value="'+MT.esc(snap.sights.visit_dates && snap.sights.visit_dates[id] || '')+'"></label><button type="button" data-move="'+i+'" data-step="-1" '+(i===0?'disabled':'')+'>上移</button><button type="button" data-move="'+i+'" data-step="1" '+(i===snap.sights.selected_ids.length-1?'disabled':'')+'>下移</button></div>';}).join('')+'<button type="submit">更新景点日期</button></form></details>';
+      html+='<details><summary>修改住宿城市</summary><form id="previewStayForm">'+(snap.constraints.lodging_stays || []).concat([{date:'',city:''}]).map(function(stay){return '<div class="preview-edit-row"><label>住宿日<input type="date" name="stayDate" value="'+MT.esc(stay.date)+'"></label><label>城市<input type="text" name="stayCity" value="'+MT.esc(stay.city)+'" placeholder="例如：伊宁"></label></div>';}).join('')+'<p class="sight-muted">清空一行的日期和城市即可取消该次住宿。</p><button type="submit">更新住宿</button></form></details>';
+      if(previewImpact.length) html+='<p role="status">已更新 '+previewImpact.map(MT.esc).join('、')+' 的安排；对应当地接驳需要重新确认。</p>';
       if(view.pending.length) html+='<h3>接下来</h3><ul>'+view.pending.map(function(n){return '<li>'+MT.esc(n)+'</li>';}).join('')+'</ul>';
       html+='<div class="preview-actions"><button id="previewEdit">继续调整</button><button id="previewSave" class="guide-primary">保存行程</button></div>';
       box.innerHTML=html;
       document.getElementById('previewEdit').onclick=function(){var input=document.getElementById('guideInput') || document.getElementById('nlInput');input.focus();input.scrollIntoView({behavior:'smooth',block:'center'});};
       document.getElementById('previewSave').onclick=function(){saveCurrentTask('taskSaveNote');};
+      var sightForm=document.getElementById('previewSightForm');
+      if(sightForm) sightForm.onsubmit=function(e){e.preventDefault();var dates={};sightForm.querySelectorAll('[data-visit-id]').forEach(function(el){dates[el.getAttribute('data-visit-id')]=el.value || null;});var before=guideSnapshot();guideUndo.push(before);MTSights.applyPatch({visit_dates:dates},false);previewImpact=MTTaskPreview.affected(before,guideSnapshot());renderGuide();rememberSession();};
+      box.querySelectorAll('[data-move]').forEach(function(button){button.onclick=function(){var before=guideSnapshot(),ids=MTSights.getState().selected_ids.slice(),i=Number(button.getAttribute('data-move')),next=i+Number(button.getAttribute('data-step'));if(next<0 || next>=ids.length)return;var moved=ids.splice(i,1)[0];ids.splice(next,0,moved);guideUndo.push(before);var dates={};box.querySelectorAll('[data-visit-id]').forEach(function(el){dates[el.getAttribute('data-visit-id')]=el.value || null;});MTSights.applyPatch({selected_ids:ids,visit_dates:dates},false);previewImpact=MTTaskPreview.affected(before,guideSnapshot());renderGuide();rememberSession();};});
+      document.getElementById('previewStayForm').onsubmit=function(e){e.preventDefault();updatePreviewLodging(e.currentTarget);};
     }
     function saveCurrentTask(noteId) {
       if (planning || !activePlan || !lastRequest) { MT.toast('请等当前规划更新完成后保存'); return; }
@@ -373,6 +381,23 @@
         note.textContent = res.reason === 'write_failed' ? '保存失败：浏览器存储不可写，草案未保存。' : '保存失败：' + (res.reason || '未知原因');
         MT.toast('草案未保存，请稍后重试');
       }
+    }
+    async function updatePreviewLodging(form) {
+      var dates=Array.from(form.querySelectorAll('[name=stayDate]')),cities=Array.from(form.querySelectorAll('[name=stayCity]'));
+      var stays=dates.map(function(el,i){return {date:el.value,city:cities[i].value.trim()};}).filter(function(x){return x.date || x.city;});
+      if(stays.some(function(x){return !x.date || !x.city;})){MT.toast('请为每次住宿填写日期和城市');return;}
+      var text=stays.map(function(x){return x.date.replace(/(\d+)-(\d+)-(\d+)/,'$1年$2月$3日')+'住'+x.city;}).join('，');
+      var token=++guideSequence,submit=form.querySelector('button[type=submit]');submit.disabled=true;
+      try {
+        var r=await post('/api/anywhere/guide',{text:text || '取消住宿',plan_id:activePlan.plan_id});
+        if(token!==guideSequence)return;
+        if(r.code!==0 || !r.data) throw Error('更新失败');
+        if(stays.length && r.data.constraints.lodging_stays?.length!==stays.length){MT.toast('部分住宿城市未识别，请填写城市名称');return;}
+        var before=guideSnapshot();
+        applyGuide({preferences:{},travel:{},constraints:{lodging_stays:r.data.constraints.lodging_stays || null}},text || '取消住宿');
+        previewImpact=MTTaskPreview.affected(before,guideSnapshot());renderTaskPreview();
+      } catch(e){if(token===guideSequence)MT.toast('住宿更新暂时失败，原安排已保留');}
+      finally {submit.disabled=false;}
     }
     document.getElementById('btnSaveTask').onclick = function () { saveCurrentTask('taskSaveNote'); };
     document.getElementById('btnPreviewTask').onclick = function () {document.getElementById('taskPreview').hidden=false;renderTaskPreview();document.getElementById('taskPreview').scrollIntoView({behavior:'smooth',block:'start'});};
@@ -414,6 +439,7 @@
       activePlan = null; activeCandidate = null; activeNights = 0;
       document.getElementById('taskSaveArea').hidden = true;
       document.getElementById('taskPreview').hidden = true;
+      previewImpact=[];
       MTSights.reset();
       resultArea.innerHTML = ''; document.getElementById('guideArea').hidden = true;
     }
@@ -509,6 +535,7 @@
       if (p.road === 'prefer_other') reply.push('含公路客运的走法已放到后面，其余路段方式仍需查询。');
       if (p.road === 'exclude') reply.push('已隐藏明确含公路客运的走法；方式待查的路段仍需确认。');
       if (p.road === 'open') reply.push('公路方向也会一起比较。');
+      if(p.preferred_mode) reply.push(p.preferred_mode==='rail'?'已优先比较铁路走法。':'已优先比较航班走法。');
       guideMessages.push({ role: 'user', text: userText }, { role: 'assistant', text: reply.join('') || (change.sights && Object.keys(change.sights).length?'景点安排已更新，可以撤销。':'已记下，可以继续比较路线。') });
       var travelChanged = Object.keys(change.travel || {}).length || Object.keys(change.constraints || {}).length;
       if (travelChanged) {
@@ -558,9 +585,11 @@
     }
     function undoGuide() {
       if (!guideUndo.length) return;
+      var current=guideSnapshot();
       var previous = guideUndo.pop();
       var changed = JSON.stringify(previous.travel) !== JSON.stringify(collectTravel()) || JSON.stringify(previous.constraints) !== JSON.stringify(collectConstraints());
       restoreGuideSnapshot(previous, changed || planning);
+      previewImpact=MTTaskPreview.affected(current,guideSnapshot());renderTaskPreview();
     }
 
     function collectConstraints() {
@@ -628,6 +657,7 @@
       if (confirmed && Object.keys(confirmed).length) confirmedPlaces = Object.assign({}, confirmedPlaces, confirmed);
       var body = Object.assign({}, lastRequest, Object.keys(confirmedPlaces).length ? { confirmed_places: confirmedPlaces } : {});
       body.travel = collectTravel();
+      body.constraints = collectConstraints();
       /* 卡 B：锚点随每次规划提交（锁定/修改/撤销后触发重规划共用同一路径） */
       if (anchors.outbound || anchors.return) body.anchors = { outbound: anchors.outbound, return: anchors.return };
       /* 已提交字段归入本次意图；下次全新查询只带入提交之后明确编辑的字段。 */
@@ -914,10 +944,14 @@
       var ranked = MTGuide.rank(data.candidates, guideState);
       if (ranked.omitted) html += '<p style="font-size:12px;">按你的要求隐藏了 ' + ranked.omitted + ' 条公路客运走法，可在对话中撤销。</p>';
       if (!ranked.items.length && data.candidates.length) html += '<p>当前条件下没有剩余走法。可撤销刚才的要求，重新比较。</p>';
-      ranked.items.forEach(function (item,index) {
-        if(index===3) html+='<details class="other-routes"><summary>再看 '+(ranked.items.length-3)+' 条走法</summary>';
+      var routeGroups=MTGuide.groups(ranked.items),displayItems=[];
+      routeGroups.forEach(function(group,groupIndex){group.items.forEach(function(item,variant){displayItems.push(Object.assign({},item,{groupIndex:groupIndex,variant:variant,variants:group.items.length,lastVariant:variant===group.items.length-1}));});});
+      displayItems.forEach(function (item,index) {
+        if(item.groupIndex===3 && item.variant===0) html+='<details class="other-routes"><summary>再看 '+(routeGroups.length-3)+' 个方向</summary>';
+        if(item.variant===1) html+='<details class="route-variants"><summary>同一路径的其他交通组合</summary>';
         var c = item.candidate;
         html += '<div class="detail-card mt-route-card" style="margin-top:12px;">';
+        if(index===0) html+='<p class="mt-route-label">优先考虑</p>';
         if (c.inspiration_id) html += '<p class="mt-route-label">从路线灵感继续探索</p>';
         else if (c.basis && c.basis.rule === 'historical-inspiration') html += '<p class="mt-route-label">国内历史路线结构 · 班期与费用待查</p>';
         html += '<div style="font-size:15px;">' + MT.esc(candidateTitle(c)) + '</div>';
@@ -990,7 +1024,8 @@
             }).join('') + '</div>';
         }
         html += '</details></div>';
-        if(index===ranked.items.length-1 && index>=3) html+='</details>';
+        if(item.lastVariant && item.variant>0) html+='</details>';
+        if(index===displayItems.length-1 && item.groupIndex>=3) html+='</details>';
       });
 
       if ((data.explorations || []).length && !(data.candidates || []).some(function (c) {
@@ -1144,10 +1179,11 @@
         '<h3 style="font-size:17px;margin:0;">走法详情</h3>' +
         '<p style="font-size:12px;color:var(--mixtouring-muted-foreground);line-height:1.6;">当前展示路线结构；出行前请查询各段班次、价格与接驳。</p>';
       if (activePlan.intent.arrival_window) html += '<p style="font-size:12.5px;line-height:1.6;">希望到达：' + MT.esc(activePlan.intent.arrival_window) + '；各段班次尚未按此时间筛选。</p>';
-      html += journeyLegsHtml(detail.outbound, '去程 · ' + (detail.outbound_window ? MT.esc(detail.outbound_window) : '日期待补'));
+      html += journeyLegsHtml(detail.outbound, detail.outbound_anchor?'前往目的地 · 后续交通日期待安排':'去程 · ' + (detail.outbound_window ? MT.esc(detail.outbound_window) : '日期待补'));
       if (detail.trip_type === 'round_trip') {
-        html += journeyLegsHtml(detail.inbound, '返程 · ' + (detail.return_window ? MT.esc(detail.return_window) : '日期待补'));
-        html += '<p style="font-size:11.5px;color:var(--mixtouring-muted-foreground);">返程请单独查询班次，不能沿用去程结果。</p>';
+        html += journeyLegsHtml(detail.inbound, detail.return_anchor?'返回出发城 · 接驳日期待安排':'返程 · ' + (detail.return_window ? MT.esc(detail.return_window) : '日期待补'));
+        if(detail.return_anchor) html+='<p>已定返程：'+MT.esc(detail.return_anchor.from_city)+' → '+MT.esc(detail.return_anchor.to_city)+' · '+MT.esc(detail.return_anchor.date)+'</p>';
+        html += '<p style="font-size:11.5px;color:var(--mixtouring-muted-foreground);">'+MT.esc(detail.return_note)+'</p>';
       }
       if (detail.candidate_kind !== 'direct') {
         html += '<div style="margin-top:14px;font-size:12.5px;">路上多玩一座城市（可选）</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">' +
@@ -1155,6 +1191,7 @@
       }
       if (detail.stopover) html += '<p style="font-size:12.5px;line-height:1.7;">在 ' + MT.esc(detail.stopover.city) + ' 停 ' + detail.stopover.nights + ' 晚。住宿与后续交通可在确定停留日期后查询。</p>';
       html += '<details style="margin-top:14px;padding:12px;background:var(--mixtouring-muted);border-radius:12px;font-size:12px;line-height:1.7;"><summary style="cursor:pointer;min-height:28px;">查看费用与逐段待查项</summary>';
+      html+='<h4>已找到的交通资料</h4>'+ (detail.transport_references || []).map(function(row){return '<p>'+MT.esc(row.from)+' → '+MT.esc(row.to)+'</p>'+row.references.map(function(ref){var s=ref.schedule;return '<p><a href="'+MT.esc(ref.source.url)+'" target="_blank" rel="noopener noreferrer">'+MT.esc(ref.source.title)+'</a> · '+MT.esc({dated_partial:'时刻表参考',source_lead:'方向线索',historical:'历史资料',stale:'需重查',unsupported:'日期不适用'}[ref.evidence_state])+'</p>'+(s?'<p>'+MT.esc(s.service_no)+' · '+MT.esc(s.depart_time)+' → '+MT.esc(s.arrive_time)+(s.arrival_day_offset?'（到达次日）':'')+' · 两端当地时间<br>资料范围 '+MT.esc(s.start)+' 至 '+MT.esc(s.end)+'</p>':'')+'<p class="sight-muted">采样 '+MT.esc(ref.source.sampled_at)+' · 余票、费用和行李待查</p>';}).join('')+(row.references.length?'':'<p class="sight-muted">尚未找到本段交通资料。</p>');}).join('');
       html += '<div style="margin-top:8px;">费用待查：' + detail.cost.unknown_items.map(MT.esc).join('；') + '</div>';
       html += '<h4 style="font-size:14px;margin:18px 0 8px;">逐段待查项</h4>' + detail.checklist.map(function (row) {
         return '<div style="padding:9px 0;border-bottom:1px solid var(--mixtouring-border);font-size:12px;line-height:1.7;">' +

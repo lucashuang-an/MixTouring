@@ -768,7 +768,7 @@ const NO_DIGIT_RE = /\d/;
       searchWeb: async () => null });
   ok(r6b.web_search && r6b.web_search.status === 'timeout',
     'P1-4：本请求全部搜索失败 → 透传最近失败原因（timeout），不谎报可用');
-  ok(r6.planner_version === 'v0.49.0', '编排：anywhere 版本号对齐 v0.49.0');
+  ok(r6.planner_version === 'v0.50.0', '编排：anywhere 版本号对齐 v0.50.0');
 
   const r7 = await planAnywhere({ text: '想去新疆最西边那座古城玩' },
     { callJson: async () => ({ origin: '北京', destination: '喀什' }), env: {}, osmSearch: async () => [] });
@@ -885,7 +885,7 @@ const NO_DIGIT_RE = /\d/;
     { callJson: async () => null, env: {}, osmSearch: async () => [] });
   ok(plan2.anchors?.full_cover !== true && plan2.candidates.length > 0 &&
     plan2.candidates.every((c) => c.legs[0].from === '伊宁' && c.legs.at(-1).to === '阿拉木图') &&
-    plan2.anchor_notes.some((n) => n.includes('阿拉木图 → 伊宁') && n.includes('另行单独规划')),
+    plan2.anchor_notes.some((n) => n.includes('阿拉木图 → 伊宁') && n.includes('详情会单独列出')),
     '锚点：双锚点不贴目的地时目的地必经（伊宁→阿拉木图仍规划），返程段提示待单独规划');
   /* 真全覆盖：两锚点都贴目的地（去程到阿拉木图、返程从阿拉木图）才判覆盖 */
   const plan2b = await planAnywhere({ origin: '北京', destination: '阿拉木图',
@@ -909,7 +909,7 @@ const NO_DIGIT_RE = /\d/;
   ok(plan3.anchors.recompute_scope === 'full' &&
     plan3.candidates.length > 0 && plan3.candidates.every((c) => c.legs[0].from === '北京' && c.legs.at(-1).to === '阿拉木图') &&
     plan3.anchor_notes.some((n) => n.includes('目的地不因锚点跳过')) &&
-    plan3.anchor_notes.some((n) => n.includes('另行单独规划')),
+    plan3.anchor_notes.some((n) => n.includes('详情会单独列出')),
     '锚点：单返程锚点保留目的地去程探索，返程接驳段诚实提示待单独规划');
   /* 二十八轮 P0-1 反例：双锚点进出不同城（去到伊宁、返从乌鲁木齐）→ 候选仍是 伊宁→阿拉木图，
    * 不是「伊宁→乌鲁木齐」——返程接驳段另行提示 */

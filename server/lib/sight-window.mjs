@@ -39,6 +39,15 @@ export function assessSightWindow(state, rawAnchors, constraints = {}) {
     else if (bounds && (start<=bounds.latest_arrival_day || end>=bounds.earliest_return_day)) notes.push('游玩日期是否避开交通日仍取决于缺失时刻，需继续确认。');
   } else if (win) notes.push('游玩日期范围无效，请填写真实日期且起始不晚于结束。');
   else notes.push('尚未指定游玩日期；天数预算不等于已安排的逐日日程。');
+  const dayBudget={};let lastAssigned=null;
+  for(const id of state.selected_ids || []) {
+    const date=state.visit_dates?.[id]; if(!date) continue;
+    if(lastAssigned && date<lastAssigned) issues.push(date+' 的景点顺序与日期先后不一致，请调整顺序或日期。');lastAssigned=date;
+    affected.add(date);dayBudget[date]=(dayBudget[date] || 0)+(state.visit_hours[id] || 6);
+    if(win && isValidWindow(win) && (date<win.slice(0,10) || date>win.slice(13,23))) issues.push(date+' 的景点安排超出游玩日期范围。');
+    if(bounds && (date<=bounds.earliest_arrival_day || date>=bounds.latest_return_day)) issues.push(date+' 的景点安排落在交通日或锁定期间之外。');
+  }
+  for(const [date,hours] of Object.entries(dayBudget)) if(hours>state.day_hours) issues.push(date+' 的游玩预留超过当天预算，请调整景点或日期。');
   for (const stay of Array.isArray(constraints.lodging_stays)?constraints.lodging_stays:[]) {
     if (!stay || !isValidWindow(stay.date+' ~ '+stay.date) || typeof stay.city!=='string') continue;
     affected.add(stay.date);

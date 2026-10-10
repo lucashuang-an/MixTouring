@@ -36,16 +36,17 @@
     history.push(copy(state)); history = history.slice(-20);
     state = next; comparison=null;remember(); refresh(true);
   }
-  function applyPatch(patch) {
+  function applyPatch(patch,reveal) {
     if (!patch || !Object.keys(patch).length) return;
     var next = copy(state);
     next.requested=true;
     if (patch.selected_ids) next.selected_ids = patch.selected_ids.slice();
     if (patch.add_ids) next.selected_ids = Array.from(new Set(next.selected_ids.concat(patch.add_ids)));
     if (patch.remove_ids) next.selected_ids = next.selected_ids.filter(function (id) { return patch.remove_ids.indexOf(id) < 0; });
+    if(patch.visit_dates) next.visit_dates=Object.assign({},next.visit_dates || {},patch.visit_dates);
     ['full_days','preference','play_window'].forEach(function (k) { if (Object.prototype.hasOwnProperty.call(patch,k)) next[k] = patch[k]; });
-    change(next); document.getElementById('sightDetails').open = true;
-    document.getElementById('sightDetails').scrollIntoView({behavior:'smooth',block:'start'});
+    change(next);
+    if(reveal!==false) {document.getElementById('sightDetails').open = true;document.getElementById('sightDetails').scrollIntoView({behavior:'smooth',block:'start'});}
   }
   function render(data) {
     var html = '<p>选几个感兴趣的地方，给伊犁留出游玩时间。</p>';
@@ -90,6 +91,7 @@
             (r.reported_operator?'<p>资料中的运营方：'+esc(r.reported_operator)+'；本次运营方待核。</p>':'')+
             (r.reported_boarding_stop?'<p>资料中的上车点：'+esc(r.reported_boarding_stop)+'；本次站点待核。</p>':'')+
             (r.reported_until?'<p>页面列出的售期截止：'+esc(r.reported_until)+'；不证明期间每天有班次，之后需重新查证。</p>':'')+
+            (r.schedule?'<p>时刻表参考：'+esc(r.schedule.service_no)+' · '+esc(r.schedule.depart_time)+' → '+esc(r.schedule.arrive_time)+(r.schedule.arrival_day_offset?'（到达次日）':'')+' · 两端当地时间；余票、行李与费用待查。</p>':'')+
             (r.date_scope==='outside_reference'?'<p>计划日期超出页面列出的范围，不能用此资料判断本次运营。</p>':'');
         }).join('')+((row.opposite_references || []).length?'<details><summary>反方向资料（不能证明本段）</summary>'+row.opposite_references.map(function(r){return '<p>'+esc(r.from)+' → '+esc(r.to)+' · '+esc(r.method)+'</p><a href="'+esc(r.source.url)+'" target="_blank" rel="noopener noreferrer">'+esc(r.source.title)+'</a><p>发布 '+esc(r.source.published_at || '未注明')+' · 采样 '+esc(r.source.sampled_at)+'；本段仍需独立取证。</p>';}).join('')+'</details>':'')+'</article>';
       }).join('')+'</div></details>';
@@ -97,7 +99,8 @@
     box.innerHTML = html;
     document.getElementById('sightForm').onsubmit = function (e) {
       e.preventDefault(); var next = copy(state);
-      next.selected_ids = Array.from(box.querySelectorAll('[name="sightChoice"]:checked')).map(function (el) {return el.value;});
+      var checked=Array.from(box.querySelectorAll('[name="sightChoice"]:checked')).map(function (el) {return el.value;});
+      next.selected_ids=state.selected_ids.filter(function(id){return checked.indexOf(id)>=0;}).concat(checked.filter(function(id){return state.selected_ids.indexOf(id)<0;}));
       next.full_days = Number(document.getElementById('sightDays').value); next.day_hours = Number(document.getElementById('sightDayHours').value);
       next.preference = document.getElementById('sightPreference').value;
       var start=document.getElementById('sightStart').value,end=document.getElementById('sightEnd').value;
