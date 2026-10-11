@@ -21,6 +21,7 @@ import { planAnywhere } from './lib/anywhere.mjs';
 import { registerJourneyPlan, journeyDetailFromPlanId, guidePlanFromId } from './lib/journey.mjs';
 import { webSearchStatus } from './lib/llm.mjs';
 import { parseGuideTurn } from './lib/guide.mjs';
+import { conversationTurn } from './lib/conversation.mjs';
 import planningGuide from '../mixtouring-hifi/assets/trip-guide.js';
 import { sightCatalog, compareSights } from './lib/sights.mjs';
 import { progressivePlan } from './lib/progressive.mjs';
@@ -348,6 +349,11 @@ app.use(async (ctx, next) => {
 
   if (path === '/api/inspirations' && ctx.method === 'GET') {
     ctx.body = { code: 0, data: listInspirations() };
+    return;
+  }
+  if (path === '/api/anywhere/conversation' && ctx.method === 'POST') {
+    const body = await readBody(ctx) || {};
+    ctx.body = { code: 0, data: await conversationTurn(body, guidePlanFromId(body.plan_id)) };
     return;
   }
   if (path === '/api/anywhere/guide' && ctx.method === 'POST') {

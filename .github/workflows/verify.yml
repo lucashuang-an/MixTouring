@@ -38,6 +38,7 @@ jobs:
       - name: 对话引导与探索详情回归
         run: |
           node server/check-guide.mjs
+          node server/check-conversation.mjs
           node server/check-journey.mjs
           node server/check-progressive.mjs
           node server/check-inspirations.mjs

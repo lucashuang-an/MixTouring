@@ -171,7 +171,7 @@ export function constraintChips(c) {
 }
 
 /** 显式传入的约束（UI 字段）白名单化：类型/范围不对的丢弃，不猜。 */
-function sanitizeConstraints(raw) {
+export function sanitizeConstraints(raw) {
   const c = {};
   if (!raw || typeof raw !== 'object') return c;
   const b = Number(raw.budget_max_cny);
@@ -299,7 +299,7 @@ export function extractReturnDate(text, nowMs = Date.now()) {
 }
 
 /** 显式行程意图字段（UI）白名单化：枚举/真实日历/范围不对的丢弃，不猜（十一轮 P1：无效日期不得当已确认事实）。 */
-function sanitizeIntentFields(raw) {
+export function sanitizeIntentFields(raw) {
   const out = {};
   if (!raw || typeof raw !== 'object') return out;
   if (['pending', 'round_trip', 'one_way'].includes(raw.trip_type)) out.trip_type = raw.trip_type;

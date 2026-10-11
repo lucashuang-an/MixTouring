@@ -34,7 +34,7 @@ v0.45.0 起，涉及景点比较、游玩预算或景点状态保存恢复时，
 - 每次产品决策/改动在 `工作记录.md` **倒序**追加版本记录（v0.x.y + 日期 + 背景/改动/影响范围），不删除历史。
 - **ZCode 与产品评审交接（v0.26.2 修订：手动触发制）**：ZCode 每次开工前，除本文件和最新版工作记录，还要读取 [产品评审记录 Issue #5](https://github.com/lucashuang-an/MixTouring/issues/5) 的最新评审/决策评论。评审由用户在本对话主动发起（转述 ZCode 提交/PR/变更），Codex 只读评审后在本 Issue 追加以 `Codex 产品评审｜被审 SHA <完整 SHA>` 开头的结论；`需修复`／`阻断` 先处理，再做下一开发卡；修复后由用户转述新的 SHA 触发下一轮。产品/技术方案类决策（如双链路路由、任意地点规划）也以 Issue #5 评论为基准。不使用定时任务、自动工作流或 API 自动唤醒评审。不得在公开 Issue 发布凭据、个人数据或安全敏感复现细节。
 - 不主动创建额外说明性 `.md`；新上下文优先沉淀进本文件或工作记录。经用户确认的新产品方案与开发流程以 `产品方案_SoloTrip_v1.2.md`、`开发流程_SoloTrip_v1.2.md` 两份基准文档承载，勿再并行新建零散说明。
-- 当前无 LLM key 的环境一切功能照常（规则版闭环）；key 走 `server/.env`（gitignored）：`LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL`（OpenAI 兼容端点即可）。G2.5 开放地点核验通道：OSM Nominatim（`OSM_NOMINATIM_BASE` 可覆盖自建镜像）→ Photon（photon.komoot.io）自动兜底，均无需 key；两者都不可达时按「核验通道不可用」诚实阻断。
+- v0.52.0 起主规划对话依赖可用模型；无 key／调用失败保留原输入和草案并明确重试，不伪装模板为 AI。旧规则检索与历史接口继续可离线运行；key 走 `server/.env`（gitignored）：`LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL`（OpenAI 兼容端点即可）。G2.5 开放地点核验通道：OSM Nominatim（`OSM_NOMINATIM_BASE` 可覆盖自建镜像）→ Photon（photon.komoot.io）自动兜底，均无需 key；两者都不可达时按「核验通道不可用」诚实阻断。
 - v0.43.7 火山联网搜索使用普通方舟 `/api/v3/responses`，在 `server/.env` 单独配置 `VOLC_SEARCH_API_KEY` 和账号实际开通的 `VOLC_SEARCH_MODEL`（本机为 `deepseek-v4-flash-ga-260731`；不填时旧默认 `doubao-seed-2-1-lite-260915` 可能报 `ModelNotOpen`）。Coding Plan 的 `ARK_API_KEY` 不自动用于此接口；普通模型推理可能另行计费。只采纳完成的真实 `web_search_call` 与结构化网页引用；无引用按搜索失败降级。未配置时保留原智谱／公开搜索路径。v0.44.0 起路线组合走 `composeJson`（同账户 `/api/v3/chat/completions`，`VOLC_COMPOSE_MODEL` 可覆盖；**请求必须带 `thinking: {type:'disabled'}`**，deepseek 默认开思考在 12s 渐进预算内回不来）。火山 429 需看错误码：`SetLimitExceeded`＝账号「安全体验模式」用量上限（模型暂停，需控制台调整，当日回放量大时可能触发），与速率限流区分。
 - LLM 用量逐任务记录在 `server/logs/llm-usage.jsonl`（gitignored），供算法优化分析。
 
@@ -138,6 +138,8 @@ MIXTOURING/
 - 布局：柔和投影 + 大圆角卡片 + 8pt 网格；触控目标 ≥44pt；次级文字对比度 ≥4.5:1；≥768px 走侧边栏（`desktop.css`，选择器加 body 前缀提特异性）。
 
 ## 8. 经验教训
+
+- **AI 对话不能用规则通过率代替**（v0.52.0）：主链路必须实测模型调用、上下文指代、确认后生成、连续改稿和保存恢复。非枚举需求保留在意图摘要；模型不可用明确失败。对话相关修改同时运行 `node server/check-conversation.mjs`，真实回放用 `node --env-file-if-exists=server/.env server/replay-conversation.mjs`。
 
 - **对话验收要覆盖规划意图**（v0.51.0）：不能只测字段修改与预设短句。城区与自然搭配、值得去哪里、自由追问等需给具体建议并继续跟进；前端不得用通用「已记下」覆盖服务端回复。玩法偏好和目的地天数与路线、住宿晚数分开保存。
 

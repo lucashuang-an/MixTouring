@@ -306,7 +306,7 @@ async function main() {
   const caps = await (await fetch(BASE + '/api/capabilities')).json();
   if (caps.code === 0 && typeof caps.data.web_search_configured === 'boolean' &&
     ['available', 'quota_exhausted', 'timeout', 'error', 'unknown'].includes(caps.data.web_search_status) &&
-    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.51.0') {
+    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.52.0') {
     console.log('✓ /api/capabilities P1-4：configured 与最近真实状态分开（web_search_configured=' +
       caps.data.web_search_configured + ', status=' + caps.data.web_search_status + '），版本拆分对齐');
   } else { failed++; console.error('✗ /api/capabilities 形状异常：' + JSON.stringify(caps).slice(0, 200)); }
@@ -424,6 +424,9 @@ async function main() {
   const nextReply=await (await fetch(BASE+'/api/anywhere/guide',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({destination:'阿拉木图',text:'更想看山景',preferences:destinationReply.data.preferences})})).json();
   if(destinationReply.data.preferences.experience==='balanced' && destinationReply.data.reply.includes('Shymbulak') && nextReply.data.preferences.nature_theme==='mountains' && nextReply.data.reply.includes('留几天')) console.log('✓ 目的地玩法在过期上下文下仍可回应并持续跟进');
   else {failed++;console.error('✗ 目的地玩法跟进仍有断点');}
+  const earlyConversation=await (await fetch(BASE+'/api/anywhere/conversation',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'generate',conversation:{stage:'discuss'}})})).json();
+  if(earlyConversation.data?.status==='needs_intent' && !earlyConversation.data.conversation.draft) console.log('✓ AI 对话接口在意图未确认时不生成草案');
+  else {failed++;console.error('✗ AI 对话确认边界异常');}
   console.log(failed ? `\n✗ ${failed} 项不一致` : '\n✓ 全部接口与 mock.js 派生结果一致');
   process.exit(failed ? 1 : 0);
 }

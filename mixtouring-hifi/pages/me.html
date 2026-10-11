@@ -297,8 +297,8 @@
       res.drafts.forEach(function (d) {
         var latest = d.versions[d.versions.length - 1];
         var s = latest.snapshot;
-        var summary = [s.candidate ? s.candidate.label : s.scope === 'task' ? '交通锚点与景点草案' : '待重新选择走法'];
-        if (s.sights && Array.isArray(s.sights.selected_ids)) summary.push('已选 ' + s.sights.selected_ids.length + ' 处景点');
+        var summary = [s.conversation && s.conversation.draft ? s.conversation.draft.title : s.candidate ? s.candidate.label : s.scope === 'task' ? '交通锚点与景点草案' : '待重新选择走法'];
+        if (s.sights && Array.isArray(s.sights.selected_ids) && s.sights.selected_ids.length) summary.push('已选 ' + s.sights.selected_ids.length + ' 处景点');
         if (s.travel && s.travel.trip_type === 'round_trip') summary.push('往返');
         else if (s.travel && s.travel.trip_type === 'one_way') summary.push('单程');
         if (s.travel && s.travel.outbound_window) summary.push('去 ' + s.travel.outbound_window);
@@ -356,8 +356,8 @@
       var html = '';
       d.versions.slice().reverse().forEach(function (v) {
         var s = v.snapshot;
-        var sum = [s.candidate ? s.candidate.label : s.scope === 'task' ? '交通锚点与景点草案' : '待重新选择走法'];
-        if (s.sights && Array.isArray(s.sights.selected_ids)) sum.push('已选 ' + s.sights.selected_ids.length + ' 处景点');
+        var sum = [s.conversation && s.conversation.draft ? s.conversation.draft.title : s.candidate ? s.candidate.label : s.scope === 'task' ? '交通锚点与景点草案' : '待重新选择走法'];
+        if (s.sights && Array.isArray(s.sights.selected_ids) && s.sights.selected_ids.length) sum.push('已选 ' + s.sights.selected_ids.length + ' 处景点');
         if (s.travel && s.travel.trip_type === 'round_trip') sum.push('往返');
         if (s.travel && s.travel.outbound_window) sum.push('去 ' + s.travel.outbound_window);
         if (s.travel && s.travel.return_window) sum.push('返 ' + s.travel.return_window);
