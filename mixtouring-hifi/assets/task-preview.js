@@ -19,6 +19,7 @@
       route:route.length?route.map(function(l){return l.from;}).concat(route[route.length-1].to).join(' → '):null,
       dates:rows,windows:[travel.outbound_window?'出发 '+travel.outbound_window:null,travel.return_window?'返回 '+travel.return_window:null].filter(Boolean),
       sights:names,play_window:s.sights && s.sights.play_window || null,has_visit_dates:Object.values(s.sights?.visit_dates || {}).some(Boolean),nights:s.nights || 0,no_self_drive:constraints.no_self_drive===true,
+      destination_preferences:s.preferences?{experience:s.preferences.experience,nature_theme:s.preferences.nature_theme,days:s.preferences.destination_days}:null,
       pending:[...(!route.length && !a.outbound?['选择一条走法']:[]),...(!travel.outbound_window && !a.outbound?['确定出发日期']:[]),
         ...(travel.trip_type==='round_trip' && !travel.return_window && !a.return?['确定返回日期']:[]),
         ...(a.return && s.place_names && s.place_names.destination && a.return.from_city!==s.place_names.destination?['安排 '+s.place_names.destination+' → '+a.return.from_city+' 的返程接驳']:[]),

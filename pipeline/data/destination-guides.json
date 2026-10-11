@@ -1,0 +1,13 @@
+{
+  "sampled_at":"2026-10-11",
+  "destinations":{
+    "阿拉木图":{
+      "city":"城区可以先串起潘菲洛夫公园、升天大教堂和绿色巴扎，偏向散步、建筑和当地生活。",
+      "nature":{
+        "mountains":{"name":"Shymbulak 山地度假区","reason":"以山景为主，适合把自然体验与阿拉木图城区游玩搭配。","tradeoff":"山地天气、缆车开放和往返接驳要按出行日期确认。","source":{"title":"哈萨克斯坦旅游门户：阿拉木图","url":"https://www.kazakhstan.travel/en/regions/almaty","published_at":null,"sampled_at":"2026-10-11"}},
+        "canyon":{"name":"恰伦峡谷","reason":"峡谷地貌与城区、山景差异明显，适合更想看自然景观的旅行。","tradeoff":"属于城外方向，需要单独安排往返交通；行程紧时先作为备选。","source":{"title":"哈萨克斯坦旅游门户：恰伦国家公园","url":"https://kazakhstan.travel/en/parks/charyn","published_at":null,"sampled_at":"2026-10-11"}},
+        "lake":{"name":"大阿拉木图湖","reason":"山地湖泊方向，适合更偏好湖景的人。","tradeoff":"道路、进入范围和无车接驳需另查，先保留为探索选择。","source":{"title":"哈萨克斯坦旅游门户：阿拉木图","url":"https://www.kazakhstan.travel/en/regions/almaty","published_at":null,"sampled_at":"2026-10-11"}}
+      }
+    }
+  }
+}

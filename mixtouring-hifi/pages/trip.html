@@ -352,6 +352,7 @@
       html+='<h3>走法</h3><p>'+MT.esc(view.route || (anchors.outbound?'已定交通见下方安排':'先从上方选择一条走法'))+'</p>';
       if(view.windows.length) html+='<p>'+view.windows.map(MT.esc).join(' · ')+'</p>';
       if(view.no_self_drive) html+='<p>不开车</p>';
+      if(view.destination_preferences && view.destination_preferences.experience) html+='<h3>目的地玩法</h3><p>'+MT.esc({balanced:'城区与自然搭配',city:'偏重城区游玩',nature:'偏重自然景观'}[view.destination_preferences.experience])+(view.destination_preferences.nature_theme?' · '+MT.esc({mountains:'山景',canyon:'峡谷',lake:'湖泊',forest:'森林'}[view.destination_preferences.nature_theme]):'')+(view.destination_preferences.days?' · 预留 '+view.destination_preferences.days+' 天':'')+'</p>';
       if(view.nights) html+='<p>中途停留 '+view.nights+' 晚，住宿待安排</p>';
       if(view.dates.length) html+='<h3>已定安排</h3><div class="preview-dates">'+view.dates.map(function(row){return '<article><p>'+MT.esc(row.date)+' · '+MT.esc(row.label)+'</p><p class="sight-muted">'+MT.esc(row.note)+'</p></article>';}).join('')+'</div><p class="sight-muted">日期按各地点当地时间显示。</p>';
       if(view.sights.length) html+='<h3>想去的景点</h3><p>'+view.sights.map(MT.esc).join('、')+'</p><p class="sight-muted">'+MT.esc(view.play_window || (view.has_visit_dates?'景点日期见上方安排':'游玩日期待定'))+' · 顺序可调整</p>';
@@ -449,6 +450,7 @@
     }
     function renderGuide() {
       var area = document.getElementById('guideArea');
+      var keepTyping=document.activeElement && document.activeElement.id==='guideInput';
       area.hidden = !activePlan;
       if (area.hidden) return;
       if (!activePlan.candidates.length && (!activePlan.intent.origin_place || !activePlan.intent.destination_place)) {
@@ -460,7 +462,7 @@
       var q = activePlan.candidates.length ? MTGuide.question(guideState, activePlan.candidates) : null;
       var summary = MTGuide.summary(guideState);
       var html = '<h2>一起把路线想清楚</h2><div class="guide-messages">' + guideMessages.slice(-6).map(function (m) {
-        return '<p class="guide-message ' + (m.role === 'user' ? 'guide-user' : '') + '">' + MT.esc(m.text) + '</p>';
+        return '<p class="guide-message ' + (m.role === 'user' ? 'guide-user' : '') + '">' + MT.esc(m.text) + '</p>'+(m.sources && m.sources.length?'<details class="sight-muted"><summary>查看景点资料</summary>'+m.sources.filter(function(s){return /^https:\/\//.test(s.url || '');}).map(function(s){return '<p><a href="'+MT.esc(s.url)+'" target="_blank" rel="noopener noreferrer">'+MT.esc(s.title)+'</a></p>';}).join('')+'</details>':'');
       }).join('') + '</div>';
       if (summary.length) html += '<p class="guide-summary">已记住：' + summary.map(MT.esc).join(' · ') + '</p>';
       if (guideProposal) {
@@ -469,7 +471,9 @@
           (guideProposal.notes || []).map(function (s) { return '<p>' + MT.esc(s) + '</p>'; }).join('') +
           '<button id="guideApply" class="guide-primary">确认这些调整</button><button id="guideCancel">重新说</button></div>';
       } else if (q) {
-        html += '<p class="guide-question">' + MT.esc(q.title) + '</p><div class="guide-choices">' + q.options.map(function (o, i) {
+        var lastReply=guideMessages.filter(function(m){return m.role==='assistant';}).slice(-1)[0];
+        var asked=q.key==='nature_theme' && /山景.*峡谷.*？/.test(lastReply && lastReply.text || '') || q.key==='destination_days' && /留几天？/.test(lastReply && lastReply.text || '');
+        html += (asked?'':'<p class="guide-question">' + MT.esc(q.title) + '</p>')+'<div class="guide-choices">' + q.options.map(function (o, i) {
           return '<button class="guideChoice" data-choice="' + i + '">' + MT.esc(o.label) + '</button>';
         }).join('') + '<button id="guideSkip" class="guide-skip">先不定，继续看路线</button></div>';
       } else html += '<p class="guide-question">' + (activePlan.anchors && activePlan.anchors.full_cover
@@ -479,8 +483,11 @@
       html += '<label for="guideInput">补充你的想法</label><form id="guideForm"><input id="guideInput" maxlength="500" placeholder="如：可以停两晚，但不想坐长途车" autocomplete="off" /><button class="guide-primary" type="submit">发送</button></form>' +
         '<div class="guide-tools"><button id="guideUndo" ' + (guideUndo.length ? '' : 'disabled') + '>撤销上次调整</button><button id="guideReset">重看全部走法</button></div>';
       area.innerHTML = html;
+      var messagesBox=area.querySelector('.guide-messages');if(messagesBox) messagesBox.scrollTop=messagesBox.scrollHeight;
+      if(keepTyping) document.getElementById('guideInput').focus({preventScroll:true});
       area.querySelectorAll('.guideChoice').forEach(function (btn) { btn.addEventListener('click', function () {
         var option = q.options[Number(btn.getAttribute('data-choice'))];
+        if(q.key==='nature_theme' || q.key==='destination_days'){submitGuide(option.label);return;}
         applyGuide({ preferences: option.patch, travel: {}, constraints: {} }, option.label);
       }); });
       var skip = document.getElementById('guideSkip');
@@ -507,12 +514,12 @@
       }
       var seq = ++guideSequence;
       document.getElementById('planStatus').textContent = '正在理解你的补充…';
-      post('/api/anywhere/guide', { text: text, plan_id: activePlan.plan_id, candidate_id: activeCandidate,preferences:guideState,sights:MTSights.getState(),sight_requested:MTSights.getState().requested===true }).then(function (res) {
+      post('/api/anywhere/guide', { text: text, plan_id: activePlan.plan_id, candidate_id: activeCandidate,preferences:guideState,sights:MTSights.getState(),sight_requested:MTSights.getState().requested===true,destination:activePlan.intent.destination_place && (activePlan.intent.destination_place.city || activePlan.intent.destination_place.name) || activePlan.intent.destination }).then(function (res) {
         if (seq !== guideSequence) return;
         document.getElementById('planStatus').textContent = '';
         if (res.code !== 0) throw new Error();
         if (!res.data.recognized) {
-          guideMessages.push({ role: 'user', text: text }, { role: 'assistant', text: res.data.message });
+          guideMessages.push({ role: 'user', text: text }, { role: 'assistant', text: res.data.message,sources:res.data.reply_sources || [] });
           renderGuide(); rememberSession(); return;
         }
         if (res.data.requires_confirmation===false) {applyGuide(res.data,text);return;}
@@ -536,7 +543,7 @@
       if (p.road === 'exclude') reply.push('已隐藏明确含公路客运的走法；方式待查的路段仍需确认。');
       if (p.road === 'open') reply.push('公路方向也会一起比较。');
       if(p.preferred_mode) reply.push(p.preferred_mode==='rail'?'已优先比较铁路走法。':'已优先比较航班走法。');
-      guideMessages.push({ role: 'user', text: userText }, { role: 'assistant', text: reply.join('') || (change.sights && Object.keys(change.sights).length?'景点安排已更新，可以撤销。':'已记下，可以继续比较路线。') });
+      guideMessages.push({ role: 'user', text: userText }, { role: 'assistant', text: change.reply || reply.join('') || (change.sights && Object.keys(change.sights).length?'景点安排已更新，可以撤销。':'已记下，可以继续比较路线。'),sources:change.reply_sources || [] });
       var travelChanged = Object.keys(change.travel || {}).length || Object.keys(change.constraints || {}).length;
       if (travelChanged) {
         var travel = Object.assign({}, collectTravel(), change.travel);
