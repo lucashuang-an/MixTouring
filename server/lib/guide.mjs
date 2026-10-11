@@ -4,6 +4,7 @@ import { buildTravelIntent, extractConstraints, extractReturnDate, extractLodgin
 import { loadPlaces } from './trip-service.mjs';
 import { parseSightChange, compareSights, sightCatalog } from './sights.mjs';
 import { transportReferences } from './transport-references.mjs';
+import { destinationTurn } from './destination-guide.mjs';
 
 const CITY_NAMES = loadPlaces().filter((p) => p.kind === 'city').map((p) => p.name);
 
@@ -54,6 +55,8 @@ function answerRouteQuestion(text, plan, selectedCandidateId, preferences,nowMs)
 export function parseGuideTurn(text, nowMs = Date.now(), plan = null, selectedCandidateId = null, context = {}) {
   const t = String(text || '').trim().slice(0, 500);
   const preferences = guide.parse(t);
+  const destination=destinationTurn(t,plan,context);
+  if(destination) Object.assign(preferences.patch,destination.patch);
   const parsed = buildTravelIntent(t, null, nowMs);
   const travel = {}, constraints = extractConstraints(t), labels = guide.summary(preferences.patch);
   const sightChange = parseSightChange(t,nowMs);
@@ -114,8 +117,9 @@ export function parseGuideTurn(text, nowMs = Date.now(), plan = null, selectedCa
   const requiresConfirmation = Object.keys(travel).length>0 || Object.keys(constraints).length>0 ||
     Object.prototype.hasOwnProperty.call(sightChange.patch,'selected_ids') || Object.prototype.hasOwnProperty.call(sightChange.patch,'play_window') || Object.prototype.hasOwnProperty.call(sightChange.patch,'full_days');
   return { preferences: preferences.patch, travel, constraints, sights: sightChange.patch, labels, notes: preferences.notes,
+    reply:destination?.reply || null,reply_sources:destination?.sources || [],
     requires_confirmation:requiresConfirmation,
-    recognized: labels.length > 0,
-    message: suggestion || (labels.length ? requiresConfirmation?'确认后更新这些安排。':'已更新，可以随时撤销。'
+    recognized: labels.length > 0 || Object.keys(preferences.patch).length>0,
+    message: destination?.reply || suggestion || (labels.length ? requiresConfirmation?'确认后更新这些安排。':'已更新，可以随时撤销。'
       : answer || preferences.notes[0] || '想调整路线、景点还是日期？告诉我其中一项就好。') };
 }

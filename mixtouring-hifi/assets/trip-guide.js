@@ -8,7 +8,10 @@
       road: ['open', 'prefer_other', 'exclude'].includes(raw.road) ? raw.road : null,
       nights: [0, 1, 2].includes(raw.nights) ? raw.nights : null,
       preferred_mode:['rail','plane'].includes(raw.preferred_mode)?raw.preferred_mode:null,
-      skipped: Array.isArray(raw.skipped) ? raw.skipped.filter(function (x) { return ['pace', 'nights', 'road'].includes(x); }) : []
+      experience:['balanced','city','nature'].includes(raw.experience)?raw.experience:null,
+      nature_theme:['mountains','canyon','lake','forest'].includes(raw.nature_theme)?raw.nature_theme:null,
+      destination_days:Number.isInteger(raw.destination_days) && raw.destination_days>=1 && raw.destination_days<=14?raw.destination_days:null,
+      skipped: Array.isArray(raw.skipped) ? raw.skipped.filter(function (x) { return ['pace', 'nights', 'road','nature_theme','destination_days'].includes(x); }) : []
     };
   }
   function parse(text) {
@@ -43,10 +46,16 @@
     if (s.road === 'open') labels.push('愿意了解公路走法');
     if (s.nights != null) labels.push(s.nights ? '中途停 ' + s.nights + ' 晚' : '不安排中途停留');
     if(s.preferred_mode) labels.push(s.preferred_mode==='rail'?'优先铁路':'优先航班');
+    if(s.experience) labels.push({balanced:'城区与自然搭配',city:'偏重城区游玩',nature:'偏重自然景观'}[s.experience]);
+    if(s.nature_theme) labels.push({mountains:'山景',canyon:'峡谷',lake:'湖泊',forest:'森林'}[s.nature_theme]);
+    if(s.destination_days) labels.push('目的地游玩 '+s.destination_days+' 天');
     return labels;
   }
   function question(raw, candidates) {
     var s = clean(raw), list = candidates || [];
+    if(s.experience && s.experience!=='city' && !s.nature_theme && !s.skipped.includes('nature_theme')) return {key:'nature_theme',title:'自然部分，你更想看哪种景观？',options:[{label:'更想看山景',patch:{nature_theme:'mountains'}},{label:'更想看峡谷',patch:{nature_theme:'canyon'}},{label:'更想看湖泊',patch:{nature_theme:'lake'}}]};
+    if(s.experience && !s.destination_days && !s.skipped.includes('destination_days')) return {key:'destination_days',title:'准备在目的地留几天？',options:[{label:'目的地玩两天',patch:{destination_days:2}},{label:'目的地玩三天',patch:{destination_days:3}}]};
+    if(s.experience) return null;
     if (!list.length) return null;
     var stops = Array.from(new Set(list.flatMap(function (c) { return c.legs.slice(1).map(function (l) { return l.from; }); }))).slice(0, 2);
     if (!s.pace && !s.skipped.includes('pace') && list.some(function (c) { return c.kind !== 'direct'; })) return {

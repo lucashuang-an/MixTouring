@@ -352,7 +352,7 @@ app.use(async (ctx, next) => {
   }
   if (path === '/api/anywhere/guide' && ctx.method === 'POST') {
     const body = await readBody(ctx) || {};
-    ctx.body = { code: 0, data: parseGuideTurn(body.text, Date.now(), guidePlanFromId(body.plan_id), body.candidate_id, {preferences:body.preferences,sights:body.sights,sight_requested:body.sight_requested}) };
+    ctx.body = { code: 0, data: parseGuideTurn(body.text, Date.now(), guidePlanFromId(body.plan_id), body.candidate_id, {preferences:body.preferences,sights:body.sights,sight_requested:body.sight_requested,destination:body.destination}) };
     return;
   }
 
