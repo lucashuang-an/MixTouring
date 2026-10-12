@@ -12,6 +12,12 @@ const first=await conversationTurn({text:'想散心，城区自然都看看'},nu
 assert.equal(first.engine,'llm');assert.equal(first.conversation.stage,'ready');
 assert.equal(first.conversation.draft,null,'未经用户确认，即使模型输出草案也不能采用');
 assert.equal(first.request_generation,false);
+const country=await conversationTurn({text:'想从北京去吉尔吉斯斯坦'},null,{model:async()=>result({brief:{...brief,destination:'吉尔吉斯斯坦',summary:'想去吉尔吉斯斯坦，城市未定'}})});
+assert.equal(country.conversation.stage,'discuss','国家目的地继续讨论城市，不进入生成');
+const countryGenerate=await conversationTurn({action:'generate',conversation:{...country.conversation,stage:'ready'}},null,{model:async()=>{throw Error('不应调用模型生成');}});
+assert.equal(countryGenerate.status,'needs_intent');
+const cityChosen=await conversationTurn({text:'那就从比什凯克开始',conversation:country.conversation},null,{model:async()=>result({brief:{...brief,destination:'比什凯克'}})});
+assert.equal(cityChosen.conversation.stage,'ready');assert.equal(cityChosen.conversation.brief.destination,'比什凯克');
 const beforeEarly=contexts.length;
 const early=await conversationTurn({action:'generate'},null,{model});
 assert.equal(early.status,'needs_intent');assert.equal(contexts.length,beforeEarly);

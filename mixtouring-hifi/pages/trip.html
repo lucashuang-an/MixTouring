@@ -538,6 +538,11 @@
       var ok=await requestPlan();
       if(seq!==guideSequence)return;
       conversationBusy=false;
+      if(activePlan && activePlan.place_scopes && Object.keys(activePlan.place_scopes).length){
+        conversation.stage='discuss';conversationError=null;
+        guideMessages.push({role:'assistant',text:activePlan.needs_confirmation.filter(function(n){return n.includes('是国家');}).join(' ')});
+        renderGuide();rememberSession();return;
+      }
       if(ok===false || !activePlan || !activePlan.plan_id){
         conversationError={action:'generate',message:'路线还没有准备好，请先确认地点后重试。'};renderGuide();return;
       }

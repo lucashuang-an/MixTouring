@@ -4,6 +4,7 @@ import { composeJson, searchWeb } from './llm.mjs';
 import { sanitizeConstraints, sanitizeIntentFields } from './anywhere.mjs';
 import guide from '../../mixtouring-hifi/assets/trip-guide.js';
 import { sightCatalog, normalizeSightState } from './sights.mjs';
+import { countryScope } from './place-scope.mjs';
 
 const guides = JSON.parse(readFileSync(new URL('../../pipeline/data/destination-guides.json', import.meta.url))).destinations;
 const materialCache = new Map();
@@ -37,6 +38,7 @@ const PROMPT = `你是 MixTouring 的旅行规划伙伴。通过自然对话逐�
 生成草案或用户明确改走法时，selected_candidate_id 从 routes 的 id 中选择与正文一致的一条；没有适合候选则 null，不能自造 id。current.selected_candidate_id 是用户当前所选，普通景点调整不改走法。
 每轮回复只选一个最值得讨论的问题，open_questions 最多一个，不用“另外”追加第二问。pace 是跨城走法偏好：simple 表示省心少换乘，explore 表示明确想沿途停留；目的地慢游不等于沿途停留。新出现的饮食、兴趣、住宿风格等未枚举偏好写入 wishes，不要当作未识别。
 brief 是完整最新旅行意图，保留此前仍有效的偏好、排除项和未定事项，不局限于已有字段；禁止把建议当作用户已确认。summary 简短准确，wishes 保存较长上下文。ready 表示地点与核心想法足够做初稿；缺精确日期、预算不是阻碍。已有起终点、旅行偏好和大致天数时务必 ready=true，邀请确认生成，不继续追问景观的细分类别。confirmed 仅当用户本轮明确同意此前摘要并请求生成时为 true，首次输入不算确认。
+用户只说国家或地区时，保留其旅行范围，继续讨论城市或抵达点，不擅自将国家替换成首都。比如“想去吉尔吉斯斯坦”可以讨论旅行风格，再建议比什凯克等开始城市让用户选择；用户选定后才将城市写入 origin/destination。中国境内的同名园区不是该国。国家范围未选具体交通端点时 ready=false。
 preferences、travel、constraints 是本轮明确更新的字段补丁，无变化返回 {}。询问/比较不执行修改；null 为撤销。preferences 可含 pace(simple/explore/any)、road(open/prefer_other/exclude)、nights(0/1/2)、preferred_mode(rail/plane)、experience(balanced/city/nature)、nature_theme(mountains/canyon/lake/forest)、destination_days(1..14)。其余偏好完整写入 brief.wishes，不能丢掉。
 travel 可含 trip_type(round_trip/one_way/pending)、outbound_window、arrival_window、return_window（YYYY-MM-DD ~ YYYY-MM-DD）、traveler_count。相对日期以传入当前日期理解；年份不清且会改变未来/过去时询问。返回日不改去程；游玩天数不等于住宿晚数。constraints 可含 budget_max_cny、max_layover_hours、max_transfers、night_arrival(avoid/allow)、no_self_drive、lodging_stays([{date,city}])。用户锁定的交通锚点只读，冲突时先讨论，不擅自改日期。
 action=chat 且没有已有草案时，draft 必须 null；先讨论，ready 时简要概括并邀请确认生成。action=generate 时，依据已确认意图、来源和当前候选生成完整探索草案。已有草案时，用户明确要求的调整要返回完整修订稿，保留未改部分；只是提问就 draft=null。目的地变化时先确认新摘要再生成，不沿用旧目的地内容。
@@ -58,7 +60,7 @@ function patches(raw, sanitize, keys) {
 export async function conversationTurn(input = {}, plan = null, deps = {}) {
   const before = cleanConversation(input.conversation);
   const action = input.action === 'generate' ? 'generate' : 'chat';
-  if (action === 'generate' && (!before.brief.origin || !before.brief.destination || before.stage !== 'ready'))
+  if (action === 'generate' && (!before.brief.origin || !before.brief.destination || countryScope(before.brief.origin) || countryScope(before.brief.destination) || before.stage !== 'ready'))
     return { status: 'needs_intent', reply: '先一起确定出发地、目的地和旅行想法，再生成草案。', conversation: before };
   const model = deps.model || composeJson, search = deps.search || searchWeb;
   const messages = (Array.isArray(input.messages) ? input.messages : []).slice(-16)
@@ -132,7 +134,7 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
       next.draft = draft; next.revision = before.revision + 1; next.stage = 'draft';
     } else {
       /* 意图已可读且地点明确，就让用户决定何时生成，避免模型无限追问。 */
-      next.stage = before.draft && !changedDestination ? 'draft' : next.brief.origin && next.brief.destination && next.brief.summary ? 'ready' : 'discuss';
+      next.stage = before.draft && !changedDestination ? 'draft' : next.brief.origin && next.brief.destination && next.brief.summary && !countryScope(next.brief.origin) && !countryScope(next.brief.destination) ? 'ready' : 'discuss';
       if (changedDestination) next.draft = null;
     }
     const selected = (plan?.candidates || []).find(c => c.id === raw.selected_candidate_id);
