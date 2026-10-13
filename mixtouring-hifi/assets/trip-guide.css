@@ -6,7 +6,6 @@
 .trip-page #guideArea h2 { font-size: 17px; font-weight: 400; margin: 0 0 14px; }
 .trip-page .guide-message { border-radius: 12px; padding: 10px 12px; background: #F4F5F7; margin: 0 0 9px; overflow-wrap: anywhere; }
 .trip-page .guide-user { background: #F8EEE9; margin-left: 18px; }
-.trip-page .guide-summary { color: #68514B; padding: 10px 0; border-bottom: 1px solid #E8E9EB; }
 .trip-page .guide-question { margin: 16px 0 10px; }
 .trip-page #guideArea button { cursor: pointer; border: 1px solid #D7D9DE; background: #fff; border-radius: 10px; min-height: 44px; padding: 9px 12px; font: inherit; color: #303238; }
 .trip-page #guideArea button:hover { border-color: #C86A4B; }
@@ -15,8 +14,35 @@
 .trip-page #guideArea .guide-primary { background: #111; color: #fff; border-color: #111; }
 .trip-page #guideArea .guide-skip { border: none; color: #626873; }
 .trip-page #guideArea label { display: block; margin-top: 16px; }
-.trip-page #guideForm { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
-.trip-page #guideInput, .trip-page #guideMissingInput { box-sizing: border-box; width: 100%; border: 1px solid #D7D9DE; border-radius: 10px; min-height: 44px; padding: 10px; font: inherit; }
+.trip-page .conversation-composer { display:flex;align-items:flex-end;gap:8px;padding:10px;border:1px solid #D7D9DE;border-radius:18px;background:#fff;box-sizing:border-box;min-width:0;margin:0; }
+.trip-page .conversation-composer:focus-within { border-color:#C86A4B;box-shadow:0 0 0 2px rgba(200,106,75,.1); }
+.trip-page #nlInput { flex:1;min-width:0;box-sizing:border-box;resize:none;border:0;outline:0;background:transparent;font:inherit;font-size:14px;line-height:1.65;color:inherit;padding:8px 6px;min-height:62px;max-height:160px; }
+.trip-page #nlInput::placeholder { color:#686D75; }
+.trip-page .conversation-composer #btnParse { flex:none;display:grid;place-items:center;width:44px;height:44px;min-height:44px;padding:0;border:0;border-radius:50%;background:#111;color:#fff;cursor:pointer; }
+.trip-page .conversation-composer #btnParse:disabled { background:#E8E9EB;color:#777;cursor:default;opacity:1; }
+.trip-page .conversation-composer #btnParse svg { width:22px;height:22px; }
+.trip-page .conversation-composer #btnParse:focus-visible { outline:2px solid #C86A4B;outline-offset:3px; }
+.trip-page .guide-messages { min-height:0;max-height:55vh;overflow-y:auto;overscroll-behavior:contain;margin-bottom:18px; }
+.trip-page .conversation-status { color:#686D75;margin:0 0 10px; }
+.trip-page .source-details { margin:2px 0 16px; }
+.trip-page .source-details summary { display:flex;align-items:center;gap:8px;min-height:44px;cursor:pointer;color:#68514B;font-size:12px;list-style:none; }
+.trip-page .source-details summary::-webkit-details-marker { display:none; }
+.trip-page .source-details summary::before { content:'›';font-size:18px;transition:transform .15s; }
+.trip-page .source-details[open] summary::before { transform:rotate(90deg); }
+.trip-page .source-count { color:#686D75;font-size:11px; }
+.trip-page .source-list { display:grid;gap:8px; }
+.trip-page #guideArea .source-card { position:relative;display:flex;flex-direction:column;gap:5px;min-height:64px;box-sizing:border-box;padding:12px 36px 12px 14px;border:1px solid var(--mixtouring-border);border-radius:var(--mixtouring-radius-md,16px);background:var(--mixtouring-card);color:var(--mixtouring-foreground);text-decoration:none;transition:border-color .15s,background .15s; }
+.trip-page #guideArea .source-card:visited { color:var(--mixtouring-foreground); }
+.trip-page #guideArea .source-card:hover { border-color:var(--mixtouring-ring);background:#FCF6F2; }
+.trip-page #guideArea .source-card:focus-visible { outline:2px solid var(--mixtouring-ring);outline-offset:2px; }
+.trip-page .source-meta { color:#68514B;font-size:11px;line-height:1.5;overflow-wrap:anywhere; }
+.trip-page .source-details summary:focus-visible { outline:2px solid var(--mixtouring-ring);outline-offset:2px;border-radius:8px; }
+.trip-page .source-title { font-size:13px;line-height:1.6;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden; }
+.trip-page .source-arrow { position:absolute;right:14px;top:50%;transform:translateY(-50%);color:var(--mixtouring-ring);font-size:16px; }
+.trip-page #entryCard[hidden] { display:none; }
+.trip-page #entryLabel[hidden] { display:none!important; }
+.trip-page .planning-workspace:has(#resultArea:empty) { display:block; }
+.trip-page .planning-workspace:has(#resultArea:empty) #guideArea { max-width:760px;margin-inline:auto;position:static;max-height:none;overflow:visible; }
 .trip-page .guide-tools { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
 .trip-page .guide-tools button { font-size: 12px !important; }
 .trip-page .guide-confirm { border-left: 2px solid #C86A4B; padding-left: 12px; }
@@ -25,6 +51,7 @@
 @media (min-width: 1150px) {
   body.trip-page .trip-shell { max-width: 1400px; }
   .trip-page .planning-workspace:has(#guideArea:not([hidden])) { display: grid; grid-template-columns: minmax(290px, .85fr) minmax(0, 1.6fr); gap: 22px; align-items: start; }
+  .trip-page .planning-workspace:has(#guideArea:not([hidden])):has(#resultArea:empty) { display:block; }
   .trip-page #guideArea { position: sticky; top: 20px; max-height: calc(100vh - 40px); overflow: auto; }
 }
 /* 景点比较沿用设计令牌，窄屏单列，不将预算排成精确日程。 */

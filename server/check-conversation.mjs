@@ -32,6 +32,10 @@ const revised=await conversationTurn({text:'刚才那个山景先不去，多留
 assert.equal(revised.conversation.revision,2);assert.equal(revised.patch.preferences.experience,'city');
 const failed=await conversationTurn({text:'再调整',conversation:revised.conversation},null,{model:async()=>null});
 assert.equal(failed.status,'unavailable');assert.deepEqual(failed.conversation,revised.conversation);
+const undo=await conversationTurn({text:'撤销刚才的调整',conversation:revised.conversation,can_undo:true},null,{model:async()=>({intent_action:'undo'})});
+assert.equal(undo.action,'undo');assert.deepEqual(undo.conversation,revised.conversation,'撤销由客户端历史快照恢复，模型不重写原稿');
+const noUndo=await conversationTurn({text:'撤销',conversation:revised.conversation,can_undo:false},null,{model:async()=>({intent_action:'undo'})});
+assert.equal(noUndo.action,null);assert.match(noUndo.reply,/没有/);
 const notApplied=await conversationTurn({text:'改掉山景',conversation:revised.conversation},null,{model:async()=>result({intent_action:'revise',draft:null})});
 assert.equal(notApplied.status,'unavailable','模型口头说已修改但没交付修订稿时不谎报成功');
 const question=await conversationTurn({text:'先比较，不修改',conversation:revised.conversation},null,{model:async()=>result({intent_action:'question',draft,preferences:{experience:'nature'},constraints:{no_self_drive:false}})});
@@ -44,6 +48,11 @@ const confirm=await conversationTurn({text:'就按这个想法生成',conversati
 assert.equal(confirm.request_generation,true);
 const notFirst=await conversationTurn({text:'就生成吧'},null,{model:async()=>result({confirmed:true})});
 assert.equal(notFirst.request_generation,false);
+let clarificationCalls=0;
+const confirmedAfterSearch=await conversationTurn({text:'确认从北京去比什凯克，按这个生成',conversation:{...first.conversation,stage:'discuss'},messages:[{role:'assistant',text:'你想从哪座城市开始？'}]},null,{
+  model:async()=>++clarificationCalls===1?result({intent_action:'confirm',confirmed:true,brief:{...brief,destination:'比什凯克'},search_query:'比什凯克 自然风光'}):result({intent_action:'discuss',confirmed:false,brief:{...brief,destination:'吉尔吉斯斯坦'}}),search:async()=>[]});
+assert.equal(confirmedAfterSearch.request_generation,true,'用户明确确认城市后，资料补充不能覆盖已识别的生成动作');
+assert.equal(confirmedAfterSearch.conversation.brief.destination,'比什凯克');
 let calls=0;
 const searched=await conversationTurn({text:'还有什么自然景观'},null,{model:async opts=>{
   calls++;if(calls===1)return result({brief:{...brief,destination:'昆明'},search_query:'昆明 自然景观 官方旅游'});
