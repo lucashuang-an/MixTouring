@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { conversationTurn } from './lib/conversation.mjs';
+import {planAnywhere} from './lib/anywhere.mjs';
 const brief={origin:'北京',destination:'阿拉木图',summary:'慢游，城区与自然搭配',wishes:['不想每天赶路','只住同一家住宿'],open_questions:[]};
 const result=(over={})=>({reply:'先把城区和山景搭配起来。',brief,ready:true,confirmed:false,preferences:{experience:'balanced'},travel:{},constraints:{},...over});
 const draft={title:'阿拉木图慢游草案',overview:'以城区为落脚点',sections:[{title:'山景安排',content:'先考虑山景，另留城区散步时间。'}],pending:['往返接驳待查']};
@@ -18,15 +19,33 @@ const countryGenerate=await conversationTurn({action:'generate',conversation:{..
 assert.equal(countryGenerate.status,'needs_intent');
 const cityChosen=await conversationTurn({text:'那就从比什凯克开始',conversation:country.conversation},null,{model:async()=>result({brief:{...brief,destination:'比什凯克'}})});
 assert.equal(cityChosen.conversation.stage,'ready');assert.equal(cityChosen.conversation.brief.destination,'比什凯克');
+const legacy={stage:'ready',brief:{origin:'北京',destination:'吉尔吉斯斯坦（待定，倾向比什凯克+湖区）',summary:'首站比什凯克，随后湖区，偏好民宿',wishes:['湖区民宿','慢节奏']},revision:0};
+const preparation=await conversationTurn({action:'prepare',conversation:legacy,messages:[{role:'assistant',text:'先飞到比什凯克，再去湖区，按此生成？'},{role:'user',text:'可以生成'}]},null,{model:async opts=>{
+  assert.equal(opts.kind,'conversation_places');assert.match(JSON.parse(opts.user).messages[0].text,/飞到比什凯克/);
+  return {origin:'北京',destination:'比什凯克',question:null};
+}});
+assert.equal(preparation.status,'ok');assert.deepEqual(preparation.routing,{origin:'北京',destination:'比什凯克'});
+assert.deepEqual(preparation.conversation.brief.wishes,legacy.brief.wishes);
+assert.equal(preparation.conversation.brief.destination,legacy.brief.destination,'旅行范围不丢，交通端点独立保存');
+let geocoded=false;
+const repairedPlan=await planAnywhere(preparation.routing,{callJson:async()=>null,searchWeb:async()=>null,osmSearch:async()=>{geocoded=true;return [];},env:{}});
+assert.equal(repairedPlan.intent.destination_place.name,'比什凯克');assert.equal(geocoded,false,'不再将整段描述送进开放地图核验');
+assert.ok(repairedPlan.candidates.length);
+const ambiguous=await conversationTurn({action:'prepare',conversation:{...legacy,brief:{...legacy.brief,destination:'吉尔吉斯斯坦'}},messages:[{role:'user',text:'城市还没定'}]},null,{model:async()=>({origin:'北京',destination:null,question:'想先抵达哪座城市？'})});
+assert.equal(ambiguous.status,'needs_intent');assert.equal(ambiguous.conversation.routing.destination,'');
+const placeFailure=await conversationTurn({action:'prepare',conversation:legacy},null,{model:async()=>null});
+assert.equal(placeFailure.status,'unavailable');assert.match(placeFailure.reply,/整理完成/);
 const beforeEarly=contexts.length;
 const early=await conversationTurn({action:'generate'},null,{model});
 assert.equal(early.status,'needs_intent');assert.equal(contexts.length,beforeEarly);
 const generated=await conversationTurn({action:'generate',conversation:first.conversation,anchors:{outbound:{from_city:'北京',to_city:'阿拉木图'}},constraints:{no_self_drive:true},messages:[{role:'user',text:'不每天搬住宿'}]},null,{model});
 assert.equal(generated.conversation.stage,'draft');assert.equal(generated.conversation.revision,1);
+assert.deepEqual(generated.patch.preferences,{},'写稿只读取确认条件，不制造新的结构化偏好');
 assert.equal(contexts.at(-1).current.constraints.no_self_drive,true);
-assert.equal(contexts.at(-1).messages[0].text,'不每天搬住宿');
+assert.equal(contexts.at(-1).user_messages[0].text,'不每天搬住宿');
+assert.equal(contexts.at(-1).conversation,undefined,'校对不把旧助手和旧草案当权威条件');
 const revised=await conversationTurn({text:'刚才那个山景先不去，多留城区',conversation:generated.conversation},null,{model:async opts=>{
-  assert.equal(JSON.parse(opts.user).conversation.draft.title,draft.title);
+  if(opts.kind==='conversation')assert.equal(JSON.parse(opts.user).conversation.draft.title,draft.title);
   return result({preferences:{experience:'city'},draft:{...draft,sections:[{title:'城区安排',content:'多留时间散步，暂不安排山景。'}]}});
 }});
 assert.equal(revised.conversation.revision,2);assert.equal(revised.patch.preferences.experience,'city');
@@ -42,6 +61,26 @@ const question=await conversationTurn({text:'先比较，不修改',conversation
 assert.deepEqual(question.conversation.draft,revised.conversation.draft);assert.deepEqual(question.patch.constraints,{});assert.deepEqual(question.patch.preferences,{});
 const malformed=await conversationTurn({conversation:revised.conversation},null,{model:async()=>result({travel:{outbound_window:'2026-02-31 ~ 2026-02-31'}})});
 assert.equal(malformed.status,'unavailable');assert.deepEqual(malformed.conversation,revised.conversation);
+const durationOnly=await conversationTurn({text:'五天，住一晚中转，其他先待定'},null,{model:async opts=>{
+  if(opts.kind==='conversation_calendar')return {travel:{}};
+  return result({travel:{trip_type:'round_trip',outbound_window:'2026-10-14 ~ 2026-10-18'}});
+}});
+assert.deepEqual(durationOnly.patch.travel,{},'只有天数时，模型不得自动填今天出发或往返');
+const calendarExplicit=await conversationTurn({text:'去程明天出发，返程20号',travel:{trip_type:'round_trip'},now:Date.parse('2026-10-14T03:00:00Z')},null,{model:async opts=>{
+  const travel={outbound_window:'2026-10-15 ~ 2026-10-15',return_window:'2026-10-20 ~ 2026-10-20'};
+  if(opts.kind==='conversation_calendar'){assert.equal(JSON.parse(opts.user).date,'2026-10-14');return {travel};}
+  return result({travel});
+}});
+assert.equal(calendarExplicit.patch.travel.return_window,'2026-10-20 ~ 2026-10-20','明确相对日期经模型核对后保留');
+const cancelDates=await conversationTurn({text:'出发日期先不定',travel:{outbound_window:'2026-10-14 ~ 2026-10-18'}},null,{model:async opts=>{
+  if(opts.kind==='conversation_calendar')return {travel:{outbound_window:null}};
+  return result();
+}});
+assert.equal(cancelDates.patch.travel.outbound_window,null,'主模型漏掉取消日期时，意图核对仍落实用户更新');
+const noGeneratedDates=await conversationTurn({action:'generate',conversation:first.conversation},null,{model:async()=>result({draft,brief:{...brief,destination:'昆明'},routing:{origin:'上海',destination:'昆明'},travel:{trip_type:'round_trip',outbound_window:'2026-10-14 ~ 2026-10-18'}})});
+assert.deepEqual(noGeneratedDates.patch.travel,{},'生成步骤不能擅自添加日历日期');
+assert.deepEqual(noGeneratedDates.conversation.routing,first.conversation.routing,'写稿不能改已确认的交通端点');
+assert.deepEqual(noGeneratedDates.conversation.brief,first.conversation.brief,'写稿不能改已确认意图');
 const changed=await conversationTurn({text:'还是换昆明吧',conversation:revised.conversation},null,{model:async()=>result({brief:{...brief,destination:'昆明'},draft})});
 assert.equal(changed.conversation.stage,'ready');assert.equal(changed.conversation.draft,null);
 const confirm=await conversationTurn({text:'就按这个想法生成',conversation:first.conversation},null,{model:async()=>result({confirmed:true})});

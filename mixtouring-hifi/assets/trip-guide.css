@@ -43,6 +43,20 @@
 .trip-page #entryLabel[hidden] { display:none!important; }
 .trip-page .planning-workspace:has(#resultArea:empty) { display:block; }
 .trip-page .planning-workspace:has(#resultArea:empty) #guideArea { max-width:760px;margin-inline:auto;position:static;max-height:none;overflow:visible; }
+.trip-page #planColumn[hidden] { display:none; }
+.trip-page .planning-workspace:has(#planColumn[hidden]) { display:block!important; }
+.trip-page .planning-workspace:has(#planColumn[hidden]) #guideArea { max-width:760px;margin-inline:auto;position:static;max-height:none;overflow:visible; }
+.trip-page .plan-heading { display:flex;align-items:flex-start;justify-content:space-between;gap:16px; }
+.trip-page .plan-heading h2 { margin:0;font-size:20px;line-height:1.5; }
+.trip-page .plan-eyebrow { margin:0 0 6px;color:#68514B;font-size:12px; }
+.trip-page .plan-heading button { flex:none;background:var(--mixtouring-primary);color:#fff;border-color:var(--mixtouring-primary);border-radius:12px; }
+.trip-page .plan-settings { margin-top:24px;border-top:1px solid var(--mixtouring-border);padding-top:8px; }
+.trip-page .plan-settings > summary,.trip-page .route-options > summary { font-size:13px;color:#626873;cursor:pointer;min-height:44px;line-height:44px; }
+.trip-page .route-options { margin-top:12px; }
+.trip-page .current-plan .conversation-draft { line-height:1.85; }
+.trip-page #taskSaveNote a { color:#82503F;text-decoration:none; }
+.trip-page #taskSaveNote a:hover { text-decoration:underline; }
+@media(max-width:480px) { .trip-page .plan-heading { gap:10px; }.trip-page .plan-heading h2 { font-size:18px; }.trip-page .plan-heading button { padding:8px 12px; } }
 .trip-page .guide-tools { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
 .trip-page .guide-tools button { font-size: 12px !important; }
 .trip-page .guide-confirm { border-left: 2px solid #C86A4B; padding-left: 12px; }

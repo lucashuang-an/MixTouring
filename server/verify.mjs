@@ -306,7 +306,7 @@ async function main() {
   const caps = await (await fetch(BASE + '/api/capabilities')).json();
   if (caps.code === 0 && typeof caps.data.web_search_configured === 'boolean' &&
     ['available', 'quota_exhausted', 'timeout', 'error', 'unknown'].includes(caps.data.web_search_status) &&
-    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.52.4') {
+    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.52.6') {
     console.log('✓ /api/capabilities P1-4：configured 与最近真实状态分开（web_search_configured=' +
       caps.data.web_search_configured + ', status=' + caps.data.web_search_status + '），版本拆分对齐');
   } else { failed++; console.error('✗ /api/capabilities 形状异常：' + JSON.stringify(caps).slice(0, 200)); }
@@ -430,6 +430,9 @@ async function main() {
   const countryPlan=await (await fetch(BASE+'/api/anywhere/plan',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({origin:'北京',destination:'吉尔吉斯斯坦'})})).json();
   if(countryPlan.data?.place_scopes.destination?.code==='KG' && !countryPlan.data.place_candidates.destination.length && !countryPlan.data.candidates.length)console.log('✓ 国家目的地不查询同名园区，先确定城市');
   else {failed++;console.error('✗ 国家目的地误作交通端点');}
+  const preparedRoute=await (await fetch(BASE+'/api/anywhere/conversation',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'prepare',conversation:{stage:'ready',brief:{origin:'北京',destination:'吉尔吉斯斯坦（比什凯克＋湖区）',summary:'先到比什凯克，再去湖区'},routing:{origin:'北京',destination:'比什凯克'}}})})).json();
+  if(preparedRoute.data?.routing.destination==='比什凯克' && preparedRoute.data.conversation.brief.destination.includes('湖区'))console.log('✓ 路线端点独立于国家与湖区说明，生成前准备保留旅行范围');
+  else {failed++;console.error('✗ 旅行摘要仍混入路线端点');}
   console.log(failed ? `\n✗ ${failed} 项不一致` : '\n✓ 全部接口与 mock.js 派生结果一致');
   process.exit(failed ? 1 : 0);
 }
