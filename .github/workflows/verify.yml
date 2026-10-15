@@ -39,6 +39,7 @@ jobs:
         run: |
           node server/check-guide.mjs
           node server/check-conversation.mjs
+          node server/check-send-retry.mjs
           node server/check-route-workspace.mjs
           node server/check-travel-sources.mjs
           node server/check-source-time.mjs

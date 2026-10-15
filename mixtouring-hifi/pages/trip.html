@@ -574,7 +574,18 @@
       if(conversationBusy || planning || (!text && action==='chat'))return;
       if(!conversation)conversation={stage:'draft',brief:{origin:activePlan && activePlan.intent.origin || '',destination:activePlan && activePlan.intent.destination || '',summary:'',wishes:[],open_questions:[]},draft:null,revision:0};
       var previous=guideSnapshot(),seq=++guideSequence;
-      if(action!=='generate' && !retry)guideMessages.push({role:'user',text:text});
+      /* #28：用户消息带提交身份（sendAction+pending）——同一失败发送的重试（含普通路径再提交同一输入）
+       * 复用既有可见消息，不重复追加；新输入正常追加。文本相同但不处于未决状态仍是合法新消息。 */
+      var pendingUserMsg=null;
+      if(action!=='generate'){
+        var lastMsg=guideMessages[guideMessages.length-1];
+        if(lastMsg && lastMsg.role==='user' && lastMsg.pending && lastMsg.text===text && lastMsg.sendAction===action){
+          pendingUserMsg=lastMsg;
+        } else {
+          pendingUserMsg={role:'user',text:text,sendAction:action,pending:true};
+          guideMessages.push(pendingUserMsg);
+        }
+      }
       var input=document.getElementById('nlInput');if(input)input.value='';
       conversationBusy=true;conversationError=null;renderGuide();rememberSession();
       document.getElementById('planStatus').textContent='';
@@ -586,9 +597,12 @@
         if(res.code!==0 || !res.data || res.data.status!=='ok')throw Error(res.data && res.data.reply || 'AI 暂时没有完成回复，你的输入和方案已保留。');
         var data=res.data;
         if(data.action==='undo'){
-          conversationBusy=false;undoGuide();guideMessages.push({role:'user',text:text},{role:'assistant',text:data.reply});renderGuide();rememberSession();return;
+          /* 用户消息已在发送前入列（带身份），此处只补助手回复，不再重复推送用户消息 */
+          conversationBusy=false;if(pendingUserMsg)delete pendingUserMsg.pending;
+          undoGuide();guideMessages.push({role:'assistant',text:data.reply});renderGuide();rememberSession();return;
         }
         guideUndo.push(previous);conversation=data.conversation;
+        if(pendingUserMsg)delete pendingUserMsg.pending;
         if(data.clear_selection){activeCandidate=null;pendingRestore=null;journeySequence++;var oldJourney=document.getElementById('journeyArea');if(oldJourney)oldJourney.innerHTML='';}
         guideState=MTGuide.clean(Object.assign({},guideState,data.patch.preferences));
         fillTravel(Object.assign({},collectTravel(),data.patch.travel));
