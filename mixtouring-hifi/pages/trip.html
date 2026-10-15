@@ -547,7 +547,13 @@
       var focused=composer.contains(document.activeElement);
       /* #31：重绘前记录阅读状态——是否在底部、可视锚点消息（按稳定 mid）及其在视口内的偏移；
        * 引用展开按「消息 mid + 消息内序号」保留，不依赖整个消息区的 DOM 下标。 */
-      guideMessages.forEach(function(m){if(!m.mid)m.mid=++msgSeq;});
+      /* 恢复的消息自带 mid 而计数器从零开始会产生重复 ID（复审 P2）——见过的 mid 保留并对齐
+       * 计数器，缺失或重复的重新分配，保证全列表唯一 */
+      var seenMids=new Set();
+      guideMessages.forEach(function(m){
+        if(m.mid && !seenMids.has(m.mid)){seenMids.add(m.mid);if(m.mid>msgSeq)msgSeq=m.mid;}
+        else{do{m.mid=++msgSeq;}while(seenMids.has(m.mid));seenMids.add(m.mid);}
+      });
       var oldBox=area.querySelector('.guide-messages');
       var atBottom=!oldBox || oldBox.scrollHeight-oldBox.scrollTop-oldBox.clientHeight<40;
       var anchorMid=null,anchorOffset=0,oldScrollTop=0;
@@ -648,9 +654,14 @@
         if(res.code!==0 || !res.data || res.data.status!=='ok')throw Error(res.data && res.data.reply || 'AI 暂时没有完成回复，你的输入和方案已保留。');
         var data=res.data;
         if(data.action==='undo'){
-          /* 用户消息已在发送前入列（带身份），此处只补助手回复，不再重复推送用户消息 */
-          conversationBusy=false;if(pendingUserMsg)delete pendingUserMsg.pending;
-          undoGuide();guideMessages.push({role:'assistant',text:data.reply});renderGuide();rememberSession();return;
+          /* 用户消息已在发送前入列；undoGuide 会用快照覆盖消息列表，先摘出本轮消息，
+           * 恢复后放回（解除未决标记），再补助手回复——撤销不丢本轮输入 */
+          conversationBusy=false;
+          var undoUser=pendingUserMsg || {role:'user',text:text};
+          var undoIdx=guideMessages.indexOf(undoUser);if(undoIdx>=0)guideMessages.splice(undoIdx,1);
+          if(pendingUserMsg)delete pendingUserMsg.pending;
+          undoGuide();
+          guideMessages.push(undoUser,{role:'assistant',text:data.reply});renderGuide();rememberSession();return;
         }
         guideUndo.push(previous);conversation=data.conversation;
         if(pendingUserMsg)delete pendingUserMsg.pending;

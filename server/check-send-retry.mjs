@@ -38,7 +38,8 @@ function makeEnv(postImpl) {
     fillTravel() {}, fillConstraints() {},
     renderGuide() {}, rememberSession() {}, renderTaskPreview() {}, showWorkspaceView() {},
     openJourney() {}, requestPlan: async () => true, generateConversation: async () => {},
-    undoGuide() { sandbox.guideUndo.pop(); },
+    /* 模拟真实 undoGuide→restoreGuideSnapshot：用快照整体覆盖消息列表（复审指出的漏桩） */
+    undoGuide() { var snap = sandbox.guideUndo.pop(); if (snap && Array.isArray(snap.messages)) sandbox.guideMessages = JSON.parse(JSON.stringify(snap.messages)); },
     planController: null, planSequence: 0, journeySequence: 0, conversationController: null,
     pendingRestore: null, lastRequest: {}, confirmedPlaces: {}, resultArea: { set innerHTML(v) {} },
     post: postImpl
@@ -117,13 +118,14 @@ const okPayload = (reply, extra = {}) => ({ code: 0, data: Object.assign({ statu
     '#28 成功后同文再发：两条用户消息各自保留（不按文本全局去重）');
 }
 
-/* 场景五：undo 成功——用户消息只出现一次（修正发送前已入列的重复推送） */
+/* 场景五：undo 成功——恢复快照覆盖消息列表后，本轮用户消息仍保留且不重复 */
 {
   const { sandbox } = makeEnv(async () => okPayload('已撤销上次调整。', { action: 'undo' }));
   await sandbox.sendConversation('撤销');
   ok(sandbox.guideMessages.length === 2 &&
-    sandbox.guideMessages[0].role === 'user' && sandbox.guideMessages[1].role === 'assistant',
-    '#28 undo：用户消息与助手回复各一条（不重复推送用户消息）');
+    sandbox.guideMessages[0].role === 'user' && sandbox.guideMessages[0].text === '撤销' &&
+    sandbox.guideMessages[1].role === 'assistant',
+    '#28 undo：快照恢复后本轮用户消息保留一次并跟助手回复（复审 P2：不丢本轮消息）');
 }
 
 console.log(fail === 0 ? `\n✓ 对话失败重发回归全部通过（${total} 项断言）` : `\n✗ 失败 ${fail} 项（共 ${total} 项断言）`);

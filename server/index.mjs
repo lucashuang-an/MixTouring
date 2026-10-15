@@ -356,8 +356,8 @@ app.use(async (ctx, next) => {
     return;
   }
   if (path === '/api/anywhere/conversation' && ctx.method === 'POST') {
-    /* #32：客户端提前断开（请求体未读完即 close）时取消下游模型/检索；正常读完不算取消 */
-    const signal = createRequestSignal(ctx.req);
+    /* #32：客户端断开（提交阶段断开或等待回复时断开）取消下游模型/检索；正常完成不取消 */
+    const signal = createRequestSignal(ctx.req, ctx.res);
     const body = await readBody(ctx) || {};
     ctx.body = { code: 0, data: await conversationTurn(body, guidePlanFromId(body.plan_id), { signal }) };
     return;
@@ -369,7 +369,7 @@ app.use(async (ctx, next) => {
     return;
   }
   if (path === '/api/anywhere/transport-search' && ctx.method === 'POST') {
-    const signal = createRequestSignal(ctx.req);
+    const signal = createRequestSignal(ctx.req, ctx.res);
     const body=await readBody(ctx) || {};
     try{ctx.body={code:0,data:await searchTransportSources({from:body.from,to:body.to,window:body.window},searchWeb,{signal})};}
     catch(error){ctx.body={code:1,msg:error.message};}

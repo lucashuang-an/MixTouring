@@ -54,7 +54,9 @@ export async function collectTravelSources({destination='',query='',internationa
   ].map(q=>{const scope=q.domain?stamp.replace(since,new Date(Date.parse(temporal.today+'T00:00:00Z')-365*86400000).toISOString().slice(0,10)):stamp;return {...q,text:q.text.slice(0,100-scope.length)+scope};});
   const key=JSON.stringify([queries,temporal]);
   const cached=cache.get(key);if(useCache && cached?.until>now)return {...structuredClone(cached.value),cache_hit:true};
-  const settled=await Promise.allSettled(queries.map(q=>search(q.text,{limit:5,timeoutMs:12000,signal})));
+  const settled=signal?.aborted?[]:await Promise.allSettled(queries.map(q=>search(q.text,{limit:5,timeoutMs:12000,signal})));
+  /* #32（复审 P2）：部分查询先成功、其余被取消时，本轮不产出可用结果、不登记来源、不写缓存 */
+  if(signal?.aborted)return {sources:[],archive:[],experiences:[],channels:[],temporal,status:'unavailable',reader:{attempted:0,available:0},excluded_count:0,cache_hit:false,retrieved_at:new Date(now).toISOString(),results:[],cancelled:true};
   const pool=[],seen=new Set(),channels=[];
   settled.forEach((item,i)=>{
     const results=item.status==='fulfilled' && Array.isArray(item.value)?item.value:[];
@@ -98,6 +100,6 @@ export async function collectTravelSources({destination='',query='',internationa
   const available=channels.filter(c=>c.status!=='unavailable').length;
   const value={sources,archive,experiences,channels,temporal,status:available===0?'unavailable':available<channels.length?'partial':'available',reader:{attempted:reads.length,available:readCount},excluded_count:partition.excluded.length,cache_hit:false,retrieved_at:new Date(now).toISOString(),
     results:sources.map(s=>({title:s.title,link:s.url,content:s.excerpt,date:s.published_at,date_basis:s.date_basis,source_kind:s.kind,platform:s.platform,read_status:s.read_status,temporal:s.temporal}))};
-  if(useCache && available){cache.set(key,{value:structuredClone(value),until:now+300000});if(cache.size>80)cache.delete(cache.keys().next().value);}
+  if(useCache && available && !signal?.aborted){cache.set(key,{value:structuredClone(value),until:now+300000});if(cache.size>80)cache.delete(cache.keys().next().value);}
   return value;
 }

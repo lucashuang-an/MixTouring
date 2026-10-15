@@ -120,6 +120,15 @@ console.log('✓ AI 对话确认、多轮上下文、改口、失败恢复、来
   const partial = new EventEmitter(); partial.readableEnded = false;
   const partialSignal = createRequestSignal(partial); partial.emit('close');
   assert.equal(partialSignal.aborted, true, '#32 请求体未读完即 close 视为客户端断开');
+  /* 复审 P1：等待 AI 回复时断开——请求体已读完、响应未写完即关闭 */
+  const waitingRes = new EventEmitter(); waitingRes.writableEnded = false;
+  const waitingSignal = createRequestSignal({ readableEnded: true, on(){} }, waitingRes);
+  waitingRes.emit('close');
+  assert.equal(waitingSignal.aborted, true, '#32 等待回复时客户端断开（响应未写完即 close）取消下游');
+  const finishedRes = new EventEmitter(); finishedRes.writableEnded = true;
+  const finishedSignal = createRequestSignal({ readableEnded: true, on(){} }, finishedRes);
+  finishedRes.emit('close');
+  assert.equal(finishedSignal.aborted, false, '#32 响应已写完的正常完成不取消');
 
   /* 预取消：signal 已中止 → 零模型调用，状态如旧 */
   const aborted = new AbortController().abort();

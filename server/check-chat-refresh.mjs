@@ -129,5 +129,26 @@ const msgs = () => [
   ok(input.value === '还没发送的想法', '#31 未发送文案保留');
 }
 
+/* 场景六（复审 P2）：恢复的消息自带 mid 而计数器从零开始——不产生重复 ID */
+{
+  const restored = [ { role: 'user', text: '甲', mid: 1 }, { role: 'assistant', text: '乙', mid: 2 } ];
+  const { sandbox } = makeEnv(restored);
+  sandbox.msgSeq = 0;                              /* 模拟刷新后计数器重置 */
+  sandbox.renderConversation();
+  sandbox.guideMessages.push({ role: 'user', text: '新消息' });   /* 无 mid，走分配 */
+  sandbox.renderConversation();
+  const mids = sandbox.guideMessages.map((m) => m.mid);
+  ok(new Set(mids).size === mids.length, '#31 恢复后新消息分配不与已有 mid 重复（修复前为 [1,2,1]）');
+}
+/* 场景七（复审 P2）：快照里已存在重复 mid——渲染时唯一化 */
+{
+  const dup = [ { role: 'user', text: '甲', mid: 1 }, { role: 'assistant', text: '乙', mid: 2 }, { role: 'user', text: '丙', mid: 1 } ];
+  const { sandbox } = makeEnv(dup);
+  sandbox.msgSeq = 0;
+  sandbox.renderConversation();
+  const mids = sandbox.guideMessages.map((m) => m.mid);
+  ok(new Set(mids).size === mids.length, '#31 已重复的存量 mid 渲染时被唯一化');
+}
+
 console.log(fail === 0 ? `\n✓ 聊天刷新阅读位置回归全部通过（${total} 项断言）` : `\n✗ 失败 ${fail} 项（共 ${total} 项断言）`);
 if (fail) process.exit(1);

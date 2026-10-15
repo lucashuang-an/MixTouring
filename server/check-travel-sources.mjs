@@ -84,14 +84,28 @@ assert.ok(calls.filter(q=>q.includes('site:')).every(q=>(q.match(/site:/g)||[]).
     '多入口跳转同一别站文章时全部不合并');
 }
 
-/* #32：取消信号贯穿检索与原文读取——预取消不启动读取，搜索桩收到 signal */
+/* #32（复审修订）：预取消不发起搜索、不读原文、不产出来源；部分成功后取消不写缓存 */
 {
   const seen = [];
   const aborted = AbortSignal.abort('pre');
   const out = await collectTravelSources({ destination: '阿拉木图', international: false },
     async (q, opts) => { seen.push(opts && opts.signal); return [{ title: '小红书帖', link: 'https://www.xiaohongshu.com/explore/x1', content: 'c', date: '2026-10-01' }]; },
     { useCache: false, now, readPage: async () => { throw Error('取消后不应读取原文'); }, signal: aborted });
-  assert.equal(seen.length > 0 && seen.every((s) => s === aborted), true, '#32 搜索调用收到请求取消信号');
-  assert.equal(out.reader.available, 0, '#32 预取消：不读取原文');
-  assert.equal(out.status, 'available', '#32 搜索本身可完成，仅读取被跳过（不缓存成功与本轮无关）');
+  assert.equal(seen.length, 0, '#32 预取消：不发起搜索');
+  assert.equal(out.cancelled, true, '#32 预取消：本轮如实标记取消');
+  assert.equal(out.status, 'unavailable', '#32 预取消：不产出可用结果');
+}
+{
+  const controller = new AbortController();
+  let partialCalls = 0;
+  const partial = await collectTravelSources({ destination: '阿拉木图', international: false },
+    async () => { if (++partialCalls >= 2) controller.abort(); return [{ title: '小红书帖', link: 'https://www.xiaohongshu.com/explore/p1', content: 'c', date: '2026-10-01' }]; },
+    { useCache: true, now, readPage: null, signal: controller.signal });
+  assert.equal(partial.cancelled, true, '#32 部分成功后取消：本轮不产出可用结果');
+  assert.equal(partial.status, 'unavailable', '#32 部分成功后取消：不返回 partial 可用态');
+  let retryCalls = 0;
+  await collectTravelSources({ destination: '阿拉木图', international: false },
+    async () => { retryCalls++; return [{ title: '小红书帖', link: 'https://www.xiaohongshu.com/explore/p2', content: 'c', date: '2026-10-01' }]; },
+    { useCache: true, now, readPage: null });
+  assert.ok(retryCalls >= 1, '#32 重试重新发起检索（未命中被取消轮次的缓存）');
 }
