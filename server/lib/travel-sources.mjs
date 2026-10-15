@@ -68,11 +68,20 @@ export async function collectTravelSources({destination='',query='',internationa
   const readable=candidates.current.concat(experienceCandidates,candidates.archive.filter(s=>s.temporal.state==='undated'));
   const targets=[readable.find(s=>s.kind==='official'),...readable.filter(s=>s.kind==='experience').slice(0,2),...readable].filter((s,i,all)=>s && all.findIndex(x=>x?.url===s.url)===i).slice(0,3);
   const reads=readPage?await Promise.allSettled(targets.map(s=>readPage(s.url,{timeoutMs:5500}))):[];
+  /* #30：文章身份核对——最终 URL 规范化后须与检索 URL 同 host 同 path（或读取器未报告最终 URL）
+   * 才合并正文/标题/平台/日期；跳转到其他文章时保留原索引记录与读取缺口，不把别站文章
+   * 嫁接原平台日期或冒充原平台原帖。 */
+  const articleIdentity=url=>{try{const x=new URL(url);x.hash='';for(const k of [...x.searchParams.keys()])if(/^utm_|^(spm|share_source|share_from)$/i.test(k))x.searchParams.delete(k);return x.host.replace(/^www\./,'')+x.pathname.replace(/\/$/,'')+x.search;}catch{return url;}};
   let readCount=0;
   reads.forEach((out,i)=>{
     const source=pool.find(s=>s.url===targets[i].url),page=out.status==='fulfilled'?out.value:null;
     if(!source)return;
     if(page?.read_status==='page_excerpt'){
+      if(page.url && classifyTravelSource(page.url) && articleIdentity(page.url)!==articleIdentity(source.url)){
+        source.read_status='search_excerpt';
+        source.read_note='原文读取跳转到其他文章，为避免身份混淆未采用，仅有搜索摘要';
+        return;
+      }
       readCount++;source.excerpt=String(page.excerpt || source.excerpt).slice(0,3500);source.read_status='page_excerpt';
       if(page.title){source.search_title=source.title;source.title=String(page.title).slice(0,160);}
       if(page.url && classifyTravelSource(page.url)){source.original_url=source.url;source.url=page.url;Object.assign(source,classifyTravelSource(page.url));}
