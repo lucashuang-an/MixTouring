@@ -53,10 +53,14 @@ export async function collectTravelSources({destination='',query='',internationa
     {channel:'官方与目的地资料',text:topic+' 官方 交通 开放 最新'}
   ].map(q=>{const scope=q.domain?stamp.replace(since,new Date(Date.parse(temporal.today+'T00:00:00Z')-365*86400000).toISOString().slice(0,10)):stamp;return {...q,text:q.text.slice(0,100-scope.length)+scope};});
   const key=JSON.stringify([queries,temporal]);
-  const cached=cache.get(key);if(useCache && cached?.until>now)return {...structuredClone(cached.value),cache_hit:true};
+  /* #32（复审二轮）：取消检查统一三处——缓存命中前、搜索阶段后、原文读取阶段后；
+   * 取消轮一律返回 cancelled（不产出来源、不登记、缓存命中也不放行），重试重新全量检索。 */
+  const cancelledResult=()=>({sources:[],archive:[],experiences:[],channels:[],temporal,status:'unavailable',reader:{attempted:0,available:0},excluded_count:0,cache_hit:false,retrieved_at:new Date(now).toISOString(),results:[],cancelled:true});
+  const cached=cache.get(key);
+  if(useCache && cached?.until>now){if(signal?.aborted)return cancelledResult();return {...structuredClone(cached.value),cache_hit:true};}
   const settled=signal?.aborted?[]:await Promise.allSettled(queries.map(q=>search(q.text,{limit:5,timeoutMs:12000,signal})));
   /* #32（复审 P2）：部分查询先成功、其余被取消时，本轮不产出可用结果、不登记来源、不写缓存 */
-  if(signal?.aborted)return {sources:[],archive:[],experiences:[],channels:[],temporal,status:'unavailable',reader:{attempted:0,available:0},excluded_count:0,cache_hit:false,retrieved_at:new Date(now).toISOString(),results:[],cancelled:true};
+  if(signal?.aborted)return cancelledResult();
   const pool=[],seen=new Set(),channels=[];
   settled.forEach((item,i)=>{
     const results=item.status==='fulfilled' && Array.isArray(item.value)?item.value:[];
@@ -71,6 +75,8 @@ export async function collectTravelSources({destination='',query='',internationa
   const targets=[readable.find(s=>s.kind==='official'),...readable.filter(s=>s.kind==='experience').slice(0,2),...readable].filter((s,i,all)=>s && all.findIndex(x=>x?.url===s.url)===i).slice(0,3);
   /* #32：取消后不再启动原文读取；已取消的读取按失败处理，不写入缓存 */
   const reads=!readPage?[]:await Promise.allSettled(targets.map(s=>signal?.aborted?Promise.reject(Object.assign(Error('已取消'),{name:'AbortError'})):readPage(s.url,{timeoutMs:5500,signal})));
+  /* 复审二轮：读取阶段被取消（部分读取已成功）同样不产出可用结果 */
+  if(signal?.aborted)return cancelledResult();
   /* #30：文章身份核对——最终 URL 规范化后须与检索 URL 同 host 同 path（或读取器未报告最终 URL）
    * 才合并正文/标题/平台/日期；跳转到其他文章时保留原索引记录与读取缺口，不把别站文章
    * 嫁接原平台日期或冒充原平台原帖。 */

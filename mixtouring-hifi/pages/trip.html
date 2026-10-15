@@ -588,23 +588,23 @@
       var anchorRowNew=anchorMid?box.querySelector('.message-row[data-mid="'+anchorMid+'"]'):null;
       if(atBottom || !anchorRowNew)box.scrollTop=box.scrollHeight;
       else box.scrollTop=anchorRowNew.offsetTop-anchorOffset;
-      area.querySelectorAll('.message-row[data-mid]').forEach(function(row){
-        var mid=row.getAttribute('data-mid');
+      /* 程序恢复 details.open 会异步派发原生 toggle——恢复期间抑制 toggle 的自动滚动
+       * （复审二轮：真浏览器阅读位置 900→459 即由此触发），只有用户主动展开才滚动 */
+      var restoringOpen=true;
+      var bindSourceToggle=function(row,key){
         row.querySelectorAll('.source-details').forEach(function(d,i){
-          d.open=!!oldOpen[mid+':'+i];
+          d.open=!!oldOpen[key+':'+i];
           d.addEventListener('toggle',function(){
+            if(restoringOpen)return;
             if(d.open)box.scrollTo({top:box.scrollTop+d.getBoundingClientRect().top-box.getBoundingClientRect().top,behavior:'smooth'});
           });
         });
-      });
-      area.querySelectorAll('.experience-row').forEach(function(row){
-        row.querySelectorAll('.source-details').forEach(function(d,i){
-          d.open=!!oldOpen['exp:'+i];
-          d.addEventListener('toggle',function(){
-            if(d.open)box.scrollTo({top:box.scrollTop+d.getBoundingClientRect().top-box.getBoundingClientRect().top,behavior:'smooth'});
-          });
-        });
-      });
+      };
+      area.querySelectorAll('.message-row[data-mid]').forEach(function(row){bindSourceToggle(row,row.getAttribute('data-mid'));});
+      area.querySelectorAll('.experience-row').forEach(function(row,ri){bindSourceToggle(row,'exp:'+ri);});
+      /* 原生 toggle 在 open 变化后的下一个任务派发——标志须晚于这批任务清除，
+       * 恢复引起的 toggle（此时标志仍为 true）不滚动，用户随后的主动展开正常滚动 */
+      setTimeout(function(){restoringOpen=false;},0);
     }
     function actionLabel(){return conversation && conversation.draft?'正在调整安排，原方案仍为你保留…':activePlan && activePlan.plan_id?'正在生成城市与逐日安排…':'正在梳理你的旅行想法…';}
     function startConversation(text) {

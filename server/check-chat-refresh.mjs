@@ -20,7 +20,8 @@ const ok = (cond, name) => { total++; if (cond) console.log('✓ ' + name); else
 /* 假消息区：维护消息行（mid/offsetTop/offsetHeight）与每行引用 details 状态 */
 function makeEnv(messages, opts = {}) {
   const box = {
-    scrollTop: 0, scrollHeight: 1800, clientHeight: 400, rows: [], scrollTo() {},
+    scrollTop: 0, scrollHeight: 1800, clientHeight: 400, rows: [], scrollCalls: 0, getBoundingClientRect() { return { top: 0 }; },
+    scrollTo() { this.scrollCalls++; },
     querySelector(sel) {
       const m = sel.match(/data-mid="([^"]+)"/);
       return m ? this.rows.find((r) => r.mid === m[1]) || null : null;
@@ -32,12 +33,19 @@ function makeEnv(messages, opts = {}) {
     }
   };
   const buildRows = () => { /* 每次 innerHTML 重写后按当前消息重建行（模拟真实 DOM 重建） */
-    box.rows = sandbox.guideMessages.slice(-12).map((m, i) => ({
-      mid: String(m.mid), offsetTop: i * 150, offsetHeight: 150,
-      details: [{ open: false, listeners: [], addEventListener(ev, fn) { this.listeners.push(fn); } }],
-      getAttribute() { return String(m.mid); },
-      querySelectorAll(sel) { return sel === '.source-details' ? this.details : []; }
-    }));
+    box.rows = sandbox.guideMessages.slice(-12).map((m, i) => {
+      const details = { _open: false, listeners: [],
+        addEventListener(ev, fn) { this.listeners.push(fn); }, getBoundingClientRect() { return { top: 150 }; },
+        get open() { return this._open; },
+        set open(v) { const next = !!v; if (next === this._open) return; this._open = next;
+          setTimeout(() => this.listeners.forEach((fn) => fn()), 0); }  /* 真实浏览器:下一任务派发 toggle */
+      };
+      return { mid: String(m.mid), offsetTop: i * 150, offsetHeight: 150,
+        get details() { return [details]; },
+        getAttribute() { return String(m.mid); },
+        querySelectorAll(sel) { return sel === '.source-details' ? [details] : []; }
+      };
+    });
   };
   const experienceRow = { open: false, addEventListener() {} };
   const area = {
@@ -54,7 +62,7 @@ function makeEnv(messages, opts = {}) {
   };
   const input = { value: opts.inputValue || '', placeholder: '', focus() { input.focused = true; } };
   const sandbox = {
-    console, JSON, Object, Array, Date, String, Math,
+    console, JSON, Object, Array, Date, String, Math, setTimeout,
     document: { getElementById: (id) => id === 'guideArea' ? area : id === 'nlInput' ? input : { hidden: false } },
     composer: { contains: () => false, remove() {} },
     input, area, currentExperiences: opts.currentExperiences || [],
@@ -148,6 +156,25 @@ const msgs = () => [
   sandbox.renderConversation();
   const mids = sandbox.guideMessages.map((m) => m.mid);
   ok(new Set(mids).size === mids.length, '#31 已重复的存量 mid 渲染时被唯一化');
+}
+
+/* 场景八（复审二轮）：程序恢复 details.open 异步派发 toggle——不触发自动滚动 */
+{
+  const { sandbox, box } = makeEnv(msgs());
+  sandbox.renderConversation();
+  const d = box.rows[1].details[0];
+  d.open = true;                                    /* 模拟用户此前展开该引用 */
+  await new Promise((r) => setTimeout(r, 5));       /* 上次渲染派发的 toggle 沉淀（该阶段监听会滚动一次） */
+  box.scrollCalls = 0;
+  sandbox.renderConversation();                     /* 重绘：程序恢复 open=true，异步派发 toggle */
+  await new Promise((r) => setTimeout(r, 10));
+  ok(box.scrollCalls === 0, '#31 程序恢复引用展开不触发自动滚动（修复前真浏览器 900→459）');
+  const after = box.rows[1].details[0];             /* 用户随后主动开合新渲染的引用 */
+  after.open = false;
+  await new Promise((r) => setTimeout(r, 5));
+  after.open = true;
+  await new Promise((r) => setTimeout(r, 10));
+  ok(box.scrollCalls >= 1, '#31 用户主动展开仍自动滚动到引用');
 }
 
 console.log(fail === 0 ? `\n✓ 聊天刷新阅读位置回归全部通过（${total} 项断言）` : `\n✗ 失败 ${fail} 项（共 ${total} 项断言）`);

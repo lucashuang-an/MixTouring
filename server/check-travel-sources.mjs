@@ -109,3 +109,25 @@ assert.ok(calls.filter(q=>q.includes('site:')).every(q=>(q.match(/site:/g)||[]).
     { useCache: true, now, readPage: null });
   assert.ok(retryCalls >= 1, '#32 重试重新发起检索（未命中被取消轮次的缓存）');
 }
+
+/* 复审二轮：缓存命中前、读取阶段取消——均不产出来源、不登记 */
+{
+  /* 先成功一轮写入缓存（key 由 queries+temporal 决定，同参数重查命中） */
+  const warm = await collectTravelSources({ destination: '阿拉木图', international: false },
+    async () => [{ title: '小红书帖', link: 'https://www.xiaohongshu.com/explore/w1', content: 'c', date: '2026-10-01' }],
+    { useCache: true, now, readPage: null });
+  assert.equal(warm.sources.length >= 1, true, '预热：正常轮产出来源并写缓存');
+  /* 预取消 + 缓存命中：不放行缓存，返回 cancelled */
+  const hitCancelled = await collectTravelSources({ destination: '阿拉木图', international: false },
+    async () => { throw Error('取消后不应搜索'); },
+    { useCache: true, now, readPage: null, signal: AbortSignal.abort('pre') });
+  assert.equal(hitCancelled.cancelled, true, '#32 缓存命中前取消：不放行缓存值');
+  assert.equal(hitCancelled.sources.length, 0, '#32 缓存命中前取消：不产出可用来源');
+  /* 读取阶段中途取消：读取桩返回成功但信号已断——不产出 */
+  const readController = new AbortController();
+  const readCancelled = await collectTravelSources({ destination: '阿勒泰', international: false },
+    async () => [{ title: '小红书帖', link: 'https://www.xiaohongshu.com/explore/r1', content: 'c', date: '2026-10-01' }],
+    { useCache: true, now, readPage: async () => { readController.abort(); return { read_status: 'page_excerpt', excerpt: '正文' }; }, signal: readController.signal });
+  assert.equal(readCancelled.cancelled, true, '#32 读取阶段取消：本轮不产出可用结果');
+  assert.equal(readCancelled.sources.length, 0, '#32 读取阶段取消：不登记来源');
+}

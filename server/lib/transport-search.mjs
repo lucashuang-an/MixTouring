@@ -20,6 +20,8 @@ export async function searchTransportSources({from,to,window=null},search,{readP
   if([from,to].some(p=>typeof p!=='string' || !p.trim() || p.length>80) || from===to)throw Error('请提供两个不同的交通端点');
   const origin=resolvePlace(from)?.name || from.trim(),destination=resolvePlace(to)?.name || to.trim();
   const result=await collectTravelSources({destination:origin+' '+destination,query:origin+' 到 '+destination+' 客运 班次 运营',foreignQuery:(resolvePlace(origin)?.aliases?.find(a=>/^[a-z ]+$/i.test(a)) || origin)+' '+(resolvePlace(destination)?.aliases?.find(a=>/^[a-z ]+$/i.test(a)) || destination)+' bus travel',international:true,purpose:'transport',window},search,{readPage,now,useCache,signal});
+  /* 复审二轮：取消轮（含缓存命中/读取阶段取消）不登记检索 ID、不进缓存——按失败路径返回 */
+  if(result.cancelled || signal?.aborted)throw Error('请求已取消，本轮检索未完成');
   const relevant=s=>{const rel=resultRelevance({title:s.title,content:s.excerpt},{from:origin,to:destination,mode_guess:'unknown'});return rel.from_hit && rel.to_hit && rel.mode_hit && rel.connection_hit;};
   const mentions=(text,name)=>[name,...resolvePlace(name)?.aliases || []].some(term=>/^[a-z ]+$/i.test(term)?new RegExp('\\b'+term+'\\b','i').test(text):text.includes(term));
   const experiences=result.experiences.filter(s=>mentions(s.title+' '+s.excerpt,origin) && mentions(s.title+' '+s.excerpt,destination));
