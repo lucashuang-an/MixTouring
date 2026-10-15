@@ -200,6 +200,7 @@
     var planning = false;
     var transportReferenceCache=new Map(), transportReferenceLoading=new Set(), transportReferenceErrors=new Set();
     var transportSearchCache=new Map(),transportSearchLoading=new Set(),transportSearchErrors=new Set();
+    var msgSeq=0; /* #31：消息稳定身份，用于重绘时保持阅读锚点与引用展开状态 */
     var conversation = null, conversationBusy = false, conversationError = null;
 
     /* ---------- 卡 B（v0.44.2）：交通锚点（用户确认事实）与会话级新约束 ----------
@@ -543,12 +544,31 @@
     function renderConversation() {
       var area=document.getElementById('guideArea'),input=document.getElementById('nlInput');
       var focused=composer.contains(document.activeElement);
+      /* #31：重绘前记录阅读状态——是否在底部、可视锚点消息（按稳定 mid）及其在视口内的偏移；
+       * 引用展开按「消息 mid + 消息内序号」保留，不依赖整个消息区的 DOM 下标。 */
+      guideMessages.forEach(function(m){if(!m.mid)m.mid=++msgSeq;});
+      var oldBox=area.querySelector('.guide-messages');
+      var atBottom=!oldBox || oldBox.scrollHeight-oldBox.scrollTop-oldBox.clientHeight<40;
+      var anchorMid=null,anchorOffset=0,oldScrollTop=0;
+      if(oldBox && !atBottom){
+        oldScrollTop=oldBox.scrollTop;
+        var rows=Array.from(oldBox.querySelectorAll('.message-row[data-mid]'));
+        var anchorRow=rows.find(function(r){return r.offsetTop+r.offsetHeight>oldBox.scrollTop;}) || rows[rows.length-1];
+        if(anchorRow){anchorMid=anchorRow.getAttribute('data-mid');anchorOffset=anchorRow.offsetTop-oldBox.scrollTop;}
+      }
+      var oldOpen={};
+      area.querySelectorAll('.message-row[data-mid]').forEach(function(row){
+        var mid=row.getAttribute('data-mid');
+        row.querySelectorAll('.source-details').forEach(function(d,i){if(d.open)oldOpen[mid+':'+i]=true;});
+      });
+      area.querySelectorAll('.experience-row').forEach(function(row){
+        row.querySelectorAll('.source-details').forEach(function(d,i){if(d.open)oldOpen['exp:'+i]=true;});
+      });
       composer.remove();area.hidden=false;
       document.getElementById('entryCard').hidden=true;
       document.getElementById('entryLabel').hidden=true;
-      var oldSources=Array.from(area.querySelectorAll('.source-details')).map(function(el){return el.open;});
       var experienceRoute=conversation?.draft?.route || [],currentExperiences=experienceRoute.slice(1).flatMap(function(to,i){var r=transportSearchCache.get(liveTransportKey(experienceRoute[i],to));return r && Date.now()-Date.parse(r.retrieved_at)<900000?r.experiences || []:[];});
-      area.innerHTML='<div class="conversation-heading"><span class="assistant-mark" aria-hidden="true">✳</span><div><h2>一起规划这趟旅行</h2><p>聊想法，也聊每一步的取舍</p></div></div><div class="guide-messages" aria-live="polite">'+(currentExperiences.length?'<div class="message-row message-assistant"><span class="message-author">本次查到的旅行者经验</span>'+sourceCards(currentExperiences)+'</div>':'')+guideMessages.slice(-12).map(function(m,i){return '<div class="message-row '+(m.role==='user'?'message-user':'message-assistant')+'"><span class="message-author">'+(m.role==='user'?'你':'MixTouring')+'</span><p style="white-space:pre-wrap" class="guide-message '+(m.role==='user'?'guide-user':'')+'">'+MT.esc(m.text)+'</p>'+versionCard(m,Math.max(0,guideMessages.length-12)+i)+sourceCards(m.sources)+'</div>';}).join('')+'</div>'+
+      area.innerHTML='<div class="conversation-heading"><span class="assistant-mark" aria-hidden="true">✳</span><div><h2>一起规划这趟旅行</h2><p>聊想法，也聊每一步的取舍</p></div></div><div class="guide-messages" aria-live="polite">'+(currentExperiences.length?'<div class="message-row message-assistant experience-row"><span class="message-author">本次查到的旅行者经验</span>'+sourceCards(currentExperiences)+'</div>':'')+guideMessages.slice(-12).map(function(m,i){return '<div class="message-row '+(m.role==='user'?'message-user':'message-assistant')+'" data-mid="'+m.mid+'"><span class="message-author">'+(m.role==='user'?'你':'MixTouring')+'</span><p style="white-space:pre-wrap" class="guide-message '+(m.role==='user'?'guide-user':'')+'">'+MT.esc(m.text)+'</p>'+versionCard(m,Math.max(0,guideMessages.length-12)+i)+sourceCards(m.sources)+'</div>';}).join('')+'</div>'+
         (conversationBusy?'<p class="conversation-status" role="status"><span class="thinking-dot" aria-hidden="true"></span>'+(actionLabel())+'</p>':'')+
         (conversationError?'<p class="conversation-status" role="status">'+MT.esc(conversationError.message)+'</p>':'');
       area.appendChild(composer);input.placeholder='继续聊聊你的想法…';
@@ -556,10 +576,28 @@
       area.querySelectorAll('[data-open-version]').forEach(function(b){b.onclick=function(){showWorkspaceView('route');document.getElementById('taskPreview').scrollIntoView({block:'start',behavior:'smooth'});};});
       area.querySelectorAll('[data-restore-version]').forEach(function(b){b.onclick=function(){restoreConversationVersion(Number(b.dataset.restoreVersion));};});
       if(focused)input.focus({preventScroll:true});
-      var box=area.querySelector('.guide-messages');box.scrollTop=box.scrollHeight;
-      area.querySelectorAll('.source-details').forEach(function(details,i){details.open=!!oldSources[i];details.addEventListener('toggle',function(){
-        if(details.open)box.scrollTo({top:box.scrollTop+details.getBoundingClientRect().top-box.getBoundingClientRect().top,behavior:'smooth'});
-      });});
+      var box=area.querySelector('.guide-messages');
+      /* 滚动：用户在底部才跟随最新内容；正在读旧消息时按锚点保持阅读位置（后台资料刷新不拉动视口） */
+      var anchorRowNew=anchorMid?box.querySelector('.message-row[data-mid="'+anchorMid+'"]'):null;
+      if(atBottom || !anchorRowNew)box.scrollTop=box.scrollHeight;
+      else box.scrollTop=anchorRowNew.offsetTop-anchorOffset;
+      area.querySelectorAll('.message-row[data-mid]').forEach(function(row){
+        var mid=row.getAttribute('data-mid');
+        row.querySelectorAll('.source-details').forEach(function(d,i){
+          d.open=!!oldOpen[mid+':'+i];
+          d.addEventListener('toggle',function(){
+            if(d.open)box.scrollTo({top:box.scrollTop+d.getBoundingClientRect().top-box.getBoundingClientRect().top,behavior:'smooth'});
+          });
+        });
+      });
+      area.querySelectorAll('.experience-row').forEach(function(row){
+        row.querySelectorAll('.source-details').forEach(function(d,i){
+          d.open=!!oldOpen['exp:'+i];
+          d.addEventListener('toggle',function(){
+            if(d.open)box.scrollTo({top:box.scrollTop+d.getBoundingClientRect().top-box.getBoundingClientRect().top,behavior:'smooth'});
+          });
+        });
+      });
     }
     function actionLabel(){return conversation && conversation.draft?'正在调整安排，原方案仍为你保留…':activePlan && activePlan.plan_id?'正在生成城市与逐日安排…':'正在梳理你的旅行想法…';}
     function startConversation(text) {
