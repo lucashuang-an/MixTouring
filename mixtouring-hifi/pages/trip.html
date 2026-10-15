@@ -27,6 +27,7 @@
     <link rel="stylesheet" href="../assets/desktop.css" />
     <link rel="stylesheet" href="../assets/trip-guide.css" />
     <link rel="stylesheet" href="../assets/route-cards.css" />
+    <link rel="stylesheet" href="../assets/route-workspace.css" />
 </head>
 <body class="trip-page" style="margin:0;background:var(--mixtouring-background);font-family:var(--mixtouring-font-sans);color:var(--mixtouring-foreground);-webkit-font-smoothing:antialiased;">
   <svg xmlns="http://www.w3.org/2000/svg" style="display:none;" aria-hidden="true">
@@ -42,7 +43,7 @@
 
   <main class="trip-shell">
     <!-- 品牌区 -->
-    <div style="text-align:center;padding:6px 0 18px;">
+    <div class="workspace-brand" style="text-align:center;padding:6px 0 18px;">
       <span style="font-size:22px;">Mix<span style="color:var(--mixtouring-ring);">Touring</span></span>
       <div style="font-size:13.5px;color:var(--mixtouring-muted-foreground);margin-top:6px;">从一个想法，慢慢变成一趟旅行</div>
     </div>
@@ -54,6 +55,7 @@
         <textarea id="nlInput" rows="2" maxlength="2000" placeholder="想去哪、怎么玩，都可以从这里说起" aria-label="旅行想法"></textarea>
         <button id="btnParse" type="submit" aria-label="发送" title="发送" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       </form>
+      <div class="entry-examples"><span>从这些想法开始</span><button type="button" data-idea="我想从北京去阿拉木图，10天，一个人，预算8000元，喜欢自然和本地文化，愿意坐长途巴士。">北京 → 阿拉木图，沿途多看看 <span aria-hidden="true">↗</span></button><button type="button" data-idea="想去一个适合散步和看自然的地方，不开车，先一起想想去哪。">还没决定去哪，先聊聊 <span aria-hidden="true">↗</span></button></div>
       <div id="entryExtras" hidden>
       <details id="manualEntry" style="margin-top:13px;">
         <summary style="cursor:pointer;font-size:12px;color:var(--mixtouring-muted-foreground);padding:8px 0;">也可以直接填写出发地和目的地</summary>
@@ -118,6 +120,7 @@
 
     <!-- 结果区：先展示走法，核查信息按需展开 -->
     <div id="planStatus" role="status" aria-live="polite"></div>
+    <div id="workspaceTabs" class="workspace-tabs" hidden aria-label="规划视图"><button type="button" data-workspace-tab="chat" aria-pressed="true">对话</button><button type="button" data-workspace-tab="route" aria-pressed="false">路线与安排</button></div>
     <div class="planning-workspace">
       <aside id="guideArea" aria-label="一起规划" hidden></aside>
       <div id="planColumn" hidden>
@@ -140,11 +143,18 @@
   <script src="../assets/draft-store.js"></script>
   <script src="../assets/trip-guide.js"></script>
   <script src="../assets/sight-planner.js"></script>
-  <script src="../assets/task-preview.js"></script>
+  <script src="../assets/route-workspace.js"></script>
   <script>
   (function () {
     var resultArea = document.getElementById('resultArea');
     var composer=document.getElementById('conversationComposer');
+    function showWorkspaceView(view) {
+      document.body.dataset.workspaceView=view;
+      document.querySelectorAll('[data-workspace-tab]').forEach(function(b){b.setAttribute('aria-pressed',String(b.dataset.workspaceTab===view));});
+      if(view==='chat'){var messages=document.querySelector('#guideArea .guide-messages');if(messages)messages.scrollTop=messages.scrollHeight;}
+    }
+    document.querySelectorAll('[data-workspace-tab]').forEach(function(b){b.onclick=function(){showWorkspaceView(b.dataset.workspaceTab);};});
+    document.querySelectorAll('[data-idea]').forEach(function(b){b.onclick=function(){document.getElementById('nlInput').value=b.dataset.idea;updateComposer();document.getElementById('nlInput').focus();};});
     var entryParams = new URLSearchParams(location.search);
     if (entryParams.get('from')) document.getElementById('fromInput').value = entryParams.get('from');
     if (entryParams.get('to')) document.getElementById('toInput').value = entryParams.get('to');
@@ -188,7 +198,8 @@
     var arrivalWindow = null, planSequence = 0, planController = null, guideSequence = 0, journeySequence = 0;
     var SESSION_KEY = 'mt:planning-session';
     var planning = false;
-    var previewImpact=[];
+    var transportReferenceCache=new Map(), transportReferenceLoading=new Set(), transportReferenceErrors=new Set();
+    var transportSearchCache=new Map(),transportSearchLoading=new Set(),transportSearchErrors=new Set();
     var conversation = null, conversationBusy = false, conversationError = null;
 
     /* ---------- 卡 B（v0.44.2）：交通锚点（用户确认事实）与会话级新约束 ----------
@@ -322,10 +333,16 @@
         nights: activeCandidate ? activeNights : (pendingRestore && pendingRestore.nights) || activeNights }));
     }
     function selectedKey() {
-      return MTGuide.routeKey(activePlan && activePlan.candidates.find(function (c) { return c.id === activeCandidate; }));
+      var c=currentCandidate();
+      if(!c)return null;
+      return MTGuide.routeKey(c);
     }
+    function currentCandidate(){return MTRouteWorkspace.selectedCandidate(conversation && conversation.draft,activePlan && activePlan.candidates,activeCandidate);}
     function syncPlanLayout() {
       var hasDraft=!!(conversation && conversation.draft && activePlan);
+      if(hasDraft && !document.body.dataset.workspaceView)showWorkspaceView('route');
+      if(hasDraft && activeCandidate && !selectedKey()){activeCandidate=null;pendingRestore=null;journeySequence++;}
+      document.getElementById('workspaceTabs').hidden=!hasDraft;
       var places=activePlan && activePlan.place_candidates || {};
       var needsPlace=!!((places.origin || []).length || (places.destination || []).length);
       document.getElementById('planColumn').hidden=!hasDraft && !needsPlace;
@@ -335,8 +352,12 @@
       if(needsPlace && !hasDraft)document.getElementById('routeOptions').open=true;
       if(hasDraft)renderTaskPreview();
     }
+    function visibleRoutes() {
+      var list=MTGuide.rank(activePlan && activePlan.candidates || [],guideState).items;
+      return MTGuide.groups(list).slice(0,3).map(function(g){return g.items.find(function(x){return x.candidate.id===activeCandidate;}) || g.items[0];});
+    }
     function taskSnapshot() {
-      var candidate = activePlan && activePlan.candidates.find(function (c) { return c.id === activeCandidate; });
+      var candidate = currentCandidate();
       return Object.assign(guideSnapshot(), {
         scope: candidate ? 'candidate' : 'task', history: guideUndo.slice(-20),
         place_names: { origin: activePlan.intent.origin_place && activePlan.intent.origin_place.name,
@@ -348,42 +369,81 @@
         nights: activeNights, engine: activePlan.intent.parse_engine
       });
     }
+    function currentTransportWindow(){var travel=conversation?.preview?.patch?.travel;return travel && Object.hasOwn(travel,'outbound_window')?travel.outbound_window:collectTravel().outbound_window || null;}
+    function sourceToday(){return new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Shanghai'});}
+    function currentSearchWindow(){var travel=Object.assign({},collectTravel(),conversation?.preview?.patch?.travel || {}),out=currentTransportWindow();return out && travel.trip_type==='round_trip' && travel.return_window?out.slice(0,10)+' ~ '+travel.return_window.slice(13):out || travel.return_window || null;}
+    function liveTransportKey(from,to){return JSON.stringify([from,to,currentSearchWindow(),sourceToday()]);}
+    async function searchTransportLeg(from,to){
+      var key=liveTransportKey(from,to);if(transportSearchLoading.has(key))return;
+      transportSearchLoading.add(key);transportSearchErrors.delete(key);renderTaskPreview();
+      try{
+        var r=await post('/api/anywhere/transport-search',{from:from,to:to,window:currentSearchWindow()});
+        if(r.code!==0 || !r.data)throw Error('检索未完成');transportSearchCache.set(key,r.data);
+        while(transportSearchCache.size>20)transportSearchCache.delete(transportSearchCache.keys().next().value);
+      }catch(e){transportSearchErrors.add(key);}
+      finally{transportSearchLoading.delete(key);if(key===liveTransportKey(from,to)){renderTaskPreview();renderGuide();}}
+    }
+    function ensureTransportReferences(route,window) {
+      var key=JSON.stringify([route,window || null,sourceToday()]);
+      if(transportReferenceCache.has(key) || transportReferenceLoading.has(key) || transportReferenceErrors.has(key))return key;
+      transportReferenceLoading.add(key);
+      post('/api/anywhere/transport-references',{route:route,window:window || null}).then(function(r){
+        if(r.code!==0 || !Array.isArray(r.data))throw Error('资料未加载');
+        transportReferenceCache.set(key,r.data);
+        while(transportReferenceCache.size>20)transportReferenceCache.delete(transportReferenceCache.keys().next().value);
+      }).catch(function(){transportReferenceErrors.add(key);}).finally(function(){
+        transportReferenceLoading.delete(key);
+        var draft=conversation?.preview?.draft || conversation?.draft;
+        if(draft && key===JSON.stringify([MTRouteWorkspace.routeFor(draft,currentCandidate(),conversation.routing),currentTransportWindow(),sourceToday()]))renderTaskPreview();
+      });
+      return key;
+    }
     function renderTaskPreview() {
       var box=document.getElementById('taskPreview');
       if(box.hidden || !conversation || !conversation.draft || !activePlan || !lastRequest) return;
-      var snap=taskSnapshot();
-      if(document.getElementById('sightDetails').hidden) snap.sights={selected_ids:[]};
-      var view=MTTaskPreview.derive(snap,MTSights.getCatalog());
-      var comparison=MTSights.getComparison();
-      if(view.sights.length && comparison) {
-        if(comparison.status==='budget_conflict') view.pending.unshift('删减景点或增加游玩时间');
-        view.pending=comparison.window.issues.concat(view.pending);
-      }
-      var html='<div class="plan-heading"><div><p class="plan-eyebrow">当前草案</p><h2>'+MT.esc(conversation.draft.title)+'</h2></div><button id="previewSave" class="guide-primary" '+(conversationBusy || planning?'disabled':'')+'>保存行程</button></div>'+
-        '<p id="taskSaveNote" class="sight-muted" role="status"></p>'+conversationDraftHtml()+
-        '<details class="plan-settings"><summary>日期、交通与住宿安排</summary>';
-      html+='<h3>走法</h3><p>'+MT.esc(view.route || (anchors.outbound?'已定交通见下方安排':(conversation.routing?conversation.routing.origin+' → '+conversation.routing.destination:'交通方向待安排')))+'</p>';
-      if(view.windows.length) html+='<p>'+view.windows.map(MT.esc).join(' · ')+'</p>';
-      if(view.no_self_drive) html+='<p>不开车</p>';
-      if(view.destination_preferences && view.destination_preferences.experience) html+='<h3>目的地玩法</h3><p>'+MT.esc({balanced:'城区与自然搭配',city:'偏重城区游玩',nature:'偏重自然景观'}[view.destination_preferences.experience])+(view.destination_preferences.nature_theme?' · '+MT.esc({mountains:'山景',canyon:'峡谷',lake:'湖泊',forest:'森林'}[view.destination_preferences.nature_theme]):'')+(view.destination_preferences.days?' · 预留 '+view.destination_preferences.days+' 天':'')+'</p>';
-      if(view.nights) html+='<p>中途停留 '+view.nights+' 晚，住宿待安排</p>';
-      if(view.dates.length) html+='<h3>已定安排</h3><div class="preview-dates">'+view.dates.map(function(row){return '<article><p>'+MT.esc(row.date)+' · '+MT.esc(row.label)+'</p><p class="sight-muted">'+MT.esc(row.note)+'</p></article>';}).join('')+'</div><p class="sight-muted">日期按各地点当地时间显示。</p>';
-      if(view.sights.length) html+='<h3>想去的景点</h3><p>'+view.sights.map(MT.esc).join('、')+'</p><p class="sight-muted">'+MT.esc(view.play_window || (view.has_visit_dates?'景点日期见上方安排':'游玩日期待定'))+' · 顺序可调整</p>';
-      if(view.sights.length) html+='<details><summary>调整景点日期与顺序</summary><form id="previewSightForm">'+(snap.sights.selected_ids || []).map(function(id,i){var a=MTSights.getCatalog().find(function(x){return x.id===id;});return '<div class="preview-edit-row"><label>'+MT.esc(a?a.name:id)+'<input type="date" data-visit-id="'+MT.esc(id)+'" value="'+MT.esc(snap.sights.visit_dates && snap.sights.visit_dates[id] || '')+'"></label><button type="button" data-move="'+i+'" data-step="-1" '+(i===0?'disabled':'')+'>上移</button><button type="button" data-move="'+i+'" data-step="1" '+(i===snap.sights.selected_ids.length-1?'disabled':'')+'>下移</button></div>';}).join('')+'<button type="submit">更新景点日期</button></form></details>';
-      html+='<details><summary>修改住宿城市</summary><form id="previewStayForm">'+(snap.constraints.lodging_stays || []).concat([{date:'',city:''}]).map(function(stay){return '<div class="preview-edit-row"><label>住宿日<input type="date" name="stayDate" value="'+MT.esc(stay.date)+'"></label><label>城市<input type="text" name="stayCity" value="'+MT.esc(stay.city)+'" placeholder="例如：伊宁"></label></div>';}).join('')+'<p class="sight-muted">清空一行的日期和城市即可取消该次住宿。</p><button type="submit">更新住宿</button></form></details>';
-      if(previewImpact.length) html+='<p role="status">已更新 '+previewImpact.map(MT.esc).join('、')+' 的安排；对应当地接驳需要重新确认。</p>';
-      var pending=view.pending.filter(function(n){return !/^(选择一条走法|确定出发日期|确定返回日期)$/.test(n);});
-      if(pending.length) html+='<p class="sight-muted">待安排：'+pending.map(MT.esc).join('；')+'</p>';
-      html+='</details>';
+      var preview=conversation.preview, draft=preview?preview.draft:conversation.draft;
+      var requirements=(preview?preview.requirements:conversation.requirements) || {};
+      var candidate=currentCandidate();
+      var route=MTRouteWorkspace.routeFor(draft,candidate,conversation.routing);
+      var referenceKey=ensureTransportReferences(route,currentTransportWindow());
+      var baseReferences=transportReferenceCache.get(referenceKey) || [];
+      var transportReferences=route.slice(1).map(function(to,i){var from=route[i],key=liveTransportKey(from,to),base=baseReferences.find(function(s){return s.from===from && s.to===to;}) || {from:from,to:to,options:[],archive:[]};return Object.assign({},base,{search_window:currentSearchWindow(),live:transportSearchCache.get(key) && Date.now()-Date.parse(transportSearchCache.get(key).retrieved_at)<900000?transportSearchCache.get(key):null,searching:transportSearchLoading.has(key),search_error:transportSearchErrors.has(key)});});
+      var oldItinerary=box.querySelector('.dynamic-itinerary');
+      var conditions=[requirements.trip_days?requirements.trip_days+' 天全程':null,collectTravel().traveler_count?collectTravel().traveler_count+' 人':null,collectConstraints().budget_max_cny?'预算上限 ¥'+collectConstraints().budget_max_cny:null,collectTravel().outbound_window?'出发 '+collectTravel().outbound_window:'出发日期待定',requirements.required_stops?.length?'必经 '+requirements.required_stops.join('、'):null,requirements.verified_cross_border_only?'跨境须核实':null].filter(Boolean);
+      var html='<div class="plan-heading"><div><p class="plan-eyebrow">'+(preview?'备选预览':'我的旅行')+'<span class="explore-label">探索草案</span><span class="revision-label">版本 '+conversation.revision+'</span></p><h2>'+MT.esc(draft.title)+'</h2></div><button id="previewSave" class="guide-primary" '+(conversationBusy || planning || preview?'disabled':'')+'>保存行程</button></div>'+
+        '<p id="taskSaveNote" class="sight-muted" role="status"></p>'+
+        '<div class="trip-conditions" aria-label="已确认条件">'+conditions.map(function(c){return '<span>'+MT.esc(c)+'</span>';}).join('')+'</div>'+
+        (preview?'<div class="preview-banner"><div><span>比较一个新安排</span><p>当前行程还没有改变，采用后再保存。</p></div><div><button type="button" id="acceptRoutePreview" '+(conversationBusy?'disabled':'')+'>采用这个安排</button><button type="button" id="discardRoutePreview" '+(conversationBusy?'disabled':'')+'>保留原安排</button></div></div>':'')+
+        '<p class="route-overview">'+MT.esc(draft.overview)+'</p>'+
+        '<p class="route-evidence-note">城市与安排供探索；具体班期、耗时和跨境接驳仍需核实。</p>'+
+        (!preview?'<details class="route-choices"><summary>比较其他走法 <span>'+visibleRoutes().length+' 个方向</span></summary><div class="route-choice-grid">'+visibleRoutes().map(function(item,i){var c=item.candidate;return '<button type="button" class="route-choice '+(c.id===currentCandidate()?.id?'is-selected':'')+'" data-choose-route="'+MT.esc(c.id)+'" '+(conversationBusy || planning?'disabled':'')+' aria-pressed="'+(c.id===currentCandidate()?.id)+'"><span class="route-choice-label">走法 '+(i+1)+(c.id===currentCandidate()?.id?' · 当前选择':'')+'</span><span class="route-choice-path">'+MT.esc(MTRouteWorkspace.routeFor(null,c).join(' → '))+'</span><span class="route-choice-status">'+MT.esc(c.legs.map(function(l){return {plane:'航班假设',rail:'铁路假设',road:'公路客运待查'}[l.mode_guess] || '交通待查';}).join(' + '))+'</span><span class="route-choice-reason">'+MT.esc(item.reason || MTGuide.reason(c))+'</span><span class="route-choice-status">班期、费用与耗时待查</span></button>';}).join('')+'</div></details>':'')+
+        '<div class="dynamic-itinerary"><div class="route-strip-host"></div><p class="route-focus-note" role="status">点击城市，查看对应安排</p><details class="transport-details" open><summary>交通参考方案 <span>查看走法、来源与乘车线索</span></summary><div class="transport-list"></div></details><div class="itinerary-heading"><h3>沿着路线，慢慢探索</h3><span>逐日建议 · 可以继续聊着调整</span></div><div class="itinerary-list"></div></div>'+
+        (draft.pending.length?'<details class="route-pending"><summary>出发前还要确认 <span>'+draft.pending.length+' 项</span></summary><ul>'+draft.pending.map(function(p){return '<li>'+MT.esc(p)+'</li>';}).join('')+'</ul></details>':'');
+      var detailsKey=function(el){return el.className+'|'+(el.querySelector('summary')?.textContent || '').replace(/\d+/g,'');};
+      var openSections=new Map(Array.from(box.querySelectorAll('details')).map(function(el){return [detailsKey(el),el.open];}));
       box.innerHTML=html;
+      box.querySelectorAll('details').forEach(function(el){if(openSections.has(detailsKey(el)))el.open=openSections.get(detailsKey(el));});
+      var itinerary=box.querySelector('.dynamic-itinerary');
+      if(oldItinerary){itinerary.replaceWith(oldItinerary);itinerary=oldItinerary;}
+      MTRouteWorkspace.render(itinerary,draft,route,preview?null:candidate,transportReferences,transportReferenceErrors.has(referenceKey)?'error':transportReferenceLoading.has(referenceKey)?'loading':'ready');
+      itinerary.onclick=function(e){
+        if(e.target.closest('[data-retry-transport]')){transportReferenceErrors.delete(referenceKey);renderTaskPreview();return;}
+        var searchButton=e.target.closest('[data-search-leg]');if(searchButton){var index=Number(searchButton.dataset.searchLeg);if(route[index] && route[index+1])searchTransportLeg(route[index],route[index+1]);return;}
+        var refButton=e.target.closest('[data-discuss-transport]');
+        if(refButton){
+          var ref=transportReferences.flatMap(function(s){return (s.directions || []).concat(s.options || []);}).find(function(r){return r.id===refButton.dataset.discussTransport;});
+          if(ref){showWorkspaceView('chat');var composerInput=document.getElementById('nlInput');composerInput.value='想参考“'+(ref.label || ref.method)+'”（'+(ref.route_nodes || [ref.from,ref.to]).join(' → ')+'），请结合资料说明参考流程与取舍，保留其他条件；具体班次未确认。';updateComposer();composerInput.focus();}
+          return;
+        }
+        var btn=e.target.closest('[data-edit-card]');if(!btn)return;var card=MTRouteWorkspace.cardsFor(draft).find(function(c){return c.id===btn.dataset.editCard;});if(!card)return;showWorkspaceView('chat');var input=document.getElementById('nlInput');input.value='想调整“'+[card.label,card.title].filter(Boolean).join(' · ')+'”，其他安排保持不变。';updateComposer();input.focus();
+      };
+      box.querySelectorAll('[data-choose-route]').forEach(function(b){b.onclick=function(){var c=activePlan.candidates.find(function(x){return x.id===b.dataset.chooseRoute;});if(c)sendConversation('我选择经由 '+MTRouteWorkspace.routeFor(null,c).join(' → ')+' 的这条走法，请据此更新安排，其他已确认条件保持不变。',false,'chat',c.id);};});
+      if(preview){document.getElementById('acceptRoutePreview').onclick=function(){sendConversation('采用这个预览安排',false,'accept_preview');};document.getElementById('discardRoutePreview').onclick=function(){sendConversation('保留原来的安排',false,'discard_preview');};}
       document.getElementById('previewSave').onclick=function(){saveCurrentTask('taskSaveNote');};
-      var sightForm=document.getElementById('previewSightForm');
-      if(sightForm) sightForm.onsubmit=function(e){e.preventDefault();var dates={};sightForm.querySelectorAll('[data-visit-id]').forEach(function(el){dates[el.getAttribute('data-visit-id')]=el.value || null;});var before=guideSnapshot();guideUndo.push(before);MTSights.applyPatch({visit_dates:dates},false);previewImpact=MTTaskPreview.affected(before,guideSnapshot());renderGuide();rememberSession();};
-      box.querySelectorAll('[data-move]').forEach(function(button){button.onclick=function(){var before=guideSnapshot(),ids=MTSights.getState().selected_ids.slice(),i=Number(button.getAttribute('data-move')),next=i+Number(button.getAttribute('data-step'));if(next<0 || next>=ids.length)return;var moved=ids.splice(i,1)[0];ids.splice(next,0,moved);guideUndo.push(before);var dates={};box.querySelectorAll('[data-visit-id]').forEach(function(el){dates[el.getAttribute('data-visit-id')]=el.value || null;});MTSights.applyPatch({selected_ids:ids,visit_dates:dates},false);previewImpact=MTTaskPreview.affected(before,guideSnapshot());renderGuide();rememberSession();};});
-      document.getElementById('previewStayForm').onsubmit=function(e){e.preventDefault();updatePreviewLodging(e.currentTarget);};
+
     }
     function saveCurrentTask(noteId) {
-      if (conversationBusy || planning || !conversation || !conversation.draft || !activePlan || !lastRequest) { MT.toast('请等当前规划更新完成后保存'); return; }
+      if (conversationBusy || planning || !conversation || !conversation.draft || conversation.preview || !activePlan || !lastRequest) { MT.toast(conversation && conversation.preview?'先采用预览，再保存行程':'请等当前规划更新完成后保存'); return; }
       var note = document.getElementById(noteId);
       var name = (activePlan.intent.origin || '') + ' → ' + (activePlan.intent.destination || '');
       var res = MTDrafts.save(name, taskSnapshot());
@@ -396,23 +456,6 @@
         note.textContent = res.reason === 'write_failed' ? '保存失败：浏览器存储不可写，草案未保存。' : '保存失败：' + (res.reason || '未知原因');
         MT.toast('草案未保存，请稍后重试');
       }
-    }
-    async function updatePreviewLodging(form) {
-      var dates=Array.from(form.querySelectorAll('[name=stayDate]')),cities=Array.from(form.querySelectorAll('[name=stayCity]'));
-      var stays=dates.map(function(el,i){return {date:el.value,city:cities[i].value.trim()};}).filter(function(x){return x.date || x.city;});
-      if(stays.some(function(x){return !x.date || !x.city;})){MT.toast('请为每次住宿填写日期和城市');return;}
-      var text=stays.map(function(x){return x.date.replace(/(\d+)-(\d+)-(\d+)/,'$1年$2月$3日')+'住'+x.city;}).join('，');
-      var token=++guideSequence,submit=form.querySelector('button[type=submit]');submit.disabled=true;
-      try {
-        var r=await post('/api/anywhere/guide',{text:text || '取消住宿',plan_id:activePlan.plan_id});
-        if(token!==guideSequence)return;
-        if(r.code!==0 || !r.data) throw Error('更新失败');
-        if(stays.length && r.data.constraints.lodging_stays?.length!==stays.length){MT.toast('部分住宿城市未识别，请填写城市名称');return;}
-        var before=guideSnapshot();
-        applyGuide({preferences:{},travel:{},constraints:{lodging_stays:r.data.constraints.lodging_stays || null}},text || '取消住宿');
-        previewImpact=MTTaskPreview.affected(before,guideSnapshot());renderTaskPreview();
-      } catch(e){if(token===guideSequence)MT.toast('住宿更新暂时失败，原安排已保留');}
-      finally {submit.disabled=false;}
     }
     function rememberSession() {
       renderTaskPreview();
@@ -453,7 +496,6 @@
       activePlan = null; activeCandidate = null; activeNights = 0;
       document.getElementById('planColumn').hidden = true;
       document.getElementById('taskPreview').hidden = true;
-      previewImpact=[];
       MTSights.reset();
       resultArea.innerHTML = ''; document.getElementById('guideArea').hidden = true;
     }
@@ -469,17 +511,34 @@
     }
     function updateComposer() {
       var input=document.getElementById('nlInput');
-      document.getElementById('btnParse').disabled=conversationBusy || !input.value.trim();
+      document.getElementById('btnParse').disabled=conversationBusy || planning || !input.value.trim();
       input.style.height='auto';input.style.height=Math.min(input.scrollHeight,160)+'px';
     }
     function sourceCards(sources) {
-      var items=(sources || []).map(function(s){
+      var items=(sources || []).filter(function(s,i,all){return all.findIndex(function(x){return x.url===s.url;})===i;}).map(function(s){
         var url;try{url=new URL(s.url);}catch(e){return '';}
         if(!/^https?:$/.test(url.protocol))return '';
         var platform=s.platform || url.hostname.replace(/^www\./,''),kind={experience:'旅行体验',guide:'旅行资料',official:'官方资料'}[s.kind] || '旅行资料';
-        return '<a class="source-card" href="'+MT.esc(url.href)+'" target="_blank" rel="noopener noreferrer"><span class="source-meta">'+MT.esc(platform)+'<span aria-hidden="true"> · </span>'+kind+'</span><span class="source-title">'+MT.esc(s.title || platform)+'</span><span class="source-arrow" aria-hidden="true">↗</span></a>';
+        return '<a class="source-card" href="'+MT.esc(url.href)+'" target="_blank" rel="noopener noreferrer"><span class="source-meta">'+MT.esc(platform)+'<span aria-hidden="true"> · </span>'+kind+'</span><span class="source-title">'+MT.esc(s.title || platform)+'</span><span class="source-meta">'+MT.esc(s.temporal?'检索时：'+s.temporal.label+' · '+(s.temporal.published_at || '发布日期未明')+(s.date_basis==='search_index'?'（索引日期）':''):'历史会话引用，时效未复核')+' · '+MT.esc(s.read_status==='page_excerpt'?'网页摘录':'搜索摘要／目录资料')+'</span><span class="source-arrow" aria-hidden="true">↗</span></a>';
       }).filter(Boolean);
       return items.length?'<details class="source-details"><summary>参考资料<span class="source-count">'+items.length+'</span></summary><div class="source-list">'+items.join('')+'</div></details>':'';
+    }
+    function versionSnapshot(version) {
+      return guideUndo.slice().reverse().find(function(s){return s.conversation && s.conversation.revision===version.revision && JSON.stringify(s.conversation.draft)===JSON.stringify(version.draft);});
+    }
+    function versionCard(message,index) {
+      var v=message.version;if(!v || !v.draft)return '';
+      var current=!v.preview && conversation && conversation.revision===v.revision && JSON.stringify(conversation.draft)===JSON.stringify(v.draft);
+      var preview=!!(v.preview && conversation?.preview && JSON.stringify(conversation.preview.draft)===JSON.stringify(v.draft));
+      return '<div class="chat-trip-version"><div class="version-icon" aria-hidden="true">↗</div><div class="version-main"><span class="version-caption">'+(current?'当前行程 · 版本 '+v.revision:preview?'待采纳的预览':v.preview?'历史预览':'历史行程 · 版本 '+v.revision)+'</span><p>'+MT.esc(v.draft.title)+'</p><span class="version-changes">'+MT.esc((v.changes || []).join(' · '))+'</span><div class="version-actions">'+(current || preview?'<button type="button" data-open-version="'+index+'">查看安排 →</button>':'<details class="version-preview"><summary>预览安排</summary><p>'+MT.esc((v.draft.route || []).join(' → '))+'</p>'+MTRouteWorkspace.cardsFor(v.draft).map(function(c){return '<p>'+MT.esc([c.label,c.title].filter(Boolean).join(' · '))+'</p>';}).join('')+'</details>'+(!v.preview && versionSnapshot(v)?'<button type="button" data-restore-version="'+index+'" '+(conversationBusy || planning?'disabled':'')+'>恢复这个版本</button>':''))+'</div></div></div>';
+    }
+    function restoreConversationVersion(index) {
+      if(conversationBusy || planning)return;
+      var version=guideMessages[index]?.version,saved=version && versionSnapshot(version);if(!saved)return;
+      var current=guideSnapshot(), restored=JSON.parse(JSON.stringify(saved));
+      guideUndo.push(current);restored.conversation.revision=(conversation.revision || 0)+1;restored.conversation.preview=null;
+      restored.messages=guideMessages.concat([{role:'assistant',text:'已恢复这份安排及当时的条件，交通信息将重新查询。',version:{revision:restored.conversation.revision,draft:restored.conversation.draft,changes:['恢复版本 '+version.revision]}}]);
+      restoreGuideSnapshot(restored,true);showWorkspaceView('route');
     }
     function renderConversation() {
       var area=document.getElementById('guideArea'),input=document.getElementById('nlInput');
@@ -487,17 +546,22 @@
       composer.remove();area.hidden=false;
       document.getElementById('entryCard').hidden=true;
       document.getElementById('entryLabel').hidden=true;
-      area.innerHTML='<h2>一起想想这趟旅行</h2><div class="guide-messages" aria-live="polite">'+guideMessages.slice(-12).map(function(m){return '<p style="white-space:pre-wrap" class="guide-message '+(m.role==='user'?'guide-user':'')+'">'+MT.esc(m.text)+'</p>'+sourceCards(m.sources);}).join('')+'</div>'+
-        (conversationBusy?'<p class="conversation-status" role="status">正在思考…</p>':'')+
+      var oldSources=Array.from(area.querySelectorAll('.source-details')).map(function(el){return el.open;});
+      var experienceRoute=conversation?.draft?.route || [],currentExperiences=experienceRoute.slice(1).flatMap(function(to,i){var r=transportSearchCache.get(liveTransportKey(experienceRoute[i],to));return r && Date.now()-Date.parse(r.retrieved_at)<900000?r.experiences || []:[];});
+      area.innerHTML='<div class="conversation-heading"><span class="assistant-mark" aria-hidden="true">✳</span><div><h2>一起规划这趟旅行</h2><p>聊想法，也聊每一步的取舍</p></div></div><div class="guide-messages" aria-live="polite">'+(currentExperiences.length?'<div class="message-row message-assistant"><span class="message-author">本次查到的旅行者经验</span>'+sourceCards(currentExperiences)+'</div>':'')+guideMessages.slice(-12).map(function(m,i){return '<div class="message-row '+(m.role==='user'?'message-user':'message-assistant')+'"><span class="message-author">'+(m.role==='user'?'你':'MixTouring')+'</span><p style="white-space:pre-wrap" class="guide-message '+(m.role==='user'?'guide-user':'')+'">'+MT.esc(m.text)+'</p>'+versionCard(m,Math.max(0,guideMessages.length-12)+i)+sourceCards(m.sources)+'</div>';}).join('')+'</div>'+
+        (conversationBusy?'<p class="conversation-status" role="status"><span class="thinking-dot" aria-hidden="true"></span>'+(actionLabel())+'</p>':'')+
         (conversationError?'<p class="conversation-status" role="status">'+MT.esc(conversationError.message)+'</p>':'');
       area.appendChild(composer);input.placeholder='继续聊聊你的想法…';
       updateComposer();
+      area.querySelectorAll('[data-open-version]').forEach(function(b){b.onclick=function(){showWorkspaceView('route');document.getElementById('taskPreview').scrollIntoView({block:'start',behavior:'smooth'});};});
+      area.querySelectorAll('[data-restore-version]').forEach(function(b){b.onclick=function(){restoreConversationVersion(Number(b.dataset.restoreVersion));};});
       if(focused)input.focus({preventScroll:true});
       var box=area.querySelector('.guide-messages');box.scrollTop=box.scrollHeight;
-      area.querySelectorAll('.source-details').forEach(function(details){details.addEventListener('toggle',function(){
+      area.querySelectorAll('.source-details').forEach(function(details,i){details.open=!!oldSources[i];details.addEventListener('toggle',function(){
         if(details.open)box.scrollTo({top:box.scrollTop+details.getBoundingClientRect().top-box.getBoundingClientRect().top,behavior:'smooth'});
       });});
     }
+    function actionLabel(){return conversation && conversation.draft?'正在调整安排，原方案仍为你保留…':activePlan && activePlan.plan_id?'正在生成城市与逐日安排…':'正在梳理你的旅行想法…';}
     function startConversation(text) {
       if(planController) planController.abort();planSequence++;planning=false;
       conversation={stage:'discuss',brief:{origin:'',destination:'',summary:'',wishes:[],open_questions:[]},draft:null,revision:0};
@@ -505,18 +569,19 @@
       document.getElementById('guideArea').hidden=false;
       sendConversation(text);
     }
-    async function sendConversation(text,retry,action) {
+    async function sendConversation(text,retry,action,requestedCandidate) {
       text=String(text || '').trim();action=action || 'chat';
-      if(conversationBusy || (!text && action==='chat'))return;
+      if(conversationBusy || planning || (!text && action==='chat'))return;
       if(!conversation)conversation={stage:'draft',brief:{origin:activePlan && activePlan.intent.origin || '',destination:activePlan && activePlan.intent.destination || '',summary:'',wishes:[],open_questions:[]},draft:null,revision:0};
       var previous=guideSnapshot(),seq=++guideSequence;
-      if(action==='chat' && !retry)guideMessages.push({role:'user',text:text});
+      if(action!=='generate' && !retry)guideMessages.push({role:'user',text:text});
       var input=document.getElementById('nlInput');if(input)input.value='';
       conversationBusy=true;conversationError=null;renderGuide();rememberSession();
       document.getElementById('planStatus').textContent='';
       try {
-        var res=await post('/api/anywhere/conversation',{action:action,text:text,conversation:conversation,messages:guideMessages.slice(0,action==='chat'?-1:undefined),plan_id:activePlan && activePlan.plan_id,candidate_id:activeCandidate,
-          preferences:guideState,travel:collectTravel(),constraints:collectConstraints(),anchors:anchors,sights:MTSights.getState(),can_undo:guideUndo.length>0});
+        var res=await post('/api/anywhere/conversation',{action:action,text:text,conversation:conversation,messages:guideMessages.slice(0,action==='chat'?-1:undefined),plan_id:activePlan && activePlan.plan_id,candidate_id:currentCandidate()?.id || null,
+          preferences:guideState,travel:collectTravel(),constraints:collectConstraints(),anchors:anchors,sights:MTSights.getState(),can_undo:guideUndo.length>0,
+          displayed_candidate_ids:visibleRoutes().map(function(x){return x.candidate.id;}),requested_candidate_id:requestedCandidate || null,retrieval_ids:Array.from(transportSearchCache.entries()).filter(function(entry){return entry[0]===liveTransportKey(entry[1].from,entry[1].to);}).map(function(entry){return entry[1].retrieval_id;})});
         if(seq!==guideSequence)return;
         if(res.code!==0 || !res.data || res.data.status!=='ok')throw Error(res.data && res.data.reply || 'AI 暂时没有完成回复，你的输入和方案已保留。');
         var data=res.data;
@@ -524,11 +589,14 @@
           conversationBusy=false;undoGuide();guideMessages.push({role:'user',text:text},{role:'assistant',text:data.reply});renderGuide();rememberSession();return;
         }
         guideUndo.push(previous);conversation=data.conversation;
+        if(data.clear_selection){activeCandidate=null;pendingRestore=null;journeySequence++;var oldJourney=document.getElementById('journeyArea');if(oldJourney)oldJourney.innerHTML='';}
         guideState=MTGuide.clean(Object.assign({},guideState,data.patch.preferences));
         fillTravel(Object.assign({},collectTravel(),data.patch.travel));
         fillConstraints(Object.assign({},collectConstraints(),data.patch.constraints));
         if(Object.keys(data.patch.sights || {}).length)MTSights.applyPatch(data.patch.sights);
-        guideMessages.push({role:'assistant',text:data.reply,sources:data.sources || []});
+        var newDraft=conversation.preview?.draft || conversation.draft;
+        var hasNewVersion=newDraft && (JSON.stringify(conversation.preview)!==JSON.stringify(previous.conversation?.preview || null) || conversation.revision!==previous.conversation?.revision);
+        guideMessages.push({role:'assistant',text:data.reply,sources:data.sources || [],version:hasNewVersion?{revision:conversation.revision,preview:!!conversation.preview,draft:newDraft,changes:MTRouteWorkspace.changes(previous.conversation?.draft,newDraft)}:null});
         var routing=conversation.routing || {};
         var oldOrigin=previous.conversation && previous.conversation.routing && previous.conversation.routing.origin || previous.request.origin;
         var oldDestination=previous.conversation && previous.conversation.routing && previous.conversation.routing.destination || previous.request.destination;
@@ -543,11 +611,12 @@
         conversationBusy=false;renderGuide();rememberSession();
         if(data.request_generation){await generateConversation();return;}
         if(conversation.draft){
-          if(action!=='generate' && (Object.keys(data.patch.travel).length || Object.keys(data.patch.constraints).length)){
-            pendingRestore={candidate_key:previous.candidate_key,nights:previous.nights};
+          if(action!=='generate' && (JSON.stringify(previous.travel)!==JSON.stringify(collectTravel()) || JSON.stringify(previous.constraints)!==JSON.stringify(collectConstraints()))){
+            pendingRestore=data.clear_selection?null:{candidate_key:previous.candidate_key,nights:previous.nights};
             await requestPlan();
           }
-          if(data.selected_candidate_id && activePlan.candidates.some(function(c){return c.id===data.selected_candidate_id;}))openJourney(data.selected_candidate_id,guideState.nights || 0,false,false);
+          if(data.selected_candidate_id && activePlan && activePlan.candidates.some(function(c){return c.id===data.selected_candidate_id;}))openJourney(data.selected_candidate_id,guideState.nights || 0,false,false);
+          if(action==='generate')showWorkspaceView('route');
           document.getElementById('taskPreview').hidden=false;renderTaskPreview();
         }
       } catch(e) {
@@ -669,7 +738,7 @@
       var previous = guideUndo.pop();
       var changed = JSON.stringify(previous.travel) !== JSON.stringify(collectTravel()) || JSON.stringify(previous.constraints) !== JSON.stringify(collectConstraints()) || JSON.stringify(previous.request)!==JSON.stringify(lastRequest);
       restoreGuideSnapshot(previous, changed || planning);
-      previewImpact=MTTaskPreview.affected(current,guideSnapshot());renderTaskPreview();
+      renderTaskPreview();
     }
 
     function collectConstraints() {
@@ -754,7 +823,7 @@
         var draftText = draftInput ? draftInput.value : '', draftFocused = draftInput === document.activeElement;
         if (partialDelivered && activeCandidate) pendingRestore = { candidate_key: selectedKey(), nights: activeNights };
         planning = false;
-        document.getElementById('planStatus').textContent = isBase ? '已找到基础走法，正在补充其他方向。你可以先比较或继续表达偏好。' :
+        document.getElementById('planStatus').textContent = isBase ? '已找到基础走法，正在补充其他方向；完成后可以继续调整。' :
           res.data.planning_notice || '';
         activePlan = res.data;
         arrivalWindow = res.data.intent.arrival_window || null;
@@ -1041,7 +1110,7 @@
         html += '<div class="detail-card mt-route-card" style="margin-top:12px;">';
         if(index===0) html+='<p class="mt-route-label">优先考虑</p>';
         if (c.inspiration_id) html += '<p class="mt-route-label">从路线灵感继续探索</p>';
-        else if (c.basis && c.basis.rule === 'historical-inspiration') html += '<p class="mt-route-label">国内历史路线结构 · 班期与费用待查</p>';
+        else if (c.basis && c.basis.rule === 'historical-inspiration') html += '<p class="mt-route-label">国内历史路线结构 · 班期、费用与耗时待查</p>';
         html += '<div style="font-size:15px;">' + MT.esc(candidateTitle(c)) + '</div>';
         if (item.reason) html += '<div class="preference-note">' + MT.esc(item.reason) + '</div>';
         html += '<div style="font-size:13px;margin-top:7px;line-height:1.6;">' + c.legs.map(function (leg, i) {
@@ -1235,14 +1304,14 @@
       if (!box) return;
       if (record) pendingRestore = null;
       /* 先记住点击意图，追加候选到达时也保留仍在加载的详情选择。 */
-      activeCandidate = candidateId; activeNights = nights;
+      var selectionMatches=!!MTRouteWorkspace.selectedCandidate(conversation && conversation.draft,activePlan.candidates,candidateId);
+      if(selectionMatches){activeCandidate = candidateId; activeNights = nights;}
       var sequence = ++journeySequence, planId = activePlan.plan_id;
       box.innerHTML = '<div style="padding:18px;color:var(--mixtouring-muted-foreground);">正在核对行程结构…</div>';
       post('/api/anywhere/journey', { plan_id: activePlan.plan_id, candidate_id: candidateId, stopover_nights: nights }).then(function (res) {
         if (sequence !== journeySequence || !activePlan || planId !== activePlan.plan_id) return;
         if (res.code !== 0) { box.innerHTML = ''; MT.toast(res.msg || '详情暂不可用，请重新规划'); return; }
-        activeCandidate = candidateId; activeNights = nights;
-        if (record) recordRevision(candidateId, nights);
+        if(MTRouteWorkspace.selectedCandidate(conversation && conversation.draft,activePlan.candidates,candidateId)){activeCandidate = candidateId; activeNights = nights;if(record)recordRevision(candidateId,nights);}
         renderJourney(res.data);
         rememberSession();
         if (scroll !== false) box.scrollIntoView({ behavior: 'smooth', block: 'start' });

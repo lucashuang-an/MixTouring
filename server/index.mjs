@@ -22,6 +22,9 @@ import { registerJourneyPlan, journeyDetailFromPlanId, guidePlanFromId } from '.
 import { webSearchStatus } from './lib/llm.mjs';
 import { parseGuideTurn } from './lib/guide.mjs';
 import { conversationTurn } from './lib/conversation.mjs';
+import { routeTransportReferences } from './lib/transport-references.mjs';
+import { searchTransportSources } from './lib/transport-search.mjs';
+import {searchWeb} from './lib/llm.mjs';
 import planningGuide from '../mixtouring-hifi/assets/trip-guide.js';
 import { sightCatalog, compareSights } from './lib/sights.mjs';
 import { progressivePlan } from './lib/progressive.mjs';
@@ -354,6 +357,18 @@ app.use(async (ctx, next) => {
   if (path === '/api/anywhere/conversation' && ctx.method === 'POST') {
     const body = await readBody(ctx) || {};
     ctx.body = { code: 0, data: await conversationTurn(body, guidePlanFromId(body.plan_id)) };
+    return;
+  }
+  if (path === '/api/anywhere/transport-references' && ctx.method === 'POST') {
+    const body=await readBody(ctx) || {};
+    try {ctx.body={code:0,data:routeTransportReferences(body.route,Date.now(),body.window || null)};}
+    catch(error){ctx.body={code:1,msg:error.message};}
+    return;
+  }
+  if (path === '/api/anywhere/transport-search' && ctx.method === 'POST') {
+    const body=await readBody(ctx) || {};
+    try{ctx.body={code:0,data:await searchTransportSources({from:body.from,to:body.to,window:body.window},searchWeb)};}
+    catch(error){ctx.body={code:1,msg:error.message};}
     return;
   }
   if (path === '/api/anywhere/guide' && ctx.method === 'POST') {

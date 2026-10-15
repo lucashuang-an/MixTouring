@@ -24,6 +24,7 @@ import { ANYWHERE_PLANNER_VERSION } from './versions.mjs';
 import { countryScope } from './place-scope.mjs';
 import { discoverRoutes, sourceSupportsLeg, sourceLegConnectionExcerpt } from './route-discovery.mjs';
 import { inspirationFor, inspirationRoute, listInspirations } from './inspirations.mjs';
+import {assessSourceTime,retrievalContext} from './source-time.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -1256,18 +1257,20 @@ export async function verifyLegs(candidates, searchFn, sharedCache) {
       const relevant = [];
       for (const r of (res || [])) {
         if (!(r && typeof r.link === 'string' && /^https:/.test(r.link))) continue;
+        const time=assessSourceTime({published_at:r.date},retrievalContext({purpose:'transport'}));
+        if(['historical','expired','outside_window','future','after_trip'].includes(time.state))continue;
         const rel = resultRelevance(r, leg);
         if (rel.from_hit && rel.to_hit && rel.mode_hit && rel.connection_hit) {
           const modes = !leg.mode_guess || leg.mode_guess === 'unknown' ? ['plane', 'rail', 'road'] : [leg.mode_guess];
           const excerpt = modes.map((mode) => sourceLegConnectionExcerpt(r, leg.from, leg.to, mode)).find(Boolean);
           relevant.push({ title: String(r.title || '').slice(0, 120), link: r.link,
-            sampled_at: new Date().toISOString(), relevance: rel, connection_excerpt: excerpt });
+            sampled_at: new Date().toISOString(), relevance: rel, connection_excerpt: excerpt,temporal:time });
         }
       }
       if (relevant.length) {
         leg.evidence_state = 'source_lead';
         leg.sources = relevant.slice(0, 3);
-        leg.evidence_note = '搜索线索（同句描述该段客运连接与方式；非班期核验）';
+        leg.evidence_note = relevant.every(s=>s.temporal.state==='undated')?'日期未明的搜索线索（非班期核验），不能作为当期班期依据':'搜索线索（同句描述该段客运连接与方式；非班期核验）';
         leads++;
       }
     }

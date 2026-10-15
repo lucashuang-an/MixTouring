@@ -306,7 +306,7 @@ async function main() {
   const caps = await (await fetch(BASE + '/api/capabilities')).json();
   if (caps.code === 0 && typeof caps.data.web_search_configured === 'boolean' &&
     ['available', 'quota_exhausted', 'timeout', 'error', 'unknown'].includes(caps.data.web_search_status) &&
-    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.52.6') {
+    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.55.1') {
     console.log('✓ /api/capabilities P1-4：configured 与最近真实状态分开（web_search_configured=' +
       caps.data.web_search_configured + ', status=' + caps.data.web_search_status + '），版本拆分对齐');
   } else { failed++; console.error('✗ /api/capabilities 形状异常：' + JSON.stringify(caps).slice(0, 200)); }
@@ -433,6 +433,13 @@ async function main() {
   const preparedRoute=await (await fetch(BASE+'/api/anywhere/conversation',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'prepare',conversation:{stage:'ready',brief:{origin:'北京',destination:'吉尔吉斯斯坦（比什凯克＋湖区）',summary:'先到比什凯克，再去湖区'},routing:{origin:'北京',destination:'比什凯克'}}})})).json();
   if(preparedRoute.data?.routing.destination==='比什凯克' && preparedRoute.data.conversation.brief.destination.includes('湖区'))console.log('✓ 路线端点独立于国家与湖区说明，生成前准备保留旅行范围');
   else {failed++;console.error('✗ 旅行摘要仍混入路线端点');}
+  const referenceData=await (await fetch(BASE+'/api/anywhere/transport-references',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({route:['北京','乌鲁木齐','伊宁','阿拉木图'],sources:[{url:'https://fake.example/current-fare',verified:true}]})})).json();
+  const referenceLeg=referenceData.data?.find(s=>s.from==='伊宁' && s.to==='阿拉木图');
+  const borderReference=referenceLeg?.archive.find(r=>r.id==='yin-ala-khorgos-road');
+  const reverseData=await (await fetch(BASE+'/api/anywhere/transport-references',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({route:['阿拉木图','伊宁']})})).json();
+  const invalidReference=await (await fetch(BASE+'/api/anywhere/transport-references',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({route:['伊宁']})})).json();
+  if(referenceData.code===0 && borderReference?.evidence_state==='historical' && borderReference.duration_minutes===null && borderReference.supplementary_sources.some(s=>s.kind==='experience') && !JSON.stringify(referenceData).includes('fake.example') && !reverseData.data?.flatMap(s=>s.options.concat(s.archive)).some(r=>r.id==='yin-ala-khorgos-road') && invalidReference.code===1)console.log('✓ 交通参考接口：同向资料、历史与经验分级、去返隔离、拒绝客户端伪造事实');
+  else {failed++;console.error('✗ 交通参考接口合同异常');}
   console.log(failed ? `\n✗ ${failed} 项不一致` : '\n✓ 全部接口与 mock.js 派生结果一致');
   process.exit(failed ? 1 : 0);
 }

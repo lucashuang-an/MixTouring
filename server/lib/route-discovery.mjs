@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { loadPlaces } from './trip-service.mjs';
 import { assessRoute, haversineKm, MAX_DETOUR_RATIO, CORRIDOR_T_MIN, CORRIDOR_T_MAX } from '../../pipeline/lib/geo-skill.mjs';
+import {assessSourceTime,retrievalContext} from './source-time.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const GEO = JSON.parse(readFileSync(join(ROOT, 'pipeline/data/cities-geo.json'), 'utf8')).cities;
@@ -116,12 +117,15 @@ export async function discoverRoutes(origin, destination, { searchFn, modelFn, u
   const leads = [...curated, ...batches.flat()].filter((r) => {
     const identity = r && r.link + '|' + r.title;
     if (!r || typeof r.link !== 'string' || !/^https:\/\//i.test(r.link) || seen.has(identity)) return false;
+    const time=assessSourceTime({published_at:r.date},retrievalContext({purpose:'transport'}));
+    // 策展的历史走廊仍可提出探索假设；在线搜到的旧运营资料不当作当前发现依据。
+    if(time.state==='future' || !curated.includes(r) && ['historical','expired','outside_window','after_trip'].includes(time.state))return false;
     seen.add(identity);
     return true;
   }).slice(0, 10).map((r, i) => ({
     id: i + 1, title: String(r.title || '').slice(0, 120),
     content: String(r.content || '').slice(0, 300), link: r.link,
-    date: r.date || null, waypoints: Array.isArray(r.waypoints) ? r.waypoints : []
+    date: r.date || null, waypoints: Array.isArray(r.waypoints) ? r.waypoints : [],temporal_role:curated.includes(r)?'historical_corridor_only':'connection_lead_not_schedule'
   }));
   if (!leads.length) return { routes: [], searched: true, leads: 0 };
 

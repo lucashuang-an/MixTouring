@@ -1,8 +1,51 @@
 {
-  "sampled_at": "2026-10-11",
+  "sampled_at": "2026-10-15",
   "references": [
     {
+      "id": "yin-ala-khorgos-road",
+      "kind": "public_transport",
+      "from": "伊宁",
+      "to": "阿拉木图",
+      "mode": "road_passenger",
+      "route_nodes": [
+        "伊宁",
+        "霍尔果斯",
+        "阿拉木图"
+      ],
+      "label": "经霍尔果斯的国际巴士",
+      "method": "可从伊犁州汽车客运总站查询经霍尔果斯口岸到阿拉木图的国际巴士。当地报道与旅行者乘车记录均提到这一走法，适合作为陆路参考。",
+      "evidence_state": "historical",
+      "reported_operator": null,
+      "reported_boarding_stop": "伊犁州汽车客运总站中心站（资料记载，具体上车点出行前确认）",
+      "reported_until": null,
+      "duration_minutes": null,
+      "source": {
+        "title": "从伊宁出发！春节假期出境游持续升温",
+        "url": "https://www.ylxw.com.cn/shouyelvyou/2024-02-21/1184942.html",
+        "kind": "report",
+        "published_at": "2024-02-21",
+        "sampled_at": "2026-10-15"
+      },
+      "supplementary_sources": [
+        {
+          "title": "飞去不可：伊宁至阿拉木图跨境巴士乘车记录",
+          "url": "https://k.sina.com.cn/article_1261411960_m4b2f9e7803301n8ng.html",
+          "kind": "experience",
+          "published_at": "2025-09-02",
+          "sampled_at": "2026-10-15"
+        },
+        {
+          "url": "https://www.reddit.com/r/Kazakhstan/comments/1rvp4vb/crossing_into_kazakhstan_from_china_overland/",
+          "title": "Reddit：中国陆路进入哈萨克斯坦的旅行者讨论",
+          "kind": "experience",
+          "published_at": null,
+          "sampled_at": "2026-10-15"
+        }
+      ]
+    },
+    {
       "id": "yin-ala-air",
+      "label": "直飞阿拉木图",
       "kind": "public_transport",
       "from": "伊宁",
       "to": "阿拉木图",
@@ -15,6 +58,7 @@
       "duration_minutes": null,
       "source": {
         "title": "飞狮航空：伊宁至阿拉木图航线介绍",
+        "kind": "operator",
         "url": "https://flyarystan.com/en/directions/yining/yining-almaty",
         "published_at": null,
         "sampled_at": "2026-10-09"
@@ -35,6 +79,7 @@
       "duration_minutes": null,
       "source": {
         "title": "飞狮航空：阿拉木图至伊宁航线介绍",
+        "kind": "operator",
         "url": "https://flyarystan.com/en/directions/almaty/almaty-yining",
         "published_at": null,
         "sampled_at": "2026-10-09"
@@ -43,6 +88,12 @@
     },
     {
       "id": "yin-ala-road",
+      "label": "经都拉塔的国际巴士",
+      "route_nodes": [
+        "伊宁",
+        "都拉塔口岸",
+        "阿拉木图"
+      ],
       "kind": "public_transport",
       "from": "伊宁",
       "to": "阿拉木图",
@@ -337,6 +388,52 @@
         "page": 3
       },
       "review_by": "2026-10-12"
+    },
+    {
+      "id": "bjs-urc-rail",
+      "from": "北京",
+      "to": "乌鲁木齐",
+      "kind": "public_transport",
+      "mode": "rail",
+      "label": "长途铁路 · 沿途体验方向",
+      "method": "可比较北京至乌鲁木齐的长途列车方向。铁路占用旅程时间较多；行程较短时，建议同时查询航空方向作取舍。通过铁路官方渠道查询出行日，不沿用报道中的旧车次和时间。",
+      "route_nodes": [
+        "北京",
+        "乌鲁木齐"
+      ],
+      "evidence_state": "historical",
+      "duration_minutes": null,
+      "reported_until": null,
+      "source": {
+        "title": "乌鲁木齐至北京第二趟旅客列车开行报道",
+        "url": "https://www.chinanews.com.cn/sh/2012/07-07/4015500.shtml",
+        "published_at": "2012-07-07",
+        "sampled_at": "2026-10-15",
+        "kind": "report"
+      }
+    },
+    {
+      "id": "urc-yin-rail",
+      "from": "乌鲁木齐",
+      "to": "伊宁",
+      "kind": "public_transport",
+      "mode": "rail",
+      "label": "铁路进入伊犁 · 减少公路换乘",
+      "method": "优先查询乌鲁木齐至伊宁的旅客列车，抵达伊宁后再安排市内停留或跨境出发。铁路连接有公开报道依据；日间或夜间乘车需按出行日比较，不套用旧文的车次与耗时。",
+      "route_nodes": [
+        "乌鲁木齐",
+        "伊宁"
+      ],
+      "evidence_state": "historical",
+      "duration_minutes": null,
+      "reported_until": null,
+      "source": {
+        "title": "新疆铁路运行图与乌鲁木齐至伊宁铁路连接报道",
+        "url": "https://www.chinanews.com.cn/m/cj/2017/09-21/8337137.shtml",
+        "published_at": "2017-09-21",
+        "sampled_at": "2026-10-15",
+        "kind": "report"
+      }
     }
   ]
 }

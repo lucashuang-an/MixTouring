@@ -66,7 +66,7 @@ const durationOnly=await conversationTurn({text:'五天，住一晚中转，其�
   return result({travel:{trip_type:'round_trip',outbound_window:'2026-10-14 ~ 2026-10-18'}});
 }});
 assert.deepEqual(durationOnly.patch.travel,{},'只有天数时，模型不得自动填今天出发或往返');
-const calendarExplicit=await conversationTurn({text:'去程明天出发，返程20号',travel:{trip_type:'round_trip'},now:Date.parse('2026-10-14T03:00:00Z')},null,{model:async opts=>{
+const calendarExplicit=await conversationTurn({text:'去程明天出发，返程20号',travel:{trip_type:'round_trip'}},null,{now:Date.parse('2026-10-14T03:00:00Z'),model:async opts=>{
   const travel={outbound_window:'2026-10-15 ~ 2026-10-15',return_window:'2026-10-20 ~ 2026-10-20'};
   if(opts.kind==='conversation_calendar'){assert.equal(JSON.parse(opts.user).date,'2026-10-14');return {travel};}
   return result({travel});
@@ -96,7 +96,7 @@ let calls=0;
 const searched=await conversationTurn({text:'还有什么自然景观'},null,{model:async opts=>{
   calls++;if(calls===1)return result({brief:{...brief,destination:'昆明'},search_query:'昆明 自然景观 官方旅游'});
   assert.equal(JSON.parse(opts.user).search_complete,true);return result();
-},search:async()=>[{title:'目的地资料',link:'https://example.org/guide',content:'景观介绍'}]});
+},search:async()=>[{title:'目的地资料',link:'https://example.org/guide',content:'景观介绍',date:new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Shanghai'})}]});
 assert.equal(calls,2);assert.equal(searched.sources.length,1);
 const store=new Map(),sandbox={window:{},localStorage:{getItem:k=>store.get(k)||null,setItem:(k,v)=>store.set(k,v)}};
 vm.createContext(sandbox);vm.runInContext(readFileSync(new URL('../mixtouring-hifi/assets/draft-store.js',import.meta.url),'utf8'),sandbox);
