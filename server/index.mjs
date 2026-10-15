@@ -22,6 +22,7 @@ import { registerJourneyPlan, journeyDetailFromPlanId, guidePlanFromId } from '.
 import { webSearchStatus } from './lib/llm.mjs';
 import { parseGuideTurn } from './lib/guide.mjs';
 import { conversationTurn } from './lib/conversation.mjs';
+import { createRequestSignal } from './lib/request-signal.mjs';
 import { routeTransportReferences } from './lib/transport-references.mjs';
 import { searchTransportSources } from './lib/transport-search.mjs';
 import {searchWeb} from './lib/llm.mjs';
@@ -355,8 +356,10 @@ app.use(async (ctx, next) => {
     return;
   }
   if (path === '/api/anywhere/conversation' && ctx.method === 'POST') {
+    /* #32：客户端提前断开（请求体未读完即 close）时取消下游模型/检索；正常读完不算取消 */
+    const signal = createRequestSignal(ctx.req);
     const body = await readBody(ctx) || {};
-    ctx.body = { code: 0, data: await conversationTurn(body, guidePlanFromId(body.plan_id)) };
+    ctx.body = { code: 0, data: await conversationTurn(body, guidePlanFromId(body.plan_id), { signal }) };
     return;
   }
   if (path === '/api/anywhere/transport-references' && ctx.method === 'POST') {
@@ -366,8 +369,9 @@ app.use(async (ctx, next) => {
     return;
   }
   if (path === '/api/anywhere/transport-search' && ctx.method === 'POST') {
+    const signal = createRequestSignal(ctx.req);
     const body=await readBody(ctx) || {};
-    try{ctx.body={code:0,data:await searchTransportSources({from:body.from,to:body.to,window:body.window},searchWeb)};}
+    try{ctx.body={code:0,data:await searchTransportSources({from:body.from,to:body.to,window:body.window},searchWeb,{signal})};}
     catch(error){ctx.body={code:1,msg:error.message};}
     return;
   }

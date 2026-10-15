@@ -34,12 +34,12 @@ function makeEnv(postImpl) {
     transportSearchCache: new Map(), liveTransportKey: () => 'k',
     anchors: {}, collectTravel: () => ({}), collectConstraints: () => ({}),
     MTGuide: { clean: (p) => p || {} }, MTSights: { getState: () => ({}), applyPatch() {}, reset() {} },
-    MTRouteWorkspace: { changes: () => [] },
+    MTRouteWorkspace: { changes: () => [], routeFor: () => [] },
     fillTravel() {}, fillConstraints() {},
     renderGuide() {}, rememberSession() {}, renderTaskPreview() {}, showWorkspaceView() {},
     openJourney() {}, requestPlan: async () => true, generateConversation: async () => {},
     undoGuide() { sandbox.guideUndo.pop(); },
-    planController: null, planSequence: 0, journeySequence: 0,
+    planController: null, planSequence: 0, journeySequence: 0, conversationController: null,
     pendingRestore: null, lastRequest: {}, confirmedPlaces: {}, resultArea: { set innerHTML(v) {} },
     post: postImpl
   };

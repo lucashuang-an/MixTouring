@@ -108,3 +108,59 @@ await conversationTurn({...restored,text:'按刚才的偏好继续'},null,{model
   const ctx=JSON.parse(opts.user);assert.equal(ctx.conversation.revision,2);assert.equal(ctx.current.constraints.no_self_drive,true);return result();
 }});
 console.log('✓ AI 对话确认、多轮上下文、改口、失败恢复、来源检索及私人保存合同通过');
+
+/* ---------- #32：请求级取消与总时限（无密钥桩） ---------- */
+{
+  const { createRequestSignal } = await import('./lib/request-signal.mjs');
+  const { EventEmitter } = await import('node:events');
+  /* 断开判定：请求体读完后的 close 是正常完成，不取消；未读完即 close 才取消 */
+  const done = new EventEmitter(); done.readableEnded = true;
+  let doneSignal = createRequestSignal(done); done.emit('close');
+  assert.equal(doneSignal.aborted, false, '#32 正常读完的 close 不当作取消');
+  const partial = new EventEmitter(); partial.readableEnded = false;
+  const partialSignal = createRequestSignal(partial); partial.emit('close');
+  assert.equal(partialSignal.aborted, true, '#32 请求体未读完即 close 视为客户端断开');
+
+  /* 预取消：signal 已中止 → 零模型调用，状态如旧 */
+  const aborted = new AbortController().abort();
+  let preCalls = 0;
+  const preCancelled = await conversationTurn({ text: '想散心' }, null, {
+    signal: AbortSignal.abort('pre'),
+    model: async (opts) => { preCalls++; return result({ draft }); }
+  });
+  assert.equal(preCalls, 0, '#32 预取消：不调用模型');
+  assert.equal(preCancelled.status, 'unavailable', '#32 预取消：如旧保留输入与状态');
+
+  /* signal 贯穿模型调用 */
+  const controller = new AbortController();
+  let seenSignal = null;
+  await conversationTurn({ text: '想散心' }, null, {
+    signal: controller.signal,
+    model: async (opts) => { seenSignal = opts.signal; return result({}); }
+  });
+  assert.equal(seenSignal instanceof AbortSignal, true, '#32 总取消信号传给模型出口');
+
+  /* 中途取消：第一阶段中止后不进入后续阶段 */
+  const mid = new AbortController();
+  let midCalls = 0;
+  const midOut = await conversationTurn({ text: '想散心' }, null, {
+    signal: mid.signal,
+    model: async () => { if (++midCalls === 1) mid.abort(); return result({ draft }); }
+  });
+  assert.equal(midCalls, 1, '#32 中途取消：不进入下一模型阶段');
+  assert.equal(midOut.status, 'unavailable', '#32 中途取消：不产出成功状态');
+
+  /* 总预算耗尽：阶段睡眠超过预算，后续阶段不启动 */
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  let slowCalls = 0;
+  const budgeted = await conversationTurn({ text: '想散心' }, null, {
+    budgetMs: 50,
+    model: async () => { slowCalls++; await sleep(120); return result({ draft }); }
+  });
+  assert.equal(slowCalls, 1, '#32 总预算耗尽：不启动后续阶段');
+  assert.equal(budgeted.status, 'unavailable', '#32 总预算耗尽：如实不可用');
+
+  /* 正常成功不受小预算外的大预算影响：120s 预算下正常路径完成 */
+  const normal = await conversationTurn({ text: '想散心，城区自然都看看' }, null, { model });
+  assert.equal(normal.status, 'ok', '#32 正常成功路径不因总时限退化');
+}

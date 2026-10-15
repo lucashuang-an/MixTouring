@@ -35,7 +35,7 @@ function cleanResult(raw,now=Date.now()){
   return {...meta,url:url.href,title:String(raw.title || meta.platform).slice(0,160),excerpt:String(raw.content || '').slice(0,500),
     published_at:sourceDay(raw.date),published_raw:raw.date || null,date_basis:raw.date?'search_index':'unknown',read_status:'search_excerpt',checked_at:new Date(now).toISOString()};
 }
-export async function collectTravelSources({destination='',query='',international=false,foreignQuery='',travel={},window=null,purpose='experience'},search,{useCache=true,readPage=null,now=Date.now()}={}){
+export async function collectTravelSources({destination='',query='',international=false,foreignQuery='',travel={},window=null,purpose='experience'},search,{useCache=true,readPage=null,now=Date.now(),signal=null}={}){
   const temporal=retrievalContext({travel,window,purpose,now});
   const since=new Date(Date.parse(temporal.today+'T00:00:00Z')-temporal.max_age_days*86400000).toISOString().slice(0,10);
   const stamp=' after:'+since+(temporal.target_window?' '+temporal.target_window.replaceAll(' ',''):' before:'+temporal.today);
@@ -54,7 +54,7 @@ export async function collectTravelSources({destination='',query='',internationa
   ].map(q=>{const scope=q.domain?stamp.replace(since,new Date(Date.parse(temporal.today+'T00:00:00Z')-365*86400000).toISOString().slice(0,10)):stamp;return {...q,text:q.text.slice(0,100-scope.length)+scope};});
   const key=JSON.stringify([queries,temporal]);
   const cached=cache.get(key);if(useCache && cached?.until>now)return {...structuredClone(cached.value),cache_hit:true};
-  const settled=await Promise.allSettled(queries.map(q=>search(q.text,{limit:5,timeoutMs:12000})));
+  const settled=await Promise.allSettled(queries.map(q=>search(q.text,{limit:5,timeoutMs:12000,signal})));
   const pool=[],seen=new Set(),channels=[];
   settled.forEach((item,i)=>{
     const results=item.status==='fulfilled' && Array.isArray(item.value)?item.value:[];
@@ -67,7 +67,8 @@ export async function collectTravelSources({destination='',query='',internationa
   const experienceCandidates=partitionTimedSources(pool.filter(s=>s.kind==='experience'),retrievalContext({travel,window,purpose:'experience',now})).current;
   const readable=candidates.current.concat(experienceCandidates,candidates.archive.filter(s=>s.temporal.state==='undated'));
   const targets=[readable.find(s=>s.kind==='official'),...readable.filter(s=>s.kind==='experience').slice(0,2),...readable].filter((s,i,all)=>s && all.findIndex(x=>x?.url===s.url)===i).slice(0,3);
-  const reads=readPage?await Promise.allSettled(targets.map(s=>readPage(s.url,{timeoutMs:5500}))):[];
+  /* #32：取消后不再启动原文读取；已取消的读取按失败处理，不写入缓存 */
+  const reads=!readPage?[]:await Promise.allSettled(targets.map(s=>signal?.aborted?Promise.reject(Object.assign(Error('已取消'),{name:'AbortError'})):readPage(s.url,{timeoutMs:5500,signal})));
   /* #30：文章身份核对——最终 URL 规范化后须与检索 URL 同 host 同 path（或读取器未报告最终 URL）
    * 才合并正文/标题/平台/日期；跳转到其他文章时保留原索引记录与读取缺口，不把别站文章
    * 嫁接原平台日期或冒充原平台原帖。 */

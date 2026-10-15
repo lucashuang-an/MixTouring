@@ -201,6 +201,7 @@
     var transportReferenceCache=new Map(), transportReferenceLoading=new Set(), transportReferenceErrors=new Set();
     var transportSearchCache=new Map(),transportSearchLoading=new Set(),transportSearchErrors=new Set();
     var msgSeq=0; /* #31：消息稳定身份，用于重绘时保持阅读锚点与引用展开状态 */
+    var conversationController=null; /* #32：对话与交通检索请求的取消句柄，重新开始时中止旧请求 */
     var conversation = null, conversationBusy = false, conversationError = null;
 
     /* ---------- 卡 B（v0.44.2）：交通锚点（用户确认事实）与会话级新约束 ----------
@@ -378,7 +379,7 @@
       var key=liveTransportKey(from,to);if(transportSearchLoading.has(key))return;
       transportSearchLoading.add(key);transportSearchErrors.delete(key);renderTaskPreview();
       try{
-        var r=await post('/api/anywhere/transport-search',{from:from,to:to,window:currentSearchWindow()});
+        var r=await post('/api/anywhere/transport-search',{from:from,to:to,window:currentSearchWindow()},conversationController && conversationController.signal);
         if(r.code!==0 || !r.data)throw Error('检索未完成');transportSearchCache.set(key,r.data);
         while(transportSearchCache.size>20)transportSearchCache.delete(transportSearchCache.keys().next().value);
       }catch(e){transportSearchErrors.add(key);}
@@ -602,6 +603,9 @@
     function actionLabel(){return conversation && conversation.draft?'正在调整安排，原方案仍为你保留…':activePlan && activePlan.plan_id?'正在生成城市与逐日安排…':'正在梳理你的旅行想法…';}
     function startConversation(text) {
       if(planController) planController.abort();planSequence++;planning=false;
+      /* #32：重新开始时取消旧对话/检索请求，旧响应不会覆盖新状态（seq 守卫外再断请求本身） */
+      if(conversationController)conversationController.abort();
+      conversationController=new AbortController();
       conversation={stage:'discuss',brief:{origin:'',destination:'',summary:'',wishes:[],open_questions:[]},draft:null,revision:0};
       guideState=MTGuide.clean();guideMessages=[];
       document.getElementById('guideArea').hidden=false;
@@ -628,8 +632,7 @@
       conversationBusy=true;conversationError=null;renderGuide();rememberSession();
       document.getElementById('planStatus').textContent='';
       try {
-        var res=await post('/api/anywhere/conversation',{action:action,text:text,conversation:conversation,messages:guideMessages.slice(0,action==='chat'?-1:undefined),plan_id:activePlan && activePlan.plan_id,candidate_id:currentCandidate()?.id || null,
-          preferences:guideState,travel:collectTravel(),constraints:collectConstraints(),anchors:anchors,sights:MTSights.getState(),can_undo:guideUndo.length>0,
+        var res=await post('/api/anywhere/conversation',{action:action,text:text,conversation:conversation,messages:guideMessages.slice(0,action==='chat'?-1:undefined),plan_id:activePlan && activePlan.plan_id,candidate_id:currentCandidate()?.id || null,          preferences:guideState,travel:collectTravel(),constraints:collectConstraints(),anchors:anchors,sights:MTSights.getState(),can_undo:guideUndo.length>0,
           displayed_candidate_ids:visibleRoutes().map(function(x){return x.candidate.id;}),requested_candidate_id:requestedCandidate || null,
           /* #29：只提交当前可见城市链相邻方向、同窗口且未过期的检索 ID，最新查询优先，上限与服务端有界扫描一致 */
           retrieval_ids:(function(){
@@ -640,7 +643,7 @@
               .sort(function(a,b){return Date.parse(b[1].retrieved_at || 0)-Date.parse(a[1].retrieved_at || 0);})
               .slice(0,12)
               .map(function(entry){return entry[1].retrieval_id;});
-          })()});
+          })()},conversationController && conversationController.signal);
         if(seq!==guideSequence)return;
         if(res.code!==0 || !res.data || res.data.status!=='ok')throw Error(res.data && res.data.reply || 'AI 暂时没有完成回复，你的输入和方案已保留。');
         var data=res.data;
@@ -692,7 +695,7 @@
       conversationBusy=true;conversationError=null;renderGuide();
       var seq=guideSequence;
       try {
-        var prepared=await post('/api/anywhere/conversation',{action:'prepare',conversation:conversation,messages:guideMessages,travel:collectTravel(),constraints:collectConstraints(),anchors:anchors});
+        var prepared=await post('/api/anywhere/conversation',{action:'prepare',conversation:conversation,messages:guideMessages,travel:collectTravel(),constraints:collectConstraints(),anchors:anchors},conversationController && conversationController.signal);
         if(seq!==guideSequence)return;
         if(prepared.code!==0 || !prepared.data)throw Error('路线信息暂时没有整理完成，请重试。');
         if(prepared.data.status==='needs_intent'){

@@ -126,7 +126,13 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
   const before = cleanConversation(input.conversation);
   if(input.action==='accept_preview')return acceptPreview(before,input,plan);
   if(input.action==='discard_preview')return {status:'ok',engine:'state',reply:'继续保留原来的安排。',conversation:{...before,preview:null},patch:cleanPatch(),sources:[],request_generation:false};
-  const model = deps.model || composeJson, search = deps.search || searchWeb;
+  /* #32：请求级取消与总时限——客户端断开或总预算（120s，宽于正常成功路径）耗尽后，
+   * 后续模型/检索/原文读取不再启动（编排层在每个阶段前主动检查，不依赖下游自觉）；
+   * 各阶段自身超时保持不变，二者取最先触发。 */
+  const signal = deps.signal ? AbortSignal.any([deps.signal, AbortSignal.timeout(deps.budgetMs ?? 120000)]) : AbortSignal.timeout(deps.budgetMs ?? 120000);
+  const cancelErr = () => Object.assign(Error('请求已取消或超时'), { name: 'AbortError' });
+  const model = (opts) => signal.aborted ? Promise.reject(cancelErr()) : (deps.model || composeJson)({...opts, signal});
+  const search = (q, opts) => signal.aborted ? Promise.reject(cancelErr()) : (deps.search || searchWeb)(q, {...opts, signal});
   const action = ['generate','prepare'].includes(input.action) ? input.action : 'chat';
   const messages = (Array.isArray(input.messages) ? input.messages : []).slice(-16)
     .filter(m => ['user', 'assistant'].includes(m?.role)).map(m => ({ role: m.role, text: str(m.text, 2000) }));
@@ -231,7 +237,7 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
       const country=resolvePlace(resolvedDestination)?.country || countryScope(resolvedDestination)?.code || raw?.destination_country;
       const collected=await collectTravelSources({destination:resolvedDestination,query:str(raw?.search_query,100),
         international:country?country!=='CN':!!raw?.search_query_en,foreignQuery:str(raw?.search_query_en,100),travel:retrievalTravel,window:approvedSearchWindow,
-        purpose:['transport','experience','guide'].includes(raw.search_purpose)?raw.search_purpose:/交通|班车|巴士|航班|口岸|开放|票价/.test(str(raw?.search_query)+context.text)?'transport':'experience'},search,{useCache:!deps.search,now:deps.now || Date.now(),readPage:deps.readPage || (!deps.search?readPublicPage:null)});
+        purpose:['transport','experience','guide'].includes(raw.search_purpose)?raw.search_purpose:/交通|班车|巴士|航班|口岸|开放|票价/.test(str(raw?.search_query)+context.text)?'transport':'experience'},search,{useCache:!deps.search,now:deps.now || Date.now(),readPage:deps.readPage || (!deps.search?readPublicPage:null),signal});
       const results=collected.results;
       context.destination_material = curated || null;
       context.search_results = (results || []).concat(visibleEvidence.map(s=>({title:s.title,link:s.url,content:s.excerpt,date:s.published_at,temporal:s.temporal})));
