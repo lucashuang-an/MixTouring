@@ -7,7 +7,9 @@ import {retrievalContext,partitionTimedSources,sourceWindow} from './source-time
 const results=new Map();
 export function transportSearchEvidence(ids,{route=[],window=null,now=Date.now(),purpose='transport'}={}){
   const sources=[];
-  for(const id of Array.isArray(ids)?ids.slice(0,12):[]){const item=results.get(id);
+  /* #29：先逐项校验（存在/未过期/同窗/同方向）再取资料，输入上限只作有界扫描（与客户端缓存上限一致）——
+   * 旧无关项不得因排在前面挤占有效项配额。输出配额仍由 partitionTimedSources 后的 slice(0,8) 把守。 */
+  for(const id of (Array.isArray(ids)?ids:[]).slice(0,20)){const item=results.get(id);
     if(!item || item.expires<=now || sourceWindow(window)!==item.data.temporal.target_window)continue;
     if(!route.slice(1).some((to,i)=>route[i]===item.data.from && to===item.data.to))continue;
     sources.push(...(purpose==='experience'?item.data.experiences:item.data.sources));

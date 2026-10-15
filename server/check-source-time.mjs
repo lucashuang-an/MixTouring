@@ -42,6 +42,20 @@ assert.equal(live.sources.length,1);assert.equal(live.sources[0].temporal.date_s
 assert.equal(transportSearchEvidence([live.retrieval_id],{route:['伊宁','阿拉木图'],window:context.target_window,now}).length,1);
 assert.equal(transportSearchEvidence([live.retrieval_id],{route:['伊宁','阿拉木图'],window:'2026-10-20 ~ 2026-10-20',now}).length,0,'改日期不复用旧查询');
 assert.equal(transportSearchEvidence([live.retrieval_id],{route:['阿拉木图','伊宁'],window:context.target_window,now}).length,0,'不反转查询结果');
+/* #29：有效项筛选先于限额——12 条旧方向/过期记录夹着的有效 ID 不得被输入上限挤掉 */
+const staleSource=async()=>[{title:'乌鲁木齐到伊宁客运班车',link:'https://example.com/stale',content:body,date:'2026-10-01'}];
+const staleIds=[];
+for(let i=0;i<12;i++){
+  const stale=await searchTransportSources({from:'乌鲁木齐',to:'伊宁',window:context.target_window},staleSource,{now,useCache:false,readPage:async()=>({read_status:'page_excerpt',published_at:'2026-10-01',excerpt:body})});
+  staleIds.push(stale.retrieval_id);
+}
+const expired=await searchTransportSources({from:'乌鲁木齐',to:'伊宁',window:context.target_window},staleSource,{now:now-900001,useCache:false,readPage:async()=>({read_status:'page_excerpt',published_at:'2026-10-01',excerpt:body})});
+const solo=transportSearchEvidence([live.retrieval_id],{route:['伊宁','阿拉木图'],window:context.target_window,now});
+const sandwiched=transportSearchEvidence([...staleIds,expired.retrieval_id,live.retrieval_id,live.retrieval_id],{route:['伊宁','阿拉木图'],window:context.target_window,now});
+assert.equal(solo.length,1);
+assert.deepEqual(sandwiched,solo,'有效项单独提交与夹在有界无关/过期/重复ID中提交，结果一致');
+assert.equal(transportSearchEvidence([...staleIds,expired.retrieval_id],{route:['伊宁','阿拉木图'],window:context.target_window,now}).length,0,'仅无关/过期记录时返回空，不误用旧方向资料');
+assert.equal(transportSearchEvidence([live.retrieval_id],{route:['乌鲁木齐','伊宁'],window:context.target_window,now}).length,0,'方向切换后当前链不复用反方向缓存');
 const candidates=[{legs:[{from:'伊宁',to:'阿拉木图',mode_guess:'road',evidence_state:'explore'}]}];
 await verifyLegs(candidates,async()=>[{title:'伊宁到阿拉木图国际客运班车',link:'https://example.com/old',content:body,date:'2020-01-01'}]);
 assert.equal(candidates[0].legs[0].evidence_state,'explore','旧运营资料不能进入当前连接线索');

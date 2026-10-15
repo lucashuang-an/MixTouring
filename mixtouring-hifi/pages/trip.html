@@ -592,7 +592,17 @@
       try {
         var res=await post('/api/anywhere/conversation',{action:action,text:text,conversation:conversation,messages:guideMessages.slice(0,action==='chat'?-1:undefined),plan_id:activePlan && activePlan.plan_id,candidate_id:currentCandidate()?.id || null,
           preferences:guideState,travel:collectTravel(),constraints:collectConstraints(),anchors:anchors,sights:MTSights.getState(),can_undo:guideUndo.length>0,
-          displayed_candidate_ids:visibleRoutes().map(function(x){return x.candidate.id;}),requested_candidate_id:requestedCandidate || null,retrieval_ids:Array.from(transportSearchCache.entries()).filter(function(entry){return entry[0]===liveTransportKey(entry[1].from,entry[1].to);}).map(function(entry){return entry[1].retrieval_id;})});
+          displayed_candidate_ids:visibleRoutes().map(function(x){return x.candidate.id;}),requested_candidate_id:requestedCandidate || null,
+          /* #29：只提交当前可见城市链相邻方向、同窗口且未过期的检索 ID，最新查询优先，上限与服务端有界扫描一致 */
+          retrieval_ids:(function(){
+            var chain=MTRouteWorkspace.routeFor(conversation && conversation.draft,currentCandidate(),conversation && conversation.routing);
+            var adjacent=new Set(chain.slice(1).map(function(to,i){return chain[i]+'→'+to;}));
+            return Array.from(transportSearchCache.entries())
+              .filter(function(entry){return entry[0]===liveTransportKey(entry[1].from,entry[1].to) && adjacent.has(entry[1].from+'→'+entry[1].to);})
+              .sort(function(a,b){return Date.parse(b[1].retrieved_at || 0)-Date.parse(a[1].retrieved_at || 0);})
+              .slice(0,12)
+              .map(function(entry){return entry[1].retrieval_id;});
+          })()});
         if(seq!==guideSequence)return;
         if(res.code!==0 || !res.data || res.data.status!=='ok')throw Error(res.data && res.data.reply || 'AI 暂时没有完成回复，你的输入和方案已保留。');
         var data=res.data;
