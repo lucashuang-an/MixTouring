@@ -17,11 +17,13 @@ if (end < 0) { console.error('✗ 函数体提取失败'); process.exit(1); }
 let fail = 0, total = 0;
 const ok = (cond, name) => { total++; if (cond) console.log('✓ ' + name); else { fail++; console.error('✗ ' + name); } };
 
-/* 假消息区：维护消息行（mid/offsetTop/offsetHeight）与每行引用 details 状态 */
+/* 布局桩维护真实坐标关系、随展开变化的行高及异步 toggle，原生浏览器另行验收。 */
 function makeEnv(messages, opts = {}) {
   const box = {
-    scrollTop: 0, scrollHeight: 1800, clientHeight: 400, rows: [], scrollCalls: 0, getBoundingClientRect() { return { top: 0 }; },
-    scrollTo() { this.scrollCalls++; },
+    scrollTop: 0, clientHeight: 400, clientTop: 2, rows: [], scrollCalls: 0,
+    get scrollHeight() { return Math.max(1800, this.rows.reduce((n,r)=>n+r.offsetHeight,0)+(experienceRow?experienceRow.offsetHeight:0)); },
+    getBoundingClientRect() { return { top: opts.boxTop || 0 }; },
+    scrollTo({top}) { this.scrollCalls++;this.scrollTop=top; },
     querySelector(sel) {
       const m = sel.match(/data-mid="([^"]+)"/);
       return m ? this.rows.find((r) => r.mid === m[1]) || null : null;
@@ -32,28 +34,41 @@ function makeEnv(messages, opts = {}) {
       return [];
     }
   };
-  const buildRows = () => { /* 每次 innerHTML 重写后按当前消息重建行（模拟真实 DOM 重建） */
+  let experienceRow=null,rendered=false,markup='';
+  const detail = row => ({ _open: false, listeners: [],
+    addEventListener(ev, fn) { this.listeners.push(fn); },
+    getBoundingClientRect() { return { top: row.getBoundingClientRect().top+120 }; },
+    get open() { return this._open; },
+    set open(v) { const next = !!v;if(next===this._open)return;this._open=next;
+      setTimeout(()=>this.listeners.forEach(fn=>fn()),0); }
+  });
+  const buildRows = () => { /* 展开引用会改变后续行的位置，不能再用固定行高掩盖布局漂移。 */
+    experienceRow=null;
+    if(markup.includes('experience-row')){
+      experienceRow={get offsetHeight(){return 70+(this.details[0].open?160:0);},
+        getBoundingClientRect(){return {top:box.getBoundingClientRect().top+box.clientTop-box.scrollTop};},
+        querySelectorAll(sel){return sel==='.source-details'?this.details:[];}};
+      experienceRow.details=[detail(experienceRow)];
+    }
     box.rows = sandbox.guideMessages.slice(-12).map((m, i) => {
-      const details = { _open: false, listeners: [],
-        addEventListener(ev, fn) { this.listeners.push(fn); }, getBoundingClientRect() { return { top: 150 }; },
-        get open() { return this._open; },
-        set open(v) { const next = !!v; if (next === this._open) return; this._open = next;
-          setTimeout(() => this.listeners.forEach((fn) => fn()), 0); }  /* 真实浏览器:下一任务派发 toggle */
+      const row={ mid:String(m.mid),
+        get contentTop(){return (experienceRow?experienceRow.offsetHeight:0)+box.rows.slice(0,i).reduce((n,r)=>n+r.offsetHeight,0);},
+        get offsetTop(){return (opts.offsetParentTop || 0)+this.contentTop;},
+        get offsetHeight(){return 150+(this.details[0].open?160:0);},
+        getBoundingClientRect(){const top=box.getBoundingClientRect().top+box.clientTop+this.contentTop-box.scrollTop;return {top,bottom:top+this.offsetHeight};},
+        getAttribute(){return this.mid;},
+        querySelectorAll(sel){return sel==='.source-details'?this.details:[];}
       };
-      return { mid: String(m.mid), offsetTop: i * 150, offsetHeight: 150,
-        get details() { return [details]; },
-        getAttribute() { return String(m.mid); },
-        querySelectorAll(sel) { return sel === '.source-details' ? [details] : []; }
-      };
+      row.details=[detail(row)];return row;
     });
   };
-  const experienceRow = { open: false, addEventListener() {} };
   const area = {
-    hidden: false, innerHTML: '',
-    querySelector(sel) { return sel === '.guide-messages' ? box : null; },
+    hidden: false,
+    set innerHTML(value){markup=value;rendered=true;},get innerHTML(){return markup;},
+    querySelector(sel) { return sel === '.guide-messages' && rendered ? box : null; },
     querySelectorAll(sel) {
       if (sel === '.message-row[data-mid]') return box.rows;
-      if (sel === '.experience-row') return sandbox.currentExperiences.length ? [{ querySelectorAll: (s) => s === '.source-details' ? [experienceRow] : [] }] : [];
+      if (sel === '.experience-row') return experienceRow?[experienceRow]:[];
       if (sel === '.source-details') return [];
       if (sel === '[data-open-version]' || sel === '[data-restore-version]') return [];
       return [];
@@ -65,7 +80,7 @@ function makeEnv(messages, opts = {}) {
     console, JSON, Object, Array, Date, String, Math, setTimeout,
     document: { getElementById: (id) => id === 'guideArea' ? area : id === 'nlInput' ? input : { hidden: false } },
     composer: { contains: () => false, remove() {} },
-    input, area, currentExperiences: opts.currentExperiences || [],
+    input, area,
     conversation: { draft: null }, conversationBusy: false, conversationError: null,
     guideMessages: messages, msgSeq: 0,
     liveTransportKey: () => 'k', transportSearchCache: new Map(),
@@ -74,6 +89,12 @@ function makeEnv(messages, opts = {}) {
     updateComposer() {}, showWorkspaceView() {},
     actionLabel: () => '...', restoreConversationVersion() {}, guideUndo: []
   };
+  let experiences=[];
+  Object.defineProperty(sandbox,'currentExperiences',{get:()=>experiences,set(value){
+    experiences=value;sandbox.conversation.draft=value.length?{route:['起点','终点']}:null;
+    sandbox.transportSearchCache=new Map(value.length?[['k',{retrieved_at:new Date().toISOString(),experiences:value}]]:[]);
+  }});
+  sandbox.currentExperiences=opts.currentExperiences || [];
   sandbox.globalThis = sandbox;
   vm.createContext(sandbox);
   sandbox.renderConversation = vm.runInContext('(' + html.slice(start, end) + ')', sandbox);
@@ -175,6 +196,41 @@ const msgs = () => [
   after.open = true;
   await new Promise((r) => setTimeout(r, 10));
   ok(box.scrollCalls >= 1, '#31 用户主动展开仍自动滚动到引用');
+}
+
+/* 展开的引用位于阅读消息上方，重复重绘后消息视口位置必须保持。 */
+{
+  const {sandbox,box}=makeEnv(Array.from({length:12},(_,i)=>({role:i%2?'assistant':'user',text:'消息'+i})),{boxTop:200,offsetParentTop:90});
+  sandbox.renderConversation();box.rows[0].details[0].open=true;box.rows[1].details[0].open=true;
+  await new Promise(r=>setTimeout(r,10));box.scrollTop=650;
+  const target=box.rows[3],mid=target.mid,top=target.getBoundingClientRect().top;
+  for(let i=0;i<4;i++){sandbox.renderConversation();await new Promise(r=>setTimeout(r,10));}
+  const after=box.rows.find(r=>r.mid===mid);
+  ok(after.getBoundingClientRect().top===top,'#31 多处引用改变行高，连续四次刷新后同一消息的视口位置保持');
+  ok(box.rows[0].details[0].open && box.rows[1].details[0].open,'#31 上方已展开的正文引用保持展开');
+}
+/* 经验区与正文必须采用相同的状态身份协议，各自保持展开。 */
+{
+  const {sandbox,box}=makeEnv(msgs(),{currentExperiences:[{url:'https://example.org/experience'}]});
+  sandbox.renderConversation();
+  const exp=()=>sandbox.area.querySelectorAll('.experience-row')[0].querySelectorAll('.source-details')[0];
+  exp().open=true;box.rows[1].details[0].open=true;
+  await new Promise(r=>setTimeout(r,10));box.scrollTop=250;
+  const top=box.rows[1].getBoundingClientRect().top;
+  sandbox.renderConversation();await new Promise(r=>setTimeout(r,10));
+  ok(exp().open,'#31 已展开的经验引用在后台刷新后仍展开');
+  ok(box.rows[1].details[0].open,'#31 经验区和正文的展开状态互不覆盖');
+  ok(box.rows[1].getBoundingClientRect().top===top,'#31 经验引用展开高度恢复后，正文阅读锚点保持');
+}
+/* 新查询加入经验区会推高消息位置，仍须保留用户正在看的同一条消息。 */
+{
+  const {sandbox,box}=makeEnv(msgs(),{boxTop:140,offsetParentTop:60});
+  sandbox.renderConversation();box.rows[0].details[0].open=true;
+  await new Promise(r=>setTimeout(r,10));box.scrollTop=260;
+  const top=box.rows[1].getBoundingClientRect().top;
+  sandbox.currentExperiences=[{url:'https://example.org/new-experience'}];
+  sandbox.renderConversation();await new Promise(r=>setTimeout(r,10));
+  ok(box.rows[1].getBoundingClientRect().top===top,'#31 新增经验区域后仍保持同一消息的可视位置');
 }
 
 console.log(fail === 0 ? `\n✓ 聊天刷新阅读位置回归全部通过（${total} 项断言）` : `\n✗ 失败 ${fail} 项（共 ${total} 项断言）`);
