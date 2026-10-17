@@ -56,6 +56,7 @@ function logUsage(kind, usage, model) {
 let SEARCH_STATE = { status: 'unknown', at: null };
 let SEARCH_QUOTA_UNTIL = 0;
 let PUBLIC_SEARCH_RETRY_AT = 0;
+let VOLC_SEARCH_RETRY_AT = 0;
 function markSearch(status, provider = null) { SEARCH_STATE = { status, provider, at: new Date().toISOString() }; }
 
 function searchText(value) {
@@ -101,13 +102,19 @@ export function webSearchStatus() { return { ...SEARCH_STATE }; }
 
 export async function searchWeb(query, { limit = 5, timeoutMs = 30000, signal } = {}) {
   if (process.env.VOLC_SEARCH_API_KEY) {
-    const outcome = await searchVolc(query, {
+    const started=Date.now();
+    const outcome = started<VOLC_SEARCH_RETRY_AT?{status:'quota_exhausted',results:null}:await searchVolc(query, {
       key: process.env.VOLC_SEARCH_API_KEY,
       model: process.env.VOLC_SEARCH_MODEL || 'doubao-seed-2-1-lite-260915',
       limit, timeoutMs, signal
     });
-    markSearch(outcome.status, 'volc-search');
-    return outcome.results;
+    if(outcome.results){markSearch(outcome.status,'volc-search');return outcome.results;}
+    if(outcome.status==='quota_exhausted')VOLC_SEARCH_RETRY_AT=Date.now()+300000;
+    const remaining=timeoutMs-(Date.now()-started);
+    const fallback=remaining>500 && !signal?.aborted?await searchPublicIndex(query,limit,Math.min(remaining,8000),signal):null;
+    markSearch(fallback?'available':outcome.status,fallback?'public-search':'volc-search');
+    SEARCH_STATE.primary_status=outcome.status;
+    return fallback;
   }
   if (!llmConfigured()) return null;
   if (Date.now() < SEARCH_QUOTA_UNTIL) {

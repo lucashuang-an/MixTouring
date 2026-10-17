@@ -306,7 +306,7 @@ async function main() {
   const caps = await (await fetch(BASE + '/api/capabilities')).json();
   if (caps.code === 0 && typeof caps.data.web_search_configured === 'boolean' &&
     ['available', 'quota_exhausted', 'timeout', 'error', 'unknown'].includes(caps.data.web_search_status) &&
-    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.51.0') {
+    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.57.0') {
     console.log('✓ /api/capabilities P1-4：configured 与最近真实状态分开（web_search_configured=' +
       caps.data.web_search_configured + ', status=' + caps.data.web_search_status + '），版本拆分对齐');
   } else { failed++; console.error('✗ /api/capabilities 形状异常：' + JSON.stringify(caps).slice(0, 200)); }
@@ -314,6 +314,19 @@ async function main() {
   /* ---------- 十一轮：意图合并顺序 / 无效窗口（真实 API 定向反例） ---------- */
   const ivA = await (await fetch(BASE + '/api/anywhere/plan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: '从北京去阿拉木图往返' }) })).json();
   if (ivA.code === 0 && ivA.data.plan_id && ivA.data.candidates.length) {
+    const compare=await (await fetch(BASE+'/api/anywhere/compare',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({plan_id:ivA.data.plan_id,requirements:{trip_days:10},candidates:[{id:'伪造'}]})})).json();
+    if(compare.code===0 && compare.data.routes.some(r=>r.baseline) && compare.data.routes.every(r=>ivA.data.candidates.some(c=>c.id===r.id) && !r.verified && r.cost.grade==='unpriced'))console.log('✓ 路线比较：服务端候选、直达基准与未知费用边界');
+    else {failed++;console.error('✗ 路线比较未保留服务端候选或证据边界');}
+    const expiredCompare=await (await fetch(BASE+'/api/anywhere/compare',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({plan_id:'expired'})})).json();
+    if(expiredCompare.code===1)console.log('✓ 路线比较：过期上下文不可由客户端补造');
+    else {failed++;console.error('✗ 过期比较未被拒绝');}
+    const invalidResearch=await (await fetch(BASE+'/api/anywhere/route-research',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({plan_id:ivA.data.plan_id,candidate_id:'伪造',from:'北京',to:'阿拉木图'})})).json();
+    if(invalidResearch.code===1)console.log('✓ 关键交通补查：客户端自报端点不能替代所选候选');
+    else {failed++;console.error('✗ 关键交通补查接受了伪造选择');}
+    const directForResearch=ivA.data.candidates.find(c=>c.legs.length===1);
+    if(directForResearch){const l=directForResearch.legs[0],confirmedResearch=await (await fetch(BASE+'/api/anywhere/route-research',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({plan_id:ivA.data.plan_id,candidate_id:directForResearch.id,anchors:{outbound:{from_city:l.from,to_city:l.to,mode:l.mode_guess}}})})).json();
+      if(confirmedResearch.code===0 && confirmedResearch.data.status==='skipped' && !confirmedResearch.data.verified)console.log('✓ 已确认交通不重复自动检索，也不升级外部核实状态');
+      else {failed++;console.error('✗ 已确认交通补查边界异常');}}
     const rtDetail = await (await fetch(BASE + '/api/anywhere/journey', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ plan_id: ivA.data.plan_id, candidate_id: ivA.data.candidates[0].id, stopover_nights: 0 }) })).json();
     if (rtDetail.code === 0 && rtDetail.data.inbound.length === 1 && rtDetail.data.inbound[0].from === '阿拉木图' && rtDetail.data.inbound[0].evidence_state === 'explore') console.log('✓ /api/anywhere/journey：往返方向独立探索，不继承去程证据');
     else { failed++; console.error('✗ /api/anywhere/journey 往返详情异常：' + JSON.stringify(rtDetail).slice(0, 200)); }
@@ -424,6 +437,22 @@ async function main() {
   const nextReply=await (await fetch(BASE+'/api/anywhere/guide',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({destination:'阿拉木图',text:'更想看山景',preferences:destinationReply.data.preferences})})).json();
   if(destinationReply.data.preferences.experience==='balanced' && destinationReply.data.reply.includes('Shymbulak') && nextReply.data.preferences.nature_theme==='mountains' && nextReply.data.reply.includes('留几天')) console.log('✓ 目的地玩法在过期上下文下仍可回应并持续跟进');
   else {failed++;console.error('✗ 目的地玩法跟进仍有断点');}
+  const earlyConversation=await (await fetch(BASE+'/api/anywhere/conversation',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'generate',conversation:{stage:'discuss'}})})).json();
+  if(earlyConversation.data?.status==='needs_intent' && !earlyConversation.data.conversation.draft) console.log('✓ AI 对话接口在意图未确认时不生成草案');
+  else {failed++;console.error('✗ AI 对话确认边界异常');}
+  const countryPlan=await (await fetch(BASE+'/api/anywhere/plan',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({origin:'北京',destination:'吉尔吉斯斯坦'})})).json();
+  if(countryPlan.data?.place_scopes.destination?.code==='KG' && !countryPlan.data.place_candidates.destination.length && !countryPlan.data.candidates.length)console.log('✓ 国家目的地不查询同名园区，先确定城市');
+  else {failed++;console.error('✗ 国家目的地误作交通端点');}
+  const preparedRoute=await (await fetch(BASE+'/api/anywhere/conversation',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'prepare',conversation:{stage:'ready',brief:{origin:'北京',destination:'吉尔吉斯斯坦（比什凯克＋湖区）',summary:'先到比什凯克，再去湖区'},routing:{origin:'北京',destination:'比什凯克'}}})})).json();
+  if(preparedRoute.data?.routing.destination==='比什凯克' && preparedRoute.data.conversation.brief.destination.includes('湖区'))console.log('✓ 路线端点独立于国家与湖区说明，生成前准备保留旅行范围');
+  else {failed++;console.error('✗ 旅行摘要仍混入路线端点');}
+  const referenceData=await (await fetch(BASE+'/api/anywhere/transport-references',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({route:['北京','乌鲁木齐','伊宁','阿拉木图'],sources:[{url:'https://fake.example/current-fare',verified:true}]})})).json();
+  const referenceLeg=referenceData.data?.find(s=>s.from==='伊宁' && s.to==='阿拉木图');
+  const borderReference=referenceLeg?.archive.find(r=>r.id==='yin-ala-khorgos-road');
+  const reverseData=await (await fetch(BASE+'/api/anywhere/transport-references',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({route:['阿拉木图','伊宁']})})).json();
+  const invalidReference=await (await fetch(BASE+'/api/anywhere/transport-references',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({route:['伊宁']})})).json();
+  if(referenceData.code===0 && borderReference?.evidence_state==='historical' && borderReference.duration_minutes===null && borderReference.supplementary_sources.some(s=>s.kind==='experience') && !JSON.stringify(referenceData).includes('fake.example') && !reverseData.data?.flatMap(s=>s.options.concat(s.archive)).some(r=>r.id==='yin-ala-khorgos-road') && invalidReference.code===1)console.log('✓ 交通参考接口：同向资料、历史与经验分级、去返隔离、拒绝客户端伪造事实');
+  else {failed++;console.error('✗ 交通参考接口合同异常');}
   console.log(failed ? `\n✗ ${failed} 项不一致` : '\n✓ 全部接口与 mock.js 派生结果一致');
   process.exit(failed ? 1 : 0);
 }

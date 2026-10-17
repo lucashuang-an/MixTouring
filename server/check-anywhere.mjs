@@ -16,10 +16,31 @@ import { dirname, join } from 'node:path';
 import { discoverRoutes, sourceSupportsLeg } from './lib/route-discovery.mjs';
 import { replayCandidate } from './lib/discovery-replay.mjs';
 import { buildJourneyDetail } from './lib/journey.mjs';
+import { countryScope } from './lib/place-scope.mjs';
 
 let fail = 0;
 let total = 0;
 const ok = (cond, name) => { total++; if (cond) console.log('✓ ' + name); else { fail++; console.error('✗ ' + name); } };
+
+async function checkPlaceScope(){
+  let queries=0;
+  const fakeGarden={display_name:'吉尔吉斯斯坦园, 北京市, 中国',country:'CN',lat:'40',lon:'116',type:'garden',category:'leisure',url:'https://www.openstreetmap.org/way/999'};
+  for(const name of ['吉尔吉斯斯坦','Kyrgyzstan','加拿大','中国']){
+    const r=await planAnywhere({origin:'北京',destination:name},{callJson:async()=>null,osmSearch:async()=>{queries++;return [fakeGarden];},env:{}});
+    ok(r.place_candidates.destination.length===0 && r.candidates.length===0 && r.place_scopes.destination?.code===countryScope(name).code && r.needs_confirmation.some(n=>n.includes('是国家')),'国家范围 '+name+' 先讨论城市，不接受同名园区');
+  }
+  ok(queries===0,'国家范围不进入地图模糊查询');
+  ok(countryScope('香港')===null && countryScope('澳门')===null && countryScope('Singapore')===null,'已知城市与城市国家保持城市端点能力');
+  const id=registerPlaceCandidate({...fakeGarden,name:'吉尔吉斯斯坦园',kind:'poi',source_url:fakeGarden.url});
+  const replay=await planAnywhere({origin:'北京',destination:'吉尔吉斯斯坦',confirmed_places:{destination:id}},{callJson:async()=>null,osmSearch:async()=>[fakeGarden],env:{}});
+  ok(replay.intent.destination_place===null && replay.place_scopes.destination.code==='KG','旧错误确认标识不能把国家恢复成同名园区');
+  const mismatch=await planAnywhere({origin:'北京',destination:'某新城市'},{callJson:async()=>({candidates:[{name:'某新城市',kind:'city',country:'KG',name_latin:'Example'}]}),osmSearch:async()=>[fakeGarden],env:{}});
+  ok(!mismatch.place_candidates.destination.length,'地图国家与模型意图冲突，不标已核验');
+  const wrongKind=await planAnywhere({origin:'北京',destination:'某新城市'},{callJson:async()=>({candidates:[{name:'某新城市',kind:'city',country:'KG'}]}),osmSearch:async()=>[{...fakeGarden,country:'KG'}],env:{}});
+  ok(!wrongKind.place_candidates.destination.length,'地图景点不能由模型改名成城市');
+  ok(osmKind({type:'administrative',category:'boundary',admin_level:'2'})==='country','国家行政边界保留国家层级，不标城市');
+}
+await checkPlaceScope();
 
 const FIXTURE_NOW = Date.parse('2026-09-26T00:00:00+08:00');
 const NO_LLM = { callJson: async () => null, env: {}, osmSearch: async () => [], nowMs:FIXTURE_NOW };
@@ -768,7 +789,7 @@ const NO_DIGIT_RE = /\d/;
       searchWeb: async () => null });
   ok(r6b.web_search && r6b.web_search.status === 'timeout',
     'P1-4：本请求全部搜索失败 → 透传最近失败原因（timeout），不谎报可用');
-  ok(r6.planner_version === 'v0.51.0', '编排：anywhere 版本号对齐 v0.51.0');
+  ok(r6.planner_version === 'v0.57.0', '编排：anywhere 版本号对齐 v0.57.0');
 
   const r7 = await planAnywhere({ text: '想去新疆最西边那座古城玩' },
     { callJson: async () => ({ origin: '北京', destination: '喀什' }), env: {}, osmSearch: async () => [] });

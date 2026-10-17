@@ -1,0 +1,108 @@
+{
+  "sampled_at": "2026-10-15T13:17:33.381Z",
+  "status": "ok",
+  "engine": "llm",
+  "reply": "北京到阿拉木图，经乌鲁木齐、伊宁，10天预算8000元，喜欢自然和本地文化，愿意坐长途巴士。目前公开资料能支持“伊宁陆路出境到阿拉木图”这个方向，但具体班次、口岸开放和票价都还没核实。参考走法大致是：北京到乌鲁木齐可坐火车或飞机，乌鲁木齐到伊宁有火车/大巴，伊宁出境后经霍尔果斯或都拉塔口岸进入哈萨克斯坦，再到阿拉木图。跨境段建议优先查霍尔果斯口岸的班车和通关时间，伊宁到阿拉木图也有直达国际班车的历史记录，但当期运营需确认。另外，阿拉木图周边的大阿拉木图湖、恰伦峡谷都适合自然体验，城区可逛潘菲洛夫公园和绿色巴扎。你更倾向全程陆路，还是某段（比如北京到乌鲁木齐）用飞机？",
+  "conversation": {
+    "stage": "ready",
+    "brief": {
+      "origin": "北京",
+      "destination": "阿拉木图",
+      "summary": "北京到阿拉木图，10天，预算8000元，喜欢自然和本地文化，愿坐长途巴士，经乌鲁木齐、伊宁，跨境交通必须核实。",
+      "wishes": [
+        "喜欢自然和本地文化",
+        "愿意坐长途巴士",
+        "经乌鲁木齐、伊宁",
+        "预算8000元",
+        "跨境交通必须核实"
+      ],
+      "open_questions": [
+        "陆路全程还是某段用飞机？"
+      ]
+    },
+    "routing": {
+      "origin": "北京",
+      "destination": "阿拉木图"
+    },
+    "requirements": {
+      "required_stops": [
+        "乌鲁木齐",
+        "伊宁"
+      ],
+      "trip_days": 10,
+      "verified_cross_border_only": true
+    },
+    "draft": null,
+    "revision": 0,
+    "preview": null
+  },
+  "patch": {
+    "preferences": {
+      "pace": "explore",
+      "road": "open",
+      "experience": "balanced"
+    },
+    "travel": {},
+    "constraints": {
+      "budget_max_cny": 8000
+    },
+    "sights": {}
+  },
+  "sources": [
+    {
+      "platform": "马蜂窝",
+      "kind": "experience",
+      "host": "m.mafengwo.cn",
+      "url": "https://m.mafengwo.cn/mweng/wengdetailssr/weng?id=1869838771305349",
+      "title": "旅行家阳的旅行笔记-马蜂窝",
+      "excerpt": "旅行家阳 12国25城\n2月前\n阿拉木图\n中亚之阿拉木图\n中亚之阿拉木图 从伊犁陆路出境，阿拉木图几乎是所有人落地哈萨克斯坦的第一站。 扎进绿巴扎，摊主会主动递上干果试吃，本地人更偏爱市场后门的平价市集。20元一斤的三勾樱桃汁水饱满，8元一斤的草莓带着天然土腥气，没有多余加工调味，是独属于鲜果的原生滋味。 市内公交票价浮动不定，有时100坚戈、有时200坚戈，当地英语普及率很低，俄语又一窍不通，遇上检票员只能手足无措地比划沟通。整座城市物价整体偏高，只有烟酒价格格外友好。走累了就随意坐在街边长椅，雨后空气清润，掰着面包投喂成群白鸽，静静望着流云放空，也是难得松弛的乐趣。 途经中央清真寺，偶遇当",
+      "published_at": "2026-07-04",
+      "published_raw": "2026年07月04日 00:00:00(CST) 星期六",
+      "date_basis": "search_index",
+      "read_status": "search_excerpt",
+      "checked_at": "2026-10-15T13:17:13.393Z",
+      "read_note": "原文未能读取，仅有搜索摘要",
+      "temporal": {
+        "state": "recent",
+        "label": "近期资料",
+        "reason": "在资料复核周期内，仍非当期可用性证明",
+        "published_at": "2026-07-04",
+        "age_days": 103,
+        "target_window": null,
+        "date_scope": "unverified",
+        "max_age_days": 365
+      },
+      "allowed_use": "travel_experience"
+    },
+    {
+      "platform": "Caravanistan",
+      "kind": "guide",
+      "host": "caravanistan.com",
+      "url": "https://caravanistan.com/border-crossings/kyrgyzstan/",
+      "title": "Kyrgyzstan border crossings | Caravanistan",
+      "excerpt": "Home / Border crossings / Kyrgyzstan Kyrgyzstan shares borders with Kazakhstan , China, Uzbekistan and Tajikistan . For an exact location of these and all other border crossings on the Silk Road, see the border crossing map . For more information about visas, see the Kyrgyzstan visa chapter. Warning: do not venture into border areas unless you have a border permit or are actually crossing at the border crossing. There are plenty of other beautiful spots in Kyrgyzstan. Foreigners without the correct border permits do get arrested from time to time. Warning number 2: if you are traveling on an e-visa, only 12 border crossings are valid crossing points for you. Find out more at eligible e-visa border crossings . Table of Contents Toggle Border crossing map Schematic map of the main border crossings of Kyrgyzstan This map is schematic and only depicts the main border crossings of Kyrgyzstan. For all border crossings and their precise location, see the map at Border crossings of the Silk Road . Status (open or closed) is detailed below. Aisha Bibi Sypatai Batyr Kordai Karkara Valley Torugart Pass Irkeshtam Pass Kyzylart Karamyk &#8211; Jirgital Kulundu Batken &#8211; Isfara Dostyk Uchkurgan Kyrgyzstan &#8211; Kazakhstan border crossings Korday / Ak-Zhol After being closed for reconstruction in 2020-2022, Korday / Ak-Zhol is once again the main border crossing between Bishkek and Almaty. Updates gathered here . Self-drivers should watch out for the traffic police just beyond the border on the Kyrgyz side. There is a stop sign that should not be ignored; even when stopping, a bribe could be solicited . Further updates in this post . Large buses go between Bishkek&#8217;s new bus terminal (the old Western bus terminal is no longer in use) and Almaty&#8217;s Sairan bus station (5 hours), currently 5 times per day. Shared taxis are also available. In case you are left without transport after the border, on the Kyrgyz side there are many buses and taxis going straight to the centre of Bishkek and Dordoi. On the Kazakh side, shared taxis vie for your business. The border is open 24/7, there is currency exchange on both sides and a decent canteen on the Kyrgyz side. Karkara valley (Kegen &#8211; Tup/Kensu) A scenic crossing, the Karkara valley is a good way to go from Almaty to Karakol , with attractions like Charyn Canyon and Kolsai Lakes on the way. Previously, the border opened only approximately between May 1 and October 31 from dusk til dawn, but since 2025 it&#8217;s open year round, 24/7. Crossing reports and questions are gathered in this forum Q&A . Public transport for travelers without their own vehicle: Shared taxi hopping or a long bus ride (details below). For those with their own transport: It&#8217;s 30 km from Kegen and about 85 to Tup on the Kyrgyz side. Come prepared, there is little in the way of supplies between these towns. The road is rough gravel for the last 15 km on the Kazakh side and the first 50 or so on the Kyrgyz side. Karkara and Kegen don’t have money changing facilities. If you are coming from Kyrgyzstan, try to get tenge in Karakol. On the Kazakh side, the offroad route from Turgen to Bartogai Reservoir comes highly recommended, although it is very steep if you are cycling. On public transport Almaty -> Karakol : Shared taxis in Almaty to Kegen hang out here these days. In Kegen, taxi drivers hang out near the petrol station. From the border to Karakol, you need to wait for a car to hitchhike, or organise a ride in",
+      "published_at": "2026-07-20",
+      "published_raw": "2026年07月20日 10:29:00(CST) 星期一",
+      "date_basis": "search_index",
+      "read_status": "page_excerpt",
+      "checked_at": "2026-10-15T13:17:13.393Z",
+      "search_title": "Kyrgyzstan border crossings",
+      "original_url": "https://caravanistan.com/border-crossings/kyrgyzstan/",
+      "updated_at": null,
+      "truncated": true,
+      "temporal": {
+        "state": "recent",
+        "label": "近期资料",
+        "reason": "在资料复核周期内，仍非当期可用性证明",
+        "published_at": "2026-07-20",
+        "age_days": 87,
+        "target_window": null,
+        "date_scope": "unverified",
+        "max_age_days": 90
+      }
+    }
+  ],
+  "selected_candidate_id": null,
+  "clear_selection": false,
+  "request_generation": false
+}

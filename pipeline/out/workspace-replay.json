@@ -1,0 +1,1119 @@
+{
+  "sampled_at": "2026-10-14T16:00:51.194Z",
+  "complete": true,
+  "note": "真实模型、固定探索候选、搜索桩；验证对话、日序覆盖与状态合同，不验证广泛路线发现质量或真实交通可执行性。",
+  "turns": [
+    {
+      "text": "我想从北京去阿拉木图，10天，一个人，预算8000元，喜欢自然和本地文化，愿意坐长途巴士。",
+      "action": "chat",
+      "elapsed_ms": 12762,
+      "status": "ok",
+      "engine": "llm",
+      "reply": "从北京出发去阿拉木图，10天一个人，预算8000元，喜欢自然和本地文化，也愿意坐长途巴士，这个方向很清晰。交通上主要有两条路：直飞阿拉木图省时省力，但会占掉一部分预算；陆路经乌鲁木齐再过去，体验更丰富，但耗时和衔接需要仔细查。你更倾向哪种走法？",
+      "conversation": {
+        "stage": "ready",
+        "brief": {
+          "origin": "北京",
+          "destination": "阿拉木图",
+          "summary": "从北京出发，10天，一个人，预算8000元，喜欢自然和本地文化，愿意坐长途巴士。",
+          "wishes": [
+            "喜欢自然",
+            "喜欢本地文化",
+            "愿意坐长途巴士"
+          ],
+          "open_questions": [
+            "交通方式偏好：直飞还是陆路？"
+          ]
+        },
+        "routing": {
+          "origin": "北京",
+          "destination": "阿拉木图"
+        },
+        "requirements": {
+          "required_stops": [],
+          "trip_days": 10,
+          "verified_cross_border_only": false
+        },
+        "draft": null,
+        "revision": 0,
+        "preview": null
+      },
+      "patch": {
+        "preferences": {
+          "pace": "any",
+          "road": "open",
+          "nights": null,
+          "preferred_mode": null,
+          "experience": "balanced",
+          "nature_theme": null,
+          "destination_days": null
+        },
+        "travel": {
+          "traveler_count": 1
+        },
+        "constraints": {
+          "budget_max_cny": 8000
+        },
+        "sights": {}
+      },
+      "sources": [
+        {
+          "title": "哈萨克斯坦旅游门户：阿拉木图",
+          "url": "https://www.kazakhstan.travel/en/regions/almaty",
+          "published_at": null,
+          "sampled_at": "2026-10-11",
+          "platform": "kazakhstan.travel",
+          "kind": "official",
+          "host": "kazakhstan.travel"
+        },
+        {
+          "title": "哈萨克斯坦旅游门户：恰伦国家公园",
+          "url": "https://kazakhstan.travel/en/parks/charyn",
+          "published_at": null,
+          "sampled_at": "2026-10-11",
+          "platform": "kazakhstan.travel",
+          "kind": "official",
+          "host": "kazakhstan.travel"
+        }
+      ],
+      "selected_candidate_id": null,
+      "clear_selection": false,
+      "request_generation": false
+    },
+    {
+      "text": "确认，就按这些想法生成初稿",
+      "action": "chat",
+      "elapsed_ms": 4322,
+      "status": "ok",
+      "engine": "llm",
+      "reply": "好的，我按这个思路生成初稿：北京出发，10天，一个人，预算8000元，自然与本地文化兼顾，交通上直飞和陆路都保留为待查选项。稍等，我整理一份完整草案给你。",
+      "conversation": {
+        "stage": "ready",
+        "brief": {
+          "origin": "北京",
+          "destination": "阿拉木图",
+          "summary": "从北京出发，10天，一个人，预算8000元，喜欢自然和本地文化，愿意坐长途巴士。",
+          "wishes": [
+            "喜欢自然",
+            "喜欢本地文化",
+            "愿意坐长途巴士"
+          ],
+          "open_questions": [
+            "交通方式偏好：直飞还是陆路？"
+          ]
+        },
+        "routing": {
+          "origin": "北京",
+          "destination": "阿拉木图"
+        },
+        "requirements": {
+          "required_stops": [],
+          "trip_days": 10,
+          "verified_cross_border_only": false
+        },
+        "draft": null,
+        "revision": 0,
+        "preview": null
+      },
+      "patch": {
+        "preferences": {},
+        "travel": {},
+        "constraints": {},
+        "sights": {}
+      },
+      "sources": [
+        {
+          "title": "哈萨克斯坦旅游门户：阿拉木图",
+          "url": "https://www.kazakhstan.travel/en/regions/almaty",
+          "published_at": null,
+          "sampled_at": "2026-10-11",
+          "platform": "kazakhstan.travel",
+          "kind": "official",
+          "host": "kazakhstan.travel"
+        },
+        {
+          "title": "哈萨克斯坦旅游门户：恰伦国家公园",
+          "url": "https://kazakhstan.travel/en/parks/charyn",
+          "published_at": null,
+          "sampled_at": "2026-10-11",
+          "platform": "kazakhstan.travel",
+          "kind": "official",
+          "host": "kazakhstan.travel"
+        },
+        {
+          "title": "哈萨克斯坦旅游门户：阿拉木图",
+          "url": "https://www.kazakhstan.travel/en/regions/almaty",
+          "published_at": null,
+          "sampled_at": "2026-10-11",
+          "platform": "kazakhstan.travel",
+          "kind": "official",
+          "host": "kazakhstan.travel"
+        }
+      ],
+      "selected_candidate_id": null,
+      "clear_selection": false,
+      "request_generation": true
+    },
+    {
+      "text": "生成已确认的旅行草案",
+      "action": "generate",
+      "elapsed_ms": 34157,
+      "status": "ok",
+      "engine": "llm",
+      "reply": "已生成草案，返程未定，仅保留在待办事项中。",
+      "conversation": {
+        "stage": "draft",
+        "brief": {
+          "origin": "北京",
+          "destination": "阿拉木图",
+          "summary": "从北京出发，10天，一个人，预算8000元，喜欢自然和本地文化，愿意坐长途巴士。",
+          "wishes": [
+            "喜欢自然",
+            "喜欢本地文化",
+            "愿意坐长途巴士"
+          ],
+          "open_questions": [
+            "交通方式偏好：直飞还是陆路？"
+          ]
+        },
+        "routing": {
+          "origin": "北京",
+          "destination": "阿拉木图"
+        },
+        "requirements": {
+          "required_stops": [],
+          "trip_days": 10,
+          "verified_cross_border_only": false
+        },
+        "draft": {
+          "title": "北京出发阿拉木图10天自然与文化探索草案",
+          "overview": "从北京出发，10天时间，一个人，预算8000元，兼顾自然与本地文化。交通上直飞和陆路都保留为待查选项，具体班次和费用需后续核实。",
+          "sections": [
+            {
+              "title": "交通取舍",
+              "content": "直飞省时但费用较高，陆路经乌鲁木齐体验更丰富但耗时和衔接需仔细查。具体班次和价格待查。"
+            },
+            {
+              "title": "自然与文化搭配",
+              "content": "城区文化漫步与山地、湖泊自然体验穿插，兼顾兴趣。"
+            },
+            {
+              "title": "待查事项",
+              "content": "跨境交通班次、费用、山地缆车开放、湖泊道路状况等需按出行日期核实。"
+            }
+          ],
+          "cards": [
+            {
+              "id": "card-1kkwl7l",
+              "place": "北京",
+              "label": "第1天",
+              "title": "出发准备与交通待定",
+              "content": "从北京出发，直飞或经乌鲁木齐陆路前往阿拉木图，具体班次和费用待查。"
+            },
+            {
+              "id": "card-jb2lza",
+              "place": "阿拉木图",
+              "label": "第2天",
+              "title": "抵达与城区初探",
+              "content": "抵达阿拉木图，适应时差，可在住宿附近散步，感受城市氛围。"
+            },
+            {
+              "id": "card-zfp9wo",
+              "place": "阿拉木图",
+              "label": "第3天",
+              "title": "城区文化漫步",
+              "content": "游览潘菲洛夫公园、升天大教堂和绿色巴扎，体验当地建筑与生活气息。"
+            },
+            {
+              "id": "card-19xgseq",
+              "place": "阿拉木图",
+              "label": "第4天",
+              "title": "山地自然体验",
+              "content": "前往Shymbulak山地度假区，欣赏山景，具体缆车开放和天气需按日期确认。"
+            },
+            {
+              "id": "card-1xtjxoz",
+              "place": "阿拉木图",
+              "label": "第5天",
+              "title": "湖泊探索",
+              "content": "前往大阿拉木图湖，享受湖光山色，注意道路和进入范围需另行确认。"
+            },
+            {
+              "id": "card-q6vgo2",
+              "place": "阿拉木图",
+              "label": "第6天",
+              "title": "峡谷备选或自由活动",
+              "content": "若时间允许，可安排恰伦峡谷一日游；否则在市区自由探索，体验本地咖啡馆和市集。"
+            },
+            {
+              "id": "card-1wvon5e",
+              "place": "阿拉木图",
+              "label": "第7天",
+              "title": "本地文化深入",
+              "content": "参加当地文化体验，如传统美食制作或手工艺参观，具体项目可现场咨询。"
+            },
+            {
+              "id": "card-1rfkolr",
+              "place": "阿拉木图",
+              "label": "第8天",
+              "title": "弹性预留",
+              "content": "根据前几日节奏调整，可补足未完成的景点或休息。"
+            },
+            {
+              "id": "card-1o8f2v0",
+              "place": "阿拉木图",
+              "label": "第9天",
+              "title": "弹性预留",
+              "content": "继续弹性安排，购物或整理旅行笔记。"
+            },
+            {
+              "id": "card-1bcmf65",
+              "place": "阿拉木图",
+              "label": "第10天",
+              "title": "当地自由活动",
+              "content": "继续在阿拉木图自由活动，可补足未完成的体验或简单休息。"
+            }
+          ],
+          "route": [
+            "北京",
+            "阿拉木图"
+          ],
+          "pending": [
+            "跨境交通班次与费用",
+            "Shymbulak缆车开放情况",
+            "大阿拉木图湖道路与进入范围",
+            "返程安排"
+          ],
+          "evidence_state": "explore"
+        },
+        "revision": 1,
+        "preview": null
+      },
+      "patch": {
+        "preferences": {},
+        "travel": {},
+        "constraints": {},
+        "sights": {}
+      },
+      "sources": [
+        {
+          "title": "哈萨克斯坦旅游门户：阿拉木图",
+          "url": "https://www.kazakhstan.travel/en/regions/almaty",
+          "published_at": null,
+          "sampled_at": "2026-10-11",
+          "platform": "kazakhstan.travel",
+          "kind": "official",
+          "host": "kazakhstan.travel"
+        },
+        {
+          "title": "哈萨克斯坦旅游门户：恰伦国家公园",
+          "url": "https://kazakhstan.travel/en/parks/charyn",
+          "published_at": null,
+          "sampled_at": "2026-10-11",
+          "platform": "kazakhstan.travel",
+          "kind": "official",
+          "host": "kazakhstan.travel"
+        }
+      ],
+      "selected_candidate_id": null,
+      "clear_selection": false,
+      "request_generation": false
+    },
+    {
+      "text": "我喜欢第二条路线，但是希望加入伊宁。",
+      "action": "chat",
+      "elapsed_ms": 38150,
+      "status": "ok",
+      "engine": "llm",
+      "reply": "已按你的要求调整草案：保留北京出发经伊宁至阿拉木图的10天行程，删除了原稿中所有关于返程或返程准备的安排，第10天改为弹性预留。返程安排仅保留在待确认事项中，不写入任何逐日卡片。",
+      "conversation": {
+        "stage": "draft",
+        "brief": {
+          "origin": "北京",
+          "destination": "阿拉木图",
+          "summary": "从北京出发，10天，一个人，预算8000元，喜欢自然和本地文化，愿意坐长途巴士。选择陆路经乌鲁木齐、伊宁前往阿拉木图。",
+          "wishes": [
+            "喜欢自然",
+            "喜欢本地文化",
+            "愿意坐长途巴士",
+            "选择陆路走法，经乌鲁木齐和伊宁"
+          ],
+          "open_questions": []
+        },
+        "routing": {
+          "origin": "北京",
+          "destination": "阿拉木图"
+        },
+        "requirements": {
+          "required_stops": [
+            "伊宁"
+          ],
+          "trip_days": 10,
+          "verified_cross_border_only": false
+        },
+        "draft": {
+          "title": "北京出发经伊宁至阿拉木图10天自然与文化探索草案",
+          "overview": "从北京出发，10天时间，一个人，预算8000元，兼顾自然与本地文化。选择陆路经乌鲁木齐、伊宁前往阿拉木图，沿途体验伊犁河谷的自然与人文。具体班次和费用需后续核实。",
+          "sections": [
+            {
+              "title": "交通取舍",
+              "content": "陆路经乌鲁木齐、伊宁前往阿拉木图，沿途体验更丰富，但耗时和跨境衔接需仔细查。直飞作为备选保留。具体班次和价格待查。"
+            },
+            {
+              "title": "自然与文化搭配",
+              "content": "伊宁的伊犁河谷与阿拉木图的山地湖泊构成自然主线，城区文化漫步穿插其中，兼顾兴趣。"
+            },
+            {
+              "title": "待查事项",
+              "content": "跨境交通班次与口岸通关、乌鲁木齐至伊宁巴士班次、Shymbulak缆车开放、大阿拉木图湖道路状况等需按出行日期核实。"
+            }
+          ],
+          "cards": [
+            {
+              "id": "card-1kkwl7l",
+              "place": "北京",
+              "label": "第1天",
+              "title": "出发准备与交通待定",
+              "content": "从北京出发，乘火车或飞机前往乌鲁木齐，具体班次和费用待查。"
+            },
+            {
+              "id": "card-2x9k3m",
+              "place": "乌鲁木齐",
+              "label": "第2天",
+              "title": "抵达乌鲁木齐，市区初探",
+              "content": "抵达乌鲁木齐，适应时差，可逛国际大巴扎，感受当地市井文化。"
+            },
+            {
+              "id": "card-3p7q2w",
+              "place": "伊宁",
+              "label": "第3天",
+              "title": "前往伊宁，伊犁河谷初体验",
+              "content": "从乌鲁木齐乘长途巴士前往伊宁，沿途欣赏天山风光，抵达后可在伊宁市区散步。"
+            },
+            {
+              "id": "card-4r8e5t",
+              "place": "伊宁",
+              "label": "第4天",
+              "title": "伊犁河谷自然探索",
+              "content": "前往伊犁河谷或周边草原，体验草原与河谷自然风光，具体地点和交通需按季节确认。"
+            },
+            {
+              "id": "card-5t6y7u",
+              "place": "伊宁",
+              "label": "第5天",
+              "title": "本地文化体验",
+              "content": "在伊宁体验哈萨克族或维吾尔族文化，参观当地民居或品尝特色美食。"
+            },
+            {
+              "id": "card-6i9o0p",
+              "place": "阿拉木图",
+              "label": "第6天",
+              "title": "跨境前往阿拉木图",
+              "content": "从伊宁乘长途巴士跨境前往阿拉木图，具体班次、口岸通关和耗时需提前核实。"
+            },
+            {
+              "id": "card-zfp9wo",
+              "place": "阿拉木图",
+              "label": "第7天",
+              "title": "城区文化漫步",
+              "content": "游览潘菲洛夫公园、升天大教堂和绿色巴扎，体验当地建筑与生活气息。"
+            },
+            {
+              "id": "card-19xgseq",
+              "place": "阿拉木图",
+              "label": "第8天",
+              "title": "山地自然体验",
+              "content": "前往Shymbulak山地度假区，欣赏山景，具体缆车开放和天气需按日期确认。"
+            },
+            {
+              "id": "card-1xtjxoz",
+              "place": "阿拉木图",
+              "label": "第9天",
+              "title": "湖泊探索",
+              "content": "前往大阿拉木图湖，享受湖光山色，注意道路和进入范围需另行确认。"
+            },
+            {
+              "id": "card-1bcmf65",
+              "place": "阿拉木图",
+              "label": "第10天",
+              "title": "弹性预留",
+              "content": "根据前几日节奏调整，可补足未完成的景点或休息，自由活动。"
+            }
+          ],
+          "route": [
+            "北京",
+            "乌鲁木齐",
+            "伊宁",
+            "阿拉木图"
+          ],
+          "pending": [
+            "跨境交通班次与费用",
+            "乌鲁木齐至伊宁巴士班次",
+            "Shymbulak缆车开放情况",
+            "大阿拉木图湖道路与进入范围",
+            "返程安排"
+          ],
+          "evidence_state": "explore"
+        },
+        "revision": 2,
+        "preview": null
+      },
+      "patch": {
+        "preferences": {
+          "pace": "explore",
+          "road": "open",
+          "preferred_mode": null,
+          "experience": "balanced"
+        },
+        "travel": {
+          "traveler_count": 1
+        },
+        "constraints": {
+          "budget_max_cny": 8000
+        },
+        "sights": {}
+      },
+      "sources": [
+        {
+          "title": "哈萨克斯坦旅游门户：阿拉木图",
+          "url": "https://www.kazakhstan.travel/en/regions/almaty",
+          "published_at": null,
+          "sampled_at": "2026-10-11",
+          "platform": "kazakhstan.travel",
+          "kind": "official",
+          "host": "kazakhstan.travel"
+        },
+        {
+          "title": "哈萨克斯坦旅游门户：恰伦国家公园",
+          "url": "https://kazakhstan.travel/en/parks/charyn",
+          "published_at": null,
+          "sampled_at": "2026-10-11",
+          "platform": "kazakhstan.travel",
+          "kind": "official",
+          "host": "kazakhstan.travel"
+        },
+        {
+          "title": "哈萨克斯坦旅游门户：阿拉木图",
+          "url": "https://www.kazakhstan.travel/en/regions/almaty",
+          "published_at": null,
+          "sampled_at": "2026-10-11",
+          "platform": "kazakhstan.travel",
+          "kind": "official",
+          "host": "kazakhstan.travel"
+        }
+      ],
+      "selected_candidate_id": null,
+      "clear_selection": false,
+      "request_generation": false
+    },
+    {
+      "text": "如果我只有7天呢？",
+      "action": "chat",
+      "elapsed_ms": 40270,
+      "status": "ok",
+      "engine": "llm",
+      "reply": "先看看这份备选预览，当前安排还未改动。已根据7天时间调整草案，保留北京经乌鲁木齐、伊宁至阿拉木图的陆路主线，伊宁短暂停留，重点在阿拉木图山地湖泊。所有卡片仅安排去程与目的地活动，未包含任何返程或回程内容。返程安排仍列为待确认事项。",
+      "conversation": {
+        "stage": "draft",
+        "brief": {
+          "origin": "北京",
+          "destination": "阿拉木图",
+          "summary": "从北京出发，10天，一个人，预算8000元，喜欢自然和本地文化，愿意坐长途巴士。选择陆路经乌鲁木齐、伊宁前往阿拉木图。",
+          "wishes": [
+            "喜欢自然",
+            "喜欢本地文化",
+            "愿意坐长途巴士",
+            "选择陆路走法，经乌鲁木齐和伊宁"
+          ],
+          "open_questions": []
+        },
+        "routing": {
+          "origin": "北京",
+          "destination": "阿拉木图"
+        },
+        "requirements": {
+          "required_stops": [
+            "伊宁"
+          ],
+          "trip_days": 10,
+          "verified_cross_border_only": false
+        },
+        "draft": {
+          "title": "北京出发经伊宁至阿拉木图10天自然与文化探索草案",
+          "overview": "从北京出发，10天时间，一个人，预算8000元，兼顾自然与本地文化。选择陆路经乌鲁木齐、伊宁前往阿拉木图，沿途体验伊犁河谷的自然与人文。具体班次和费用需后续核实。",
+          "sections": [
+            {
+              "title": "交通取舍",
+              "content": "陆路经乌鲁木齐、伊宁前往阿拉木图，沿途体验更丰富，但耗时和跨境衔接需仔细查。直飞作为备选保留。具体班次和价格待查。"
+            },
+            {
+              "title": "自然与文化搭配",
+              "content": "伊宁的伊犁河谷与阿拉木图的山地湖泊构成自然主线，城区文化漫步穿插其中，兼顾兴趣。"
+            },
+            {
+              "title": "待查事项",
+              "content": "跨境交通班次与口岸通关、乌鲁木齐至伊宁巴士班次、Shymbulak缆车开放、大阿拉木图湖道路状况等需按出行日期核实。"
+            }
+          ],
+          "cards": [
+            {
+              "id": "card-1kkwl7l",
+              "place": "北京",
+              "label": "第1天",
+              "title": "出发准备与交通待定",
+              "content": "从北京出发，乘火车或飞机前往乌鲁木齐，具体班次和费用待查。"
+            },
+            {
+              "id": "card-2x9k3m",
+              "place": "乌鲁木齐",
+              "label": "第2天",
+              "title": "抵达乌鲁木齐，市区初探",
+              "content": "抵达乌鲁木齐，适应时差，可逛国际大巴扎，感受当地市井文化。"
+            },
+            {
+              "id": "card-3p7q2w",
+              "place": "伊宁",
+              "label": "第3天",
+              "title": "前往伊宁，伊犁河谷初体验",
+              "content": "从乌鲁木齐乘长途巴士前往伊宁，沿途欣赏天山风光，抵达后可在伊宁市区散步。"
+            },
+            {
+              "id": "card-4r8e5t",
+              "place": "伊宁",
+              "label": "第4天",
+              "title": "伊犁河谷自然探索",
+              "content": "前往伊犁河谷或周边草原，体验草原与河谷自然风光，具体地点和交通需按季节确认。"
+            },
+            {
+              "id": "card-5t6y7u",
+              "place": "伊宁",
+              "label": "第5天",
+              "title": "本地文化体验",
+              "content": "在伊宁体验哈萨克族或维吾尔族文化，参观当地民居或品尝特色美食。"
+            },
+            {
+              "id": "card-6i9o0p",
+              "place": "阿拉木图",
+              "label": "第6天",
+              "title": "跨境前往阿拉木图",
+              "content": "从伊宁乘长途巴士跨境前往阿拉木图，具体班次、口岸通关和耗时需提前核实。"
+            },
+            {
+              "id": "card-zfp9wo",
+              "place": "阿拉木图",
+              "label": "第7天",
+              "title": "城区文化漫步",
+              "content": "游览潘菲洛夫公园、升天大教堂和绿色巴扎，体验当地建筑与生活气息。"
+            },
+            {
+              "id": "card-19xgseq",
+              "place": "阿拉木图",
+              "label": "第8天",
+              "title": "山地自然体验",
+              "content": "前往Shymbulak山地度假区，欣赏山景，具体缆车开放和天气需按日期确认。"
+            },
+            {
+              "id": "card-1xtjxoz",
+              "place": "阿拉木图",
+              "label": "第9天",
+              "title": "湖泊探索",
+              "content": "前往大阿拉木图湖，享受湖光山色，注意道路和进入范围需另行确认。"
+            },
+            {
+              "id": "card-1bcmf65",
+              "place": "阿拉木图",
+              "label": "第10天",
+              "title": "弹性预留",
+              "content": "根据前几日节奏调整，可补足未完成的景点或休息，自由活动。"
+            }
+          ],
+          "route": [
+            "北京",
+            "乌鲁木齐",
+            "伊宁",
+            "阿拉木图"
+          ],
+          "pending": [
+            "跨境交通班次与费用",
+            "乌鲁木齐至伊宁巴士班次",
+            "Shymbulak缆车开放情况",
+            "大阿拉木图湖道路与进入范围",
+            "返程安排"
+          ],
+          "evidence_state": "explore"
+        },
+        "revision": 2,
+        "preview": {
+          "draft": {
+            "title": "北京出发经伊宁至阿拉木图7天紧凑自然与文化探索草案",
+            "overview": "从北京出发，7天时间，一个人，预算8000元，兼顾自然与本地文化。选择陆路经乌鲁木齐、伊宁前往阿拉木图，伊宁只作短暂停留，重点放在阿拉木图的山地与湖泊。具体班次和费用需后续核实。",
+            "sections": [
+              {
+                "title": "交通取舍",
+                "content": "陆路经乌鲁木齐、伊宁前往阿拉木图，沿途体验更丰富，但耗时和跨境衔接需仔细查。直飞作为备选保留。具体班次和价格待查。"
+              },
+              {
+                "title": "自然与文化搭配",
+                "content": "伊宁的伊犁河谷与阿拉木图的山地湖泊构成自然主线，城区文化漫步穿插其中，兼顾兴趣。"
+              },
+              {
+                "title": "待查事项",
+                "content": "跨境交通班次与口岸通关、乌鲁木齐至伊宁巴士班次、Shymbulak缆车开放、大阿拉木图湖道路状况等需按出行日期核实。"
+              }
+            ],
+            "cards": [
+              {
+                "id": "card-1kkwl7l",
+                "place": "北京",
+                "label": "第1天",
+                "title": "出发准备与交通待定",
+                "content": "从北京出发，乘火车或飞机前往乌鲁木齐，具体班次和费用待查。"
+              },
+              {
+                "id": "card-2x9k3m",
+                "place": "乌鲁木齐",
+                "label": "第2天",
+                "title": "过境乌鲁木齐，前往伊宁",
+                "content": "抵达乌鲁木齐后，直接转乘长途巴士前往伊宁，沿途欣赏天山风光，不在市区停留。具体班次和耗时待查。"
+              },
+              {
+                "id": "card-3p7q2w",
+                "place": "伊宁",
+                "label": "第3天",
+                "title": "伊犁河谷初体验",
+                "content": "抵达伊宁，短暂体验伊犁河谷的自然风光，可散步市区感受当地氛围，当晚或次日一早跨境。具体跨境安排需提前核实。"
+              },
+              {
+                "id": "card-6i9o0p",
+                "place": "阿拉木图",
+                "label": "第4天",
+                "title": "跨境前往阿拉木图",
+                "content": "从伊宁乘长途巴士跨境前往阿拉木图，具体班次、口岸通关和耗时需提前核实，此日仅作交通预留。"
+              },
+              {
+                "id": "card-zfp9wo",
+                "place": "阿拉木图",
+                "label": "第5天",
+                "title": "城区文化漫步",
+                "content": "游览潘菲洛夫公园、升天大教堂和绿色巴扎，体验当地建筑与生活气息。"
+              },
+              {
+                "id": "card-19xgseq",
+                "place": "阿拉木图",
+                "label": "第6天",
+                "title": "山地自然体验",
+                "content": "前往Shymbulak山地度假区，欣赏山景，具体缆车开放和天气需按日期确认。"
+              },
+              {
+                "id": "card-1xtjxoz",
+                "place": "阿拉木图",
+                "label": "第7天",
+                "title": "湖泊探索与弹性预留",
+                "content": "上午前往大阿拉木图湖，享受湖光山色，下午根据前几日节奏调整，可补足未完成的景点或休息。"
+              }
+            ],
+            "route": [
+              "北京",
+              "乌鲁木齐",
+              "伊宁",
+              "阿拉木图"
+            ],
+            "pending": [
+              "跨境交通班次与费用",
+              "乌鲁木齐至伊宁巴士班次",
+              "Shymbulak缆车开放情况",
+              "大阿拉木图湖道路与进入范围",
+              "返程安排"
+            ],
+            "evidence_state": "explore"
+          },
+          "brief": {
+            "origin": "北京",
+            "destination": "阿拉木图",
+            "summary": "从北京出发，7天，一个人，预算8000元，喜欢自然和本地文化，愿意坐长途巴士。选择陆路经乌鲁木齐、伊宁前往阿拉木图。",
+            "wishes": [
+              "喜欢自然",
+              "喜欢本地文化",
+              "愿意坐长途巴士",
+              "选择陆路走法，经乌鲁木齐和伊宁"
+            ],
+            "open_questions": []
+          },
+          "patch": {
+            "preferences": {
+              "pace": "explore",
+              "road": "open",
+              "nights": null,
+              "preferred_mode": null,
+              "experience": "balanced",
+              "nature_theme": null,
+              "destination_days": null
+            },
+            "travel": {
+              "traveler_count": 1
+            },
+            "constraints": {
+              "budget_max_cny": 8000
+            },
+            "sights": {}
+          },
+          "requirements": {
+            "required_stops": [
+              "伊宁"
+            ],
+            "trip_days": 7,
+            "verified_cross_border_only": false
+          },
+          "base_revision": 2,
+          "base_signature": "{\"anchors\":{},\"constraints\":{\"budget_max_cny\":8000},\"preferences\":{\"destination_days\":null,\"experience\":\"balanced\",\"nature_theme\":null,\"nights\":null,\"pace\":\"explore\",\"preferred_mode\":null,\"road\":\"open\",\"skipped\":[]},\"sights\":{\"day_hours\":8,\"full_days\":2,\"play_window\":null,\"preference\":\"不限\",\"requested\":false,\"selected_ids\":[],\"visit_dates\":{},\"visit_hours\":{}},\"travel\":{\"traveler_count\":1}}",
+          "selected_candidate_id": null
+        }
+      },
+      "patch": {
+        "preferences": {},
+        "travel": {},
+        "constraints": {},
+        "sights": {}
+      },
+      "sources": [
+        {
+          "title": "哈萨克斯坦旅游门户：阿拉木图",
+          "url": "https://www.kazakhstan.travel/en/regions/almaty",
+          "published_at": null,
+          "sampled_at": "2026-10-11",
+          "platform": "kazakhstan.travel",
+          "kind": "official",
+          "host": "kazakhstan.travel"
+        },
+        {
+          "title": "哈萨克斯坦旅游门户：恰伦国家公园",
+          "url": "https://kazakhstan.travel/en/parks/charyn",
+          "published_at": null,
+          "sampled_at": "2026-10-11",
+          "platform": "kazakhstan.travel",
+          "kind": "official",
+          "host": "kazakhstan.travel"
+        },
+        {
+          "title": "哈萨克斯坦旅游门户：阿拉木图",
+          "url": "https://www.kazakhstan.travel/en/regions/almaty",
+          "published_at": null,
+          "sampled_at": "2026-10-11",
+          "platform": "kazakhstan.travel",
+          "kind": "official",
+          "host": "kazakhstan.travel"
+        }
+      ],
+      "request_generation": false,
+      "selected_candidate_id": null
+    },
+    {
+      "text": "采用这个预览",
+      "action": "accept_preview",
+      "elapsed_ms": 0,
+      "status": "ok",
+      "engine": "state",
+      "reply": "已采用预览中的安排，其他已确认条件继续保留。",
+      "conversation": {
+        "stage": "draft",
+        "brief": {
+          "origin": "北京",
+          "destination": "阿拉木图",
+          "summary": "从北京出发，7天，一个人，预算8000元，喜欢自然和本地文化，愿意坐长途巴士。选择陆路经乌鲁木齐、伊宁前往阿拉木图。",
+          "wishes": [
+            "喜欢自然",
+            "喜欢本地文化",
+            "愿意坐长途巴士",
+            "选择陆路走法，经乌鲁木齐和伊宁"
+          ],
+          "open_questions": []
+        },
+        "routing": {
+          "origin": "北京",
+          "destination": "阿拉木图"
+        },
+        "requirements": {
+          "required_stops": [
+            "伊宁"
+          ],
+          "trip_days": 7,
+          "verified_cross_border_only": false
+        },
+        "draft": {
+          "title": "北京出发经伊宁至阿拉木图7天紧凑自然与文化探索草案",
+          "overview": "从北京出发，7天时间，一个人，预算8000元，兼顾自然与本地文化。选择陆路经乌鲁木齐、伊宁前往阿拉木图，伊宁只作短暂停留，重点放在阿拉木图的山地与湖泊。具体班次和费用需后续核实。",
+          "sections": [
+            {
+              "title": "交通取舍",
+              "content": "陆路经乌鲁木齐、伊宁前往阿拉木图，沿途体验更丰富，但耗时和跨境衔接需仔细查。直飞作为备选保留。具体班次和价格待查。"
+            },
+            {
+              "title": "自然与文化搭配",
+              "content": "伊宁的伊犁河谷与阿拉木图的山地湖泊构成自然主线，城区文化漫步穿插其中，兼顾兴趣。"
+            },
+            {
+              "title": "待查事项",
+              "content": "跨境交通班次与口岸通关、乌鲁木齐至伊宁巴士班次、Shymbulak缆车开放、大阿拉木图湖道路状况等需按出行日期核实。"
+            }
+          ],
+          "cards": [
+            {
+              "id": "card-1kkwl7l",
+              "place": "北京",
+              "label": "第1天",
+              "title": "出发准备与交通待定",
+              "content": "从北京出发，乘火车或飞机前往乌鲁木齐，具体班次和费用待查。"
+            },
+            {
+              "id": "card-2x9k3m",
+              "place": "乌鲁木齐",
+              "label": "第2天",
+              "title": "过境乌鲁木齐，前往伊宁",
+              "content": "抵达乌鲁木齐后，直接转乘长途巴士前往伊宁，沿途欣赏天山风光，不在市区停留。具体班次和耗时待查。"
+            },
+            {
+              "id": "card-3p7q2w",
+              "place": "伊宁",
+              "label": "第3天",
+              "title": "伊犁河谷初体验",
+              "content": "抵达伊宁，短暂体验伊犁河谷的自然风光，可散步市区感受当地氛围，当晚或次日一早跨境。具体跨境安排需提前核实。"
+            },
+            {
+              "id": "card-6i9o0p",
+              "place": "阿拉木图",
+              "label": "第4天",
+              "title": "跨境前往阿拉木图",
+              "content": "从伊宁乘长途巴士跨境前往阿拉木图，具体班次、口岸通关和耗时需提前核实，此日仅作交通预留。"
+            },
+            {
+              "id": "card-zfp9wo",
+              "place": "阿拉木图",
+              "label": "第5天",
+              "title": "城区文化漫步",
+              "content": "游览潘菲洛夫公园、升天大教堂和绿色巴扎，体验当地建筑与生活气息。"
+            },
+            {
+              "id": "card-19xgseq",
+              "place": "阿拉木图",
+              "label": "第6天",
+              "title": "山地自然体验",
+              "content": "前往Shymbulak山地度假区，欣赏山景，具体缆车开放和天气需按日期确认。"
+            },
+            {
+              "id": "card-1xtjxoz",
+              "place": "阿拉木图",
+              "label": "第7天",
+              "title": "湖泊探索与弹性预留",
+              "content": "上午前往大阿拉木图湖，享受湖光山色，下午根据前几日节奏调整，可补足未完成的景点或休息。"
+            }
+          ],
+          "route": [
+            "北京",
+            "乌鲁木齐",
+            "伊宁",
+            "阿拉木图"
+          ],
+          "pending": [
+            "跨境交通班次与费用",
+            "乌鲁木齐至伊宁巴士班次",
+            "Shymbulak缆车开放情况",
+            "大阿拉木图湖道路与进入范围",
+            "返程安排"
+          ],
+          "evidence_state": "explore"
+        },
+        "revision": 3,
+        "preview": null
+      },
+      "patch": {
+        "preferences": {
+          "pace": "explore",
+          "road": "open",
+          "nights": null,
+          "preferred_mode": null,
+          "experience": "balanced",
+          "nature_theme": null,
+          "destination_days": null
+        },
+        "travel": {
+          "traveler_count": 1
+        },
+        "constraints": {
+          "budget_max_cny": 8000
+        },
+        "sights": {}
+      },
+      "selected_candidate_id": null,
+      "clear_selection": true,
+      "sources": [],
+      "request_generation": false
+    },
+    {
+      "text": "跨境交通必须是经过核实的。",
+      "action": "chat",
+      "elapsed_ms": 21078,
+      "status": "ok",
+      "engine": "llm",
+      "reply": "已按你的要求，将跨境交通明确为必须经过核实的环节，草案中所有涉及跨境交通的日期均标注为交通预留，不承诺当天抵达，并列入待查事项。",
+      "conversation": {
+        "stage": "draft",
+        "brief": {
+          "origin": "北京",
+          "destination": "阿拉木图",
+          "summary": "从北京出发，7天，一个人，预算8000元，喜欢自然和本地文化，愿意坐长途巴士。选择陆路经乌鲁木齐、伊宁前往阿拉木图。跨境交通必须经过核实。",
+          "wishes": [
+            "喜欢自然",
+            "喜欢本地文化",
+            "愿意坐长途巴士",
+            "选择陆路走法，经乌鲁木齐和伊宁",
+            "跨境交通必须经过核实"
+          ],
+          "open_questions": []
+        },
+        "routing": {
+          "origin": "北京",
+          "destination": "阿拉木图"
+        },
+        "requirements": {
+          "required_stops": [
+            "伊宁"
+          ],
+          "trip_days": 7,
+          "verified_cross_border_only": true
+        },
+        "draft": {
+          "title": "北京出发经伊宁至阿拉木图7天紧凑自然与文化探索草案",
+          "overview": "从北京出发，7天时间，一个人，预算8000元，兼顾自然与本地文化。选择陆路经乌鲁木齐、伊宁前往阿拉木图，伊宁只作短暂停留，重点放在阿拉木图的山地与湖泊。跨境交通必须经过核实，具体班次和费用需后续核实。",
+          "sections": [
+            {
+              "title": "交通取舍",
+              "content": "陆路经乌鲁木齐、伊宁前往阿拉木图，沿途体验更丰富，但耗时和跨境衔接需仔细查。直飞作为备选保留。跨境交通必须经过核实，具体班次和价格待查。"
+            },
+            {
+              "title": "自然与文化搭配",
+              "content": "伊宁的伊犁河谷与阿拉木图的山地湖泊构成自然主线，城区文化漫步穿插其中，兼顾兴趣。"
+            },
+            {
+              "title": "待查事项",
+              "content": "跨境交通班次与口岸通关（必须核实）、乌鲁木齐至伊宁巴士班次、Shymbulak缆车开放、大阿拉木图湖道路状况等需按出行日期核实。"
+            }
+          ],
+          "cards": [
+            {
+              "id": "card-1kkwl7l",
+              "place": "北京",
+              "label": "第1天",
+              "title": "出发准备与交通待定",
+              "content": "从北京出发，乘火车或飞机前往乌鲁木齐，具体班次和费用待查。"
+            },
+            {
+              "id": "card-2x9k3m",
+              "place": "乌鲁木齐",
+              "label": "第2天",
+              "title": "过境乌鲁木齐，前往伊宁",
+              "content": "抵达乌鲁木齐后，直接转乘长途巴士前往伊宁，沿途欣赏天山风光，不在市区停留。具体班次和耗时待查。"
+            },
+            {
+              "id": "card-3p7q2w",
+              "place": "伊宁",
+              "label": "第3天",
+              "title": "伊犁河谷初体验",
+              "content": "抵达伊宁，短暂体验伊犁河谷的自然风光，可散步市区感受当地氛围，当晚或次日一早跨境。跨境交通必须经过核实，具体安排待查。"
+            },
+            {
+              "id": "card-6i9o0p",
+              "place": "阿拉木图",
+              "label": "第4天",
+              "title": "跨境前往阿拉木图（交通待查）",
+              "content": "从伊宁乘长途巴士跨境前往阿拉木图，具体班次、口岸通关和耗时必须经过核实，此日仅作交通预留，不承诺当天抵达。"
+            },
+            {
+              "id": "card-zfp9wo",
+              "place": "阿拉木图",
+              "label": "第5天",
+              "title": "城区文化漫步",
+              "content": "游览潘菲洛夫公园、升天大教堂和绿色巴扎，体验当地建筑与生活气息。"
+            },
+            {
+              "id": "card-19xgseq",
+              "place": "阿拉木图",
+              "label": "第6天",
+              "title": "山地自然体验",
+              "content": "前往Shymbulak山地度假区，欣赏山景，具体缆车开放和天气需按日期确认。"
+            },
+            {
+              "id": "card-1xtjxoz",
+              "place": "阿拉木图",
+              "label": "第7天",
+              "title": "湖泊探索与弹性预留",
+              "content": "上午前往大阿拉木图湖，享受湖光山色，下午根据前几日节奏调整，可补足未完成的景点或休息。"
+            }
+          ],
+          "route": [
+            "北京",
+            "乌鲁木齐",
+            "伊宁",
+            "阿拉木图"
+          ],
+          "pending": [
+            "跨境交通须有可核查来源及适用日期；当前草案尚不能证明班次与衔接已核实。",
+            "跨境交通班次与费用（必须核实）",
+            "乌鲁木齐至伊宁巴士班次",
+            "Shymbulak缆车开放情况",
+            "大阿拉木图湖道路与进入范围",
+            "返程安排"
+          ],
+          "evidence_state": "explore"
+        },
+        "revision": 4,
+        "preview": null
+      },
+      "patch": {
+        "preferences": {
+          "pace": "explore",
+          "road": "open",
+          "experience": "balanced"
+        },
+        "travel": {
+          "traveler_count": 1
+        },
+        "constraints": {
+          "budget_max_cny": 8000
+        },
+        "sights": {}
+      },
+      "sources": [
+        {
+          "title": "哈萨克斯坦旅游门户：阿拉木图",
+          "url": "https://www.kazakhstan.travel/en/regions/almaty",
+          "published_at": null,
+          "sampled_at": "2026-10-11",
+          "platform": "kazakhstan.travel",
+          "kind": "official",
+          "host": "kazakhstan.travel"
+        },
+        {
+          "title": "哈萨克斯坦旅游门户：恰伦国家公园",
+          "url": "https://kazakhstan.travel/en/parks/charyn",
+          "published_at": null,
+          "sampled_at": "2026-10-11",
+          "platform": "kazakhstan.travel",
+          "kind": "official",
+          "host": "kazakhstan.travel"
+        },
+        {
+          "title": "哈萨克斯坦旅游门户：阿拉木图",
+          "url": "https://www.kazakhstan.travel/en/regions/almaty",
+          "published_at": null,
+          "sampled_at": "2026-10-11",
+          "platform": "kazakhstan.travel",
+          "kind": "official",
+          "host": "kazakhstan.travel"
+        }
+      ],
+      "selected_candidate_id": null,
+      "clear_selection": false,
+      "request_generation": false
+    }
+  ]
+}

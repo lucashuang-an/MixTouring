@@ -21,8 +21,10 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { ANYWHERE_PLANNER_VERSION } from './versions.mjs';
+import { countryScope } from './place-scope.mjs';
 import { discoverRoutes, sourceSupportsLeg, sourceLegConnectionExcerpt } from './route-discovery.mjs';
 import { inspirationFor, inspirationRoute, listInspirations } from './inspirations.mjs';
+import {assessSourceTime,retrievalContext} from './source-time.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -171,7 +173,7 @@ export function constraintChips(c) {
 }
 
 /** 显式传入的约束（UI 字段）白名单化：类型/范围不对的丢弃，不猜。 */
-function sanitizeConstraints(raw) {
+export function sanitizeConstraints(raw) {
   const c = {};
   if (!raw || typeof raw !== 'object') return c;
   const b = Number(raw.budget_max_cny);
@@ -299,7 +301,7 @@ export function extractReturnDate(text, nowMs = Date.now()) {
 }
 
 /** 显式行程意图字段（UI）白名单化：枚举/真实日历/范围不对的丢弃，不猜（十一轮 P1：无效日期不得当已确认事实）。 */
-function sanitizeIntentFields(raw) {
+export function sanitizeIntentFields(raw) {
   const out = {};
   if (!raw || typeof raw !== 'object') return out;
   if (['pending', 'round_trip', 'one_way'].includes(raw.trip_type)) out.trip_type = raw.trip_type;
@@ -386,7 +388,7 @@ export async function osmSearch(query, { limit = 3, timeoutMs = 8000 } = {}) {
   const base = (process.env.OSM_NOMINATIM_BASE || 'https://nominatim.openstreetmap.org').replace(/\/+$/, '');
   const url = base + '/search?' + new URLSearchParams({
     q: String(query).slice(0, 120), format: 'jsonv2', addressdetails: '1',
-    limit: String(limit), accept_language: 'zh'
+    limit: String(limit), accept_language: 'zh', extratags:'1'
   });
   const res = await fetch(url, {
     headers: { 'User-Agent': 'MixTouring/dev (+https://github.com/lucashuang-an/MixTouring; place verification)' },
@@ -401,6 +403,7 @@ export async function osmSearch(query, { limit = 3, timeoutMs = 8000 } = {}) {
     lon: r.lon != null ? String(r.lon) : null,
     type: r.type || null,
     category: r.category || r.class || null,
+    admin_level: r.extratags?.admin_level || null,
     osm_type: r.osm_type || null,
     osm_id: r.osm_id != null ? String(r.osm_id) : null,
     url: r.osm_type && r.osm_id != null ? 'https://www.openstreetmap.org/' + r.osm_type + '/' + r.osm_id : null,
@@ -448,6 +451,7 @@ export async function geocodePlace(query, opts) {
 
 export function osmKind(r) {
   const t = [r.type, r.category].filter(Boolean).join(' ').toLowerCase();
+  if (/\bcountry\b/.test(t) || String(r.admin_level)==='2') return r.country==='SG'?'city':'country';
   if (/station|halt|tram_stop|railway/.test(t)) return 'station';
   if (/aerodrome|airport/.test(t)) return 'airport';
   if (/city|town|village|municipality|suburb|administrative|county|state|province/.test(t)) return 'city';
@@ -464,6 +468,8 @@ async function openResolvePlace(rawName, contextText, deps, degradations) {
   const osm = deps.osmSearch || geocodePlace;
   const raw = String(rawName || '').trim();
   if (!raw) return { candidates: [], blocked_reason: 'no_match' };
+  const scope=countryScope(raw);
+  if(scope)return {candidates:[],blocked_reason:'country_scope',scope};
 
   let llmCands = [];
   if (callJson) {
@@ -501,10 +507,15 @@ async function openResolvePlace(rawName, contextText, deps, degradations) {
     if (!r.url || seen.has(r.url)) continue;
     seen.add(r.url);
     const llmHit = usedLlm ? (llmCands.find((c) => c.country == null || c.country === r.country) || null) : null;
+    /* 候选意图与地图事实必须吻合；不得将其他国家的同名地点换成模型给的名字。 */
+    if(usedLlm && !llmHit)continue;
+    const verifiedKind=osmKind(r);
+    if(!PLACE_KINDS.includes(verifiedKind))continue;
+    if(llmHit && PLACE_KINDS.includes(llmHit.kind) && llmHit.kind!==verifiedKind)continue;
     const cand = {
       name: (llmHit && llmHit.name) || r.display_name.split(',')[0].trim() || raw,
       name_latin: (llmHit && llmHit.name_latin) || null,
-      kind: (llmHit && PLACE_KINDS.includes(llmHit.kind) ? llmHit.kind : osmKind(r)),
+      kind: verifiedKind,
       country: r.country || null,
       country_name: (llmHit && llmHit.country_name) || null,
       lat: r.lat, lon: r.lon,
@@ -524,7 +535,7 @@ async function openResolvePlace(rawName, contextText, deps, degradations) {
     cand.candidate_id = registerPlaceCandidate(cand, storeOpts); /* 事实只存服务端（P0-1） */
     candidates.push(cand);
   }
-  return { candidates };
+  return { candidates,blocked_reason:candidates.length?undefined:'no_match' };
 }
 
 /* ---------- 候选存证（v0.32.0 P0-1：确认信任边界闭合） ----------
@@ -1246,18 +1257,20 @@ export async function verifyLegs(candidates, searchFn, sharedCache) {
       const relevant = [];
       for (const r of (res || [])) {
         if (!(r && typeof r.link === 'string' && /^https:/.test(r.link))) continue;
+        const time=assessSourceTime({published_at:r.date},retrievalContext({purpose:'transport'}));
+        if(['historical','expired','outside_window','future','after_trip'].includes(time.state))continue;
         const rel = resultRelevance(r, leg);
         if (rel.from_hit && rel.to_hit && rel.mode_hit && rel.connection_hit) {
           const modes = !leg.mode_guess || leg.mode_guess === 'unknown' ? ['plane', 'rail', 'road'] : [leg.mode_guess];
           const excerpt = modes.map((mode) => sourceLegConnectionExcerpt(r, leg.from, leg.to, mode)).find(Boolean);
           relevant.push({ title: String(r.title || '').slice(0, 120), link: r.link,
-            sampled_at: new Date().toISOString(), relevance: rel, connection_excerpt: excerpt });
+            sampled_at: new Date().toISOString(), relevance: rel, connection_excerpt: excerpt,temporal:time });
         }
       }
       if (relevant.length) {
         leg.evidence_state = 'source_lead';
         leg.sources = relevant.slice(0, 3);
-        leg.evidence_note = '搜索线索（同句描述该段客运连接与方式；非班期核验）';
+        leg.evidence_note = relevant.every(s=>s.temporal.state==='undated')?'日期未明的搜索线索（非班期核验），不能作为当期班期依据':'搜索线索（同句描述该段客运连接与方式；非班期核验）';
         leads++;
       }
     }
@@ -1300,6 +1313,7 @@ export async function planAnywhere(input, deps = {}) {
   const allNames = places.map((p) => p.name);
   const cityNames = places.filter((p) => p.kind === 'city').map((p) => p.name);
   const place_candidates = { origin: [], destination: [] };
+  const placeScopes={};
 
   let o = null, d = null;
   let parse_engine = 'none';
@@ -1343,12 +1357,12 @@ export async function planAnywhere(input, deps = {}) {
    * 完整对象/伪造字段/未知/过期一律拒绝，不采信浏览器自报数据 */
   const storeOpts = deps.candidateStore ? { store: deps.candidateStore } : {};
   const conf = input.confirmed_places || {};
-  if (!o && conf.origin != null) {
+  if (!o && conf.origin != null && !countryScope(rawOrigin)) {
     const stored = takePlaceCandidate(extractCandidateId(conf.origin), storeOpts);
     if (stored) { o = candidateToDynamic(stored); confirmedUsed = true; }
     else needs.push('出发地确认候选无效或已过期（确认卡候选 30 分钟内有效）：请重新规划再选择；不接受自行拼装的地点数据');
   }
-  if (!d && conf.destination != null) {
+  if (!d && conf.destination != null && !countryScope(rawDest)) {
     const stored = takePlaceCandidate(extractCandidateId(conf.destination), storeOpts);
     if (stored) { d = candidateToDynamic(stored); confirmedUsed = true; }
     else needs.push('目的地确认候选无效或已过期（确认卡候选 30 分钟内有效）：请重新规划再选择；不接受自行拼装的地点数据');
@@ -1359,7 +1373,10 @@ export async function planAnywhere(input, deps = {}) {
   const openResolve = async (endpoint, rawLabel) => {
     const res = await openResolvePlace(rawLabel, text, { callJson, osmSearch: deps.osmSearch }, degradations);
     place_candidates[endpoint] = res.candidates;
-    if (res.candidates.length) {
+    if(res.blocked_reason==='country_scope'){
+      placeScopes[endpoint]=res.scope;
+      needs.push((endpoint==='origin'?'出发地':'目的地')+'「'+res.scope.name+'」是国家。'+(endpoint==='origin'?'准备从哪座城市出发？':'想从哪座城市开始旅行？'));
+    } else if (res.candidates.length) {
       needs.push((endpoint === 'origin' ? '出发地' : '目的地') + '「' + rawLabel + '」为新地点，已生成 ' +
         res.candidates.length + ' 个已核验候选：请在确认卡中选择后继续（未确认前不生成交通候选；候选 30 分钟内有效）');
     } else if (res.blocked_reason === 'source_unavailable') {
@@ -1419,6 +1436,7 @@ export async function planAnywhere(input, deps = {}) {
       route: null,
       needs_confirmation: needs,
       place_candidates,
+      place_scopes:placeScopes,
       candidates: [],
       constraint_notes: [],
       degradations,
