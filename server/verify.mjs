@@ -306,7 +306,7 @@ async function main() {
   const caps = await (await fetch(BASE + '/api/capabilities')).json();
   if (caps.code === 0 && typeof caps.data.web_search_configured === 'boolean' &&
     ['available', 'quota_exhausted', 'timeout', 'error', 'unknown'].includes(caps.data.web_search_status) &&
-    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.55.1') {
+    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.56.0') {
     console.log('✓ /api/capabilities P1-4：configured 与最近真实状态分开（web_search_configured=' +
       caps.data.web_search_configured + ', status=' + caps.data.web_search_status + '），版本拆分对齐');
   } else { failed++; console.error('✗ /api/capabilities 形状异常：' + JSON.stringify(caps).slice(0, 200)); }
@@ -314,6 +314,12 @@ async function main() {
   /* ---------- 十一轮：意图合并顺序 / 无效窗口（真实 API 定向反例） ---------- */
   const ivA = await (await fetch(BASE + '/api/anywhere/plan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: '从北京去阿拉木图往返' }) })).json();
   if (ivA.code === 0 && ivA.data.plan_id && ivA.data.candidates.length) {
+    const compare=await (await fetch(BASE+'/api/anywhere/compare',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({plan_id:ivA.data.plan_id,requirements:{trip_days:10},candidates:[{id:'伪造'}]})})).json();
+    if(compare.code===0 && compare.data.routes.some(r=>r.baseline) && compare.data.routes.every(r=>ivA.data.candidates.some(c=>c.id===r.id) && !r.verified && r.cost.grade==='unpriced'))console.log('✓ 路线比较：服务端候选、直达基准与未知费用边界');
+    else {failed++;console.error('✗ 路线比较未保留服务端候选或证据边界');}
+    const expiredCompare=await (await fetch(BASE+'/api/anywhere/compare',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({plan_id:'expired'})})).json();
+    if(expiredCompare.code===1)console.log('✓ 路线比较：过期上下文不可由客户端补造');
+    else {failed++;console.error('✗ 过期比较未被拒绝');}
     const rtDetail = await (await fetch(BASE + '/api/anywhere/journey', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ plan_id: ivA.data.plan_id, candidate_id: ivA.data.candidates[0].id, stopover_nights: 0 }) })).json();
     if (rtDetail.code === 0 && rtDetail.data.inbound.length === 1 && rtDetail.data.inbound[0].from === '阿拉木图' && rtDetail.data.inbound[0].evidence_state === 'explore') console.log('✓ /api/anywhere/journey：往返方向独立探索，不继承去程证据');
     else { failed++; console.error('✗ /api/anywhere/journey 往返详情异常：' + JSON.stringify(rtDetail).slice(0, 200)); }

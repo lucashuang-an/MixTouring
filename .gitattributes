@@ -1,0 +1,2 @@
+# 保留第三方发布文件的原始字节及校验值，接受其 CRLF 行尾。
+mixtouring-hifi/assets/vendor/leaflet/* -text whitespace=cr-at-eol

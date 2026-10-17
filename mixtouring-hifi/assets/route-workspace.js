@@ -115,7 +115,7 @@
       (card.label || card.place ? '<div class="itinerary-meta">' + esc([card.label, card.place].filter(Boolean).join(' · ')) + '</div>' : '') +
       '<h3>' + esc(card.title) + '</h3><p>' + esc(card.content) + '</p><button type="button" class="card-edit" data-edit-card="' + esc(card.id) + '">调整这段<span aria-hidden="true"> ↗</span></button></div>';
   }
-  function render(container, draft, route, candidate, references, transportStatus) {
+  function render(container, draft, route, candidate, references, transportStatus, onFocusPlace) {
     var strip = container.querySelector('.route-strip-host'), routeMarkup = routeHtml(route);
     if (strip.innerHTML !== routeMarkup) strip.innerHTML = routeMarkup;
     var transport=container.querySelector('.transport-list');
@@ -144,6 +144,7 @@
     });
     oldGroups.forEach(function(el){if(!used.has(el))el.remove();});
     strip.querySelectorAll('[data-focus-place]').forEach(function(button){button.onclick=function(){
+      if(onFocusPlace)onFocusPlace(button.dataset.focusPlace);
       var target=Array.from(list.children).find(function(el){return el.dataset.groupPlace===button.dataset.focusPlace;});
       strip.querySelectorAll('[data-focus-place]').forEach(function(b){b.setAttribute('aria-pressed',String(b===button));});
       list.querySelectorAll('.is-focused').forEach(function(el){el.classList.remove('is-focused');});

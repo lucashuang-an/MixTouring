@@ -22,6 +22,7 @@ import { registerJourneyPlan, journeyDetailFromPlanId, guidePlanFromId } from '.
 import { webSearchStatus } from './lib/llm.mjs';
 import { parseGuideTurn } from './lib/guide.mjs';
 import { conversationTurn } from './lib/conversation.mjs';
+import { buildRouteComparison } from './lib/route-comparison.mjs';
 import { createRequestSignal } from './lib/request-signal.mjs';
 import { routeTransportReferences } from './lib/transport-references.mjs';
 import { searchTransportSources } from './lib/transport-search.mjs';
@@ -353,6 +354,11 @@ app.use(async (ctx, next) => {
 
   if (path === '/api/inspirations' && ctx.method === 'GET') {
     ctx.body = { code: 0, data: listInspirations() };
+    return;
+  }
+  if (path === '/api/anywhere/compare' && ctx.method === 'POST') {
+    const body=await readBody(ctx) || {},plan=guidePlanFromId(body.plan_id);
+    ctx.body=plan?{code:0,data:buildRouteComparison(plan,{preferences:body.preferences,requirements:body.requirements,current_route:body.current_route})}:{code:1,msg:'路线比较已过期，请重新发现走法'};
     return;
   }
   if (path === '/api/anywhere/conversation' && ctx.method === 'POST') {

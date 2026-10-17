@@ -12,6 +12,7 @@ import {routeTransportReferences} from './transport-references.mjs';
 import {retrievalContext,partitionTimedSources,sourceWindow} from './source-time.mjs';
 import {readPublicPage} from './public-reader.mjs';
 import {transportSearchEvidence} from './transport-search.mjs';
+import {buildRouteComparison} from './route-comparison.mjs';
 
 const guides = JSON.parse(readFileSync(new URL('../../pipeline/data/destination-guides.json', import.meta.url))).destinations;
 const str = (v, n = 1600) => typeof v === 'string' ? v.trim().slice(0, n) : '';
@@ -76,7 +77,7 @@ transport_references 是服务端查过公开来源的参考走法，包含历�
 用户说“就按这些想法做一个初稿”“确认，生成吧”是 confirm，confirmed=true；reply 简短承接，不得再次询问是否确认。这时 chat 的 draft 仍为 null，系统将自动进入 generate。已有方案的明确修改为 revise；“如果下雨怎么办，先聊聊不用改”是 question，所有补丁为空，draft=null。
 生成草案或用户明确改走法时，selected_candidate_id 从 routes 的 id 中选择与正文一致的一条；没有适合候选则 null，不能自造 id。current.selected_candidate_id 是用户当前所选，普通景点调整不改走法。
 每轮回复只选一个最值得讨论的问题，open_questions 最多一个，不用“另外”追加第二问。pace 是跨城走法偏好：simple 表示省心少换乘，explore 表示明确想沿途停留；目的地慢游不等于沿途停留。新出现的饮食、兴趣、住宿风格等未枚举偏好写入 wishes，不要当作未识别。
-brief 是完整最新旅行意图，保留此前仍有效的偏好、排除项和未定事项，不局限于已有字段；禁止把建议当作用户已确认。summary 简短准确，wishes 保存较长上下文。ready 表示地点与核心想法足够做初稿；缺精确日期、预算不是阻碍。已有起终点、旅行偏好和大致天数时务必 ready=true，邀请确认生成，不继续追问景观的细分类别。confirmed 仅当用户本轮明确同意此前摘要并请求生成时为 true，首次输入不算确认。
+brief 是完整最新旅行意图，保留此前仍有效的偏好、排除项和未定事项，不局限于已有字段；禁止把建议当作用户已确认。summary 简短准确，wishes 保存较长上下文。ready 表示地点与核心想法足够做初稿；缺精确日期、预算不是阻碍。已有起终点、旅行偏好和大致天数时务必 ready=true，说明可以先比较直达与沿途方向，不继续追问景观的细分类别。confirmed 仅当用户本轮明确同意此前摘要并请求生成时为 true，首次输入不算确认。
 用户只说国家或地区时，保留其旅行范围，继续讨论城市或抵达点，不擅自将国家替换成首都。比如“想去吉尔吉斯斯坦”可以讨论旅行风格，再建议比什凯克等开始城市让用户选择；用户选定后才将城市写入 origin/destination。中国境内的同名园区不是该国。国家范围未选具体交通端点时 ready=false。
 已知用户从哪座城市出发后，讨论“目的国从某城市开始”是在选择抵达城市，更新 destination，保留原 origin；国家旅行范围留在 wishes。若传入 resolved_intent，操作、确认和用户意图已经确定，资料补充只完善 reply 与 draft，不重新改写意图或再问确认。
 preferences、travel、constraints 是本轮明确更新的字段补丁，无变化返回 {}。询问/比较不执行修改；null 为撤销。preferences 可含 pace(simple/explore/any)、road(open/prefer_other/exclude)、nights(0/1/2)、preferred_mode(rail/plane)、experience(balanced/city/nature)、nature_theme(mountains/canyon/lake/forest)、destination_days(1..14)。其余偏好完整写入 brief.wishes，不能丢掉。
@@ -162,12 +163,15 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
       explanation:c.explanation, basis:c.basis })),
     destination_material: guides[destination] || null,
     sight_material: /伊宁|伊犁/.test(destination || '') ? sightCatalog() : null };
+  context.route_comparison=buildRouteComparison(plan,{preferences:input.preferences,requirements:before.requirements});
+  const explicitChoice=action==='generate'?(plan?.candidates || []).find(c=>c.id===input.requested_candidate_id):null;
+  if(explicitChoice)context.output_contract.selected_route=workspace.routeFor(null,explicitChoice);
   context.transport_references=transportMaterial(before.draft?.route?.length?[before.draft.route]:context.routes.map(c=>workspace.routeFor(null,c)).concat([[before.routing.origin,before.routing.destination].filter(Boolean)]),deps.now || Date.now());
   let visibleEvidence=transportSearchEvidence(input.retrieval_ids,{route:before.draft?.route || [],window:retrievalContext({travel:input.travel,now:deps.now || Date.now()}).target_window,now:deps.now || Date.now()});
   context.visible_search_results=visibleEvidence;
   context.visible_experiences=transportSearchEvidence(input.retrieval_ids,{route:before.draft?.route || [],window:retrievalContext({travel:input.travel,now:deps.now || Date.now()}).target_window,now:deps.now || Date.now(),purpose:'experience'});
   context.experience_boundary='旅行者经验只支持体验与流程；禁止将其中旧票价、班次、耗时当作当前事实。';
-  const invoke = async () => model({ schema_prompt: PROMPT + (action==='generate'
+  const invoke = async () => model({ schema_prompt: PROMPT + '\n路线比较中地点资料只支持体验背景，不证明当期班次。愿坐巴士是允许，不等于优先陆路。不要在未确认护照国籍时给用户个人免签结论。用户已确认探索时，简要说明接下来比较走法，不再问可以吗。' + (explicitChoice?'\n用户已通过界面选定 output_contract.selected_route；草案城市链必须严格保留该顺序。交通耗时和日期未定时优先生成分阶段卡片（label用出发、沿途停留、目的地、弹性），不得将飞机和长途火车都写成当天抵达。总旅行天数仍保留，停留天数只是建议预算。':'') + (action==='generate'
     ? '\n本次明确是 action=generate，用户已经确认，不是聊天确认轮。请现在交付完整 draft：route 含起终点，cards 为完整逐日或分阶段安排；不能 draft=null，不能只说“开始整理”，不能再次问用户确认。只读取确认条件，不新增日期。'
     : ''), user: JSON.stringify(context), kind: 'conversation', timeoutMs: 25000 });
   try {
@@ -292,7 +296,7 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
     if(draft){
       const travel={...context.current.travel,...patch.travel};
       const returnAllowed=travel.trip_type==='round_trip' || travel.return_window || input.anchors?.return;
-      const returnCard=c=>/返程|回程/.test(c.title+' '+c.content) || next.routing.origin && [c.title,c.content].some(s=>s.includes('返回'+next.routing.origin) || s.includes('回'+next.routing.origin));
+      const returnCard=(c,index)=>/返程|回程/.test(c.title+' '+c.content) || next.routing.origin && (index>0 && [c.title,c.content].some(s=>['返回','回到','回','抵达','到达'].some(word=>s.includes(word+next.routing.origin))) || c.place===next.routing.origin && index>0 && !draft.route.slice(1).includes(next.routing.origin) && draft.cards.slice(0,index).some(x=>x.place && x.place!==next.routing.origin));
       const hasReturn=value=>value.cards.some(returnCard);
       if(!returnAllowed && hasReturn(draft)){
         const affected=draft.cards.filter(returnCard);
@@ -302,13 +306,16 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
         let checked;
         if(Array.isArray(fixed?.cards)){
           if(fixed.cards.length!==affected.length || new Set(fixed.cards.map(c=>c?.id)).size!==affected.length || fixed.cards.some(c=>!affected.some(a=>a.id===c?.id) || !str(c.title) || !str(c.content)))throw Error('卡片修改范围不一致');
-          checked=cleanDraft({...draft,cards:draft.cards.map(c=>{const change=fixed.cards.find(x=>x.id===c.id);return change?{...c,title:change.title,content:change.content}:c;})},draft);
+          checked=cleanDraft({...draft,cards:draft.cards.map(c=>{const change=fixed.cards.find(x=>x.id===c.id);return change?{...c,title:change.title,content:change.content,place:c.place===next.routing.origin && !draft.route.slice(1).includes(next.routing.origin)?next.routing.destination:c.place}:c;})},draft);
         }else checked=cleanDraft(fixed?.draft,draft);
         if(!checked)throw Error('返程修复未返回卡片');
         if(hasReturn(checked))throw Error('返程修复仍含未确认返程');
         if(JSON.stringify(checked.route)!==JSON.stringify(draft.route))throw Error('返程修复改变城市链');
         if(unsupportedNumbers({reply:fixed?.reply,draft:checked}).length)throw Error('返程修复仍有无来源数字');
         draft=checked;raw.reply=str(fixed.reply) || raw.reply;
+      }
+      if(explicitChoice && explicitChoice.legs.some(l=>!l.mode_guess || l.mode_guess==='unknown') && !input.anchors?.outbound && !context.current.travel.outbound_window){
+        draft.cards=draft.cards.map(c=>({...c,label:/^第\s*\d+\s*(?:[—–\-~至到]\s*\d+\s*)?天/.test(c.label || '')?(c.place===next.routing.origin?'出发阶段':c.place===next.routing.destination?'目的地安排':'沿途停留'):c.label}));
       }
       const coverage=workspace.dayCoverage(draft,next.requirements.trip_days);
       if(coverage && (coverage.missing.length || coverage.outside.length)){
@@ -335,7 +342,11 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
       const note='跨境交通须有可核查来源及适用日期；当前草案尚不能证明班次与衔接已核实。';
       if(!draft.pending.includes(note))draft.pending=[note,...draft.pending].slice(0,10);
     }
-    const selected = (plan?.candidates || []).find(c => c.id === raw.selected_candidate_id && (!draft?.route.length || workspace.matches(draft.route,c)));
+    if(explicitChoice && (!draft || !workspace.matches(draft.route,explicitChoice)))throw Error('生成稿未保留已选路线，原选择仍保留');
+    const selected = explicitChoice || (plan?.candidates || []).find(c => c.id === raw.selected_candidate_id && (!draft?.route.length || workspace.matches(draft.route,c)));
+    if(explicitChoice && draft){
+      raw.reply='已按你选的 '+draft.route.join(' → ')+' 生成初稿，其他已确认条件保留。可以继续聊着调整。';
+    }
     if(action==='chat' && raw.intent_action==='preview' && before.draft && draft && !changedDestination){
       return {status:'ok',engine:'llm',reply:'先看看这份备选预览，当前安排还未改动。'+str(raw.reply),conversation:{...before,preview:{draft,brief:next.brief,patch,requirements:next.requirements,base_revision:before.revision,base_signature:conditionSignature(input),selected_candidate_id:selected?.id || null}},
         patch:cleanPatch(),sources,request_generation:false,selected_candidate_id:null};
@@ -348,10 +359,12 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
       next.stage = before.draft && !changedDestination ? 'draft' : next.routing.origin && next.routing.destination && next.brief.summary ? 'ready' : 'discuss';
       if (changedDestination) {next.draft = null;next.preview=null;}
     }
-    return { status:'ok', engine:'llm', reply:next.stage==='discuss' && (raw.confirmed===true || raw.intent_action==='confirm') ? routeResult.question || '这份想法已经保留，先明确本次首个抵达城市，再生成草案。' : str(raw.reply), conversation:next, patch, sources,
+    const requestGeneration=action === 'chat' && (before.stage === 'ready' || (!!before.brief.summary && messages.some(m=>m.role==='assistant'))) && (raw.confirmed === true || raw.intent_action==='confirm') && next.stage === 'ready';
+    const discoveryReady=action==='chat' && !questionOnly && !next.draft && next.stage==='ready';
+    return { status:'ok', engine:'llm', reply:requestGeneration || discoveryReady?'已保留你的旅行想法，接下来比较走法的体验与安排代价；选定后再展开具体安排。':next.stage==='discuss' && (raw.confirmed===true || raw.intent_action==='confirm') ? routeResult.question || '这份想法已经保留，先明确本次出发地和首个抵达城市。' : str(raw.reply), conversation:next, patch, sources,
       selected_candidate_id: !questionOnly && next.draft && selected ? selected.id : null,
       clear_selection:!questionOnly && !!draft?.route.length && !selected && !!input.candidate_id && !workspace.matches(draft.route,(plan?.candidates || []).find(c=>c.id===input.candidate_id)),
-      request_generation:action === 'chat' && (before.stage === 'ready' || (!!before.brief.summary && messages.some(m=>m.role==='assistant'))) && (raw.confirmed === true || raw.intent_action==='confirm') && next.stage === 'ready' };
+      request_generation:requestGeneration };
   } catch (error) {
     if(!deps.model)console.warn('对话未完成：'+error.message);
     return { status:'unavailable', engine:'unavailable', reply:'AI 暂时没有完成回复，你的想法和原方案已保留。请再试一次。', conversation:before };

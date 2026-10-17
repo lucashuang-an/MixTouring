@@ -108,8 +108,9 @@
       .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
   <link rel="stylesheet" href="../assets/desktop.css" />
+  <link rel="stylesheet" href="../assets/product-shell.css">
 </head>
-<body style="margin:0;padding:0;background:var(--mixtouring-background,#F8F9FA);font-family:var(--mixtouring-font-sans,'Inter','Noto Sans SC',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,system-ui,sans-serif);color:var(--mixtouring-foreground,#1E2022);-webkit-font-smoothing:antialiased;">
+<body class="product-page user-page" style="margin:0;padding:0;background:var(--mixtouring-background,#F8F9FA);font-family:var(--mixtouring-font-sans,'Inter','Noto Sans SC',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,system-ui,sans-serif);color:var(--mixtouring-foreground,#1E2022);-webkit-font-smoothing:antialiased;">
 <svg xmlns="http://www.w3.org/2000/svg" style="display: none;" aria-hidden="true">
   <defs>
     <symbol id="hero-magnifying-glass" viewBox="0 0 24 24">
@@ -167,14 +168,15 @@
 
     <!-- 页头 -->
     <header class="px-4" style="padding-top: 26px;">
-      <h1 style="font-size: 24px; color: var(--mixtouring-foreground, #1E2022); letter-spacing: -0.02em;">我的</h1>
+      <h1 style="font-size: 24px; color: var(--mixtouring-foreground, #1E2022); letter-spacing: -0.02em;">我的旅行</h1>
       <p style="font-size: 13.5px; color: var(--mixtouring-muted-foreground, #7C8089); margin-top: 6px;">匿名使用中 · 私人草案、收藏与回填仅保存在当前浏览器</p>
     </header>
 
     <!-- 私人草案（卡 A：本机私密保存，恢复须重新规划并重新确认开放地点） -->
-    <h3 class="px-4" style="font-size: 13px; color: var(--mixtouring-muted-foreground, #7C8089); letter-spacing: 0.08em; margin-top: 24px;">私人草案</h3>
+    <h3 class="px-4" style="font-size: 13px; color: var(--mixtouring-muted-foreground, #7C8089); letter-spacing: 0.08em; margin-top: 24px;">我的旅行</h3>
     <div class="px-4 pt-3 flex flex-col" style="gap: 10px;" id="draftWrap"></div>
 
+    <details class="legacy-collections"><summary>收藏、心愿与回填</summary>
     <!-- 我的收藏 -->
     <h3 class="px-4" style="font-size: 13px; color: var(--mixtouring-muted-foreground, #7C8089); letter-spacing: 0.08em; margin-top: 24px;">我的收藏</h3>
     <div class="px-4 pt-3 flex flex-col" style="gap: 10px;" id="favWrap"></div>
@@ -187,6 +189,7 @@
     <h3 class="px-4" style="font-size: 13px; color: var(--mixtouring-muted-foreground, #7C8089); letter-spacing: 0.08em; margin-top: 24px;">回填记录</h3>
     <div class="px-4 pt-3 flex flex-col" style="gap: 10px;" id="fbWrap"></div>
 
+    </details>
     <!-- 关于 -->
     <h3 class="px-4" style="font-size: 13px; color: var(--mixtouring-muted-foreground, #7C8089); letter-spacing: 0.08em; margin-top: 24px;">关于</h3>
     <div class="px-4 pt-3">
@@ -223,11 +226,11 @@
       </button>
       <button data-nav-key="library" data-dom-id="nav-library" class="flex flex-col justify-center gap-0.5 px-4 h-full items-center shrink-0" style="color: var(--mixtouring-muted-foreground);">
         <svg class="w-[18px] h-[18px] shrink-0"><use href="#hero-map-pin"></use></svg>
-        <span class="text-[10px] leading-none whitespace-nowrap">路线库</span>
+        <span class="text-[10px] leading-none whitespace-nowrap">路线灵感</span>
       </button>
       <button data-nav-key="me" data-active="true" data-dom-id="nav-me" class="flex flex-col justify-center gap-0.5 w-[52px] h-[52px] items-center rounded-full shrink-0" style="background: var(--mixtouring-primary); color: var(--mixtouring-primary-foreground);">
         <svg class="w-[18px] h-[18px] shrink-0"><use href="#hero-user"></use></svg>
-        <span class="text-[10px] leading-none whitespace-nowrap">我的</span>
+        <span class="text-[10px] leading-none whitespace-nowrap">我的旅行</span>
       </button>
     </div>
   </nav>
@@ -290,7 +293,7 @@
         return;
       }
       if (!res.drafts.length) {
-        html += '<div class="detail-card p-4"><p style="font-size:12.5px;color:var(--mixtouring-muted-foreground,#7C8089);line-height:1.7;">还没有私人草案。在规划页走法详情里点「保存到我的行程」即可保存探索快照；恢复时会重新规划并重新确认开放地点，不把当时的走法当已核事实。草案仅保存在本浏览器，清理浏览器数据可能丢失。</p></div>';
+        html += '<div class="detail-card p-4"><p style="font-size:12.5px;color:var(--mixtouring-muted-foreground,#7C8089);line-height:1.7;">还没有私人草案。从规划页选一条走法，生成后点「保存行程」，下次就能从这里继续。行程保存在当前浏览器。</p><a class="mt-route-action" href="trip.html">开始规划 →</a></div>';
         wrap.innerHTML = html;
         return;
       }

@@ -7,8 +7,9 @@
   <link rel="stylesheet" href="../colors_and_type.css">
   <link rel="stylesheet" href="../assets/desktop.css" />
   <link rel="stylesheet" href="../assets/route-cards.css">
+  <link rel="stylesheet" href="../assets/product-shell.css">
 </head>
-<body class="trip-page library-page">
+<body class="trip-page library-page product-page">
   <svg xmlns="http://www.w3.org/2000/svg" style="display:none;" aria-hidden="true">
     <defs>
       <symbol id="hero-sparkles" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.456-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456Z"/></symbol>
@@ -31,13 +32,13 @@
     <p id="libraryStatus" class="mt-route-muted" role="status"></p>
     <button id="libraryRetry" type="button" hidden>重新加载</button>
     <div id="tplList"></div>
-    <p class="mt-route-muted">私人草案保存在<a href="me.html">我的行程</a>，不会自动公开到路线库。</p>
+    <p class="mt-route-muted">私人草案保存在<a href="me.html">我的旅行</a>，不会自动公开到路线库。</p>
   </main>
   <nav data-mobile-nav="global" aria-label="主要导航" class="trip-nav">
     <div>
       <a href="trip.html"><svg aria-hidden="true"><use href="#hero-magnifying-glass"></use></svg><span>规划</span></a>
-      <a href="library.html" aria-current="page" class="trip-nav-current"><svg aria-hidden="true"><use href="#hero-map-pin"></use></svg><span>路线库</span></a>
-      <a href="me.html"><svg aria-hidden="true"><use href="#hero-user"></use></svg><span>我的</span></a>
+      <a href="library.html" aria-current="page" class="trip-nav-current"><svg aria-hidden="true"><use href="#hero-map-pin"></use></svg><span>路线灵感</span></a>
+      <a href="me.html"><svg aria-hidden="true"><use href="#hero-user"></use></svg><span>我的旅行</span></a>
     </div>
   </nav>
   <script src="../assets/app.js"></script>

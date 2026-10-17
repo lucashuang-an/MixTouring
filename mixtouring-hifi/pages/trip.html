@@ -28,8 +28,10 @@
     <link rel="stylesheet" href="../assets/trip-guide.css" />
     <link rel="stylesheet" href="../assets/route-cards.css" />
     <link rel="stylesheet" href="../assets/route-workspace.css" />
+    <link rel="stylesheet" href="../assets/vendor/leaflet/leaflet.css" />
+    <link rel="stylesheet" href="../assets/product-shell.css" />
 </head>
-<body class="trip-page" style="margin:0;background:var(--mixtouring-background);font-family:var(--mixtouring-font-sans);color:var(--mixtouring-foreground);-webkit-font-smoothing:antialiased;">
+<body class="trip-page product-page" style="margin:0;background:var(--mixtouring-background);font-family:var(--mixtouring-font-sans);color:var(--mixtouring-foreground);-webkit-font-smoothing:antialiased;">
   <svg xmlns="http://www.w3.org/2000/svg" style="display:none;" aria-hidden="true">
     <defs>
       <symbol id="hero-sparkles" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.456-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456Z"/></symbol>
@@ -50,7 +52,8 @@
 
     <!-- 一句话先行；手动起终点与具体限制在需要时展开。 -->
     <div id="entryCard" class="detail-card" style="background:var(--mixtouring-card);border-radius:20px;padding:22px;box-shadow:var(--shadow-card-soft);">
-      <label id="entryLabel" for="nlInput" style="display:block;font-size:14px;margin-bottom:12px;">你在想怎样的一趟旅行？</label>
+      <label id="entryLabel" for="nlInput" style="display:block;font-size:14px;margin-bottom:12px;">找到更值得的走法，<br>把时间留给想玩的地方。</label>
+      <p class="entry-description">直达、沿途停留，或换一种交通组合。说说你的想法，一起比较体验与代价。</p>
       <form id="conversationComposer" class="conversation-composer">
         <textarea id="nlInput" rows="2" maxlength="2000" placeholder="想去哪、怎么玩，都可以从这里说起" aria-label="旅行想法"></textarea>
         <button id="btnParse" type="submit" aria-label="发送" title="发送" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
@@ -124,6 +127,7 @@
     <div class="planning-workspace">
       <aside id="guideArea" aria-label="一起规划" hidden></aside>
       <div id="planColumn" hidden>
+        <section id="routeDecision" class="decision-host" hidden aria-label="路线比较"></section>
         <section id="taskPreview" class="sight-panel current-plan" hidden aria-label="当前方案"></section>
         <details id="routeOptions" class="route-options" hidden><summary>比较走法与查看交通资料</summary><div id="resultArea" style="margin-top:12px;"></div></details>
       </div>
@@ -134,8 +138,8 @@
   <nav data-mobile-nav="global" aria-label="主要导航" class="trip-nav">
     <div>
       <a href="trip.html" aria-current="page" class="trip-nav-current"><svg aria-hidden="true"><use href="#hero-magnifying-glass"></use></svg><span>规划</span></a>
-      <a href="library.html"><svg aria-hidden="true"><use href="#hero-map-pin"></use></svg><span>路线库</span></a>
-      <a href="me.html"><svg aria-hidden="true"><use href="#hero-user"></use></svg><span>我的</span></a>
+      <a href="library.html"><svg aria-hidden="true"><use href="#hero-map-pin"></use></svg><span>路线灵感</span></a>
+      <a href="me.html"><svg aria-hidden="true"><use href="#hero-user"></use></svg><span>我的旅行</span></a>
     </div>
   </nav>
 
@@ -144,6 +148,8 @@
   <script src="../assets/trip-guide.js"></script>
   <script src="../assets/sight-planner.js"></script>
   <script src="../assets/route-workspace.js"></script>
+  <script src="../assets/vendor/leaflet/leaflet.js"></script>
+  <script src="../assets/discovery-workspace.js"></script>
   <script>
   (function () {
     var resultArea = document.getElementById('resultArea');
@@ -152,6 +158,7 @@
       document.body.dataset.workspaceView=view;
       document.querySelectorAll('[data-workspace-tab]').forEach(function(b){b.setAttribute('aria-pressed',String(b.dataset.workspaceTab===view));});
       if(view==='chat'){var messages=document.querySelector('#guideArea .guide-messages');if(messages)messages.scrollTop=messages.scrollHeight;}
+      if(view==='route')requestAnimationFrame(function(){document.querySelectorAll('.discovery-map').forEach(function(host){MTDiscovery.invalidate(host);});});
     }
     document.querySelectorAll('[data-workspace-tab]').forEach(function(b){b.onclick=function(){showWorkspaceView(b.dataset.workspaceTab);};});
     document.querySelectorAll('[data-idea]').forEach(function(b){b.onclick=function(){document.getElementById('nlInput').value=b.dataset.idea;updateComposer();document.getElementById('nlInput').focus();};});
@@ -203,6 +210,7 @@
     var msgSeq=0; /* #31：消息稳定身份，用于重绘时保持阅读锚点与引用展开状态 */
     var conversationController=null; /* #32：对话与交通检索请求的取消句柄，重新开始时中止旧请求 */
     var conversation = null, conversationBusy = false, conversationError = null;
+    var comparisonCache=new Map(),comparisonLoading=new Set(),comparisonErrors=new Set();
 
     /* ---------- 卡 B（v0.44.2）：交通锚点（用户确认事实）与会话级新约束 ----------
      * anchors.outbound/return：已锁定的去/返交通；extraConstraints：不开车与住宿约束（无输入框，由对话确认进入）。
@@ -342,19 +350,45 @@
     function currentCandidate(){return MTRouteWorkspace.selectedCandidate(conversation && conversation.draft,activePlan && activePlan.candidates,activeCandidate);}
     function syncPlanLayout() {
       var hasDraft=!!(conversation && conversation.draft && activePlan);
-      if(hasDraft && !document.body.dataset.workspaceView)showWorkspaceView('route');
+      var hasComparison=!!(conversation && !conversation.draft && conversation.stage==='ready' && activePlan && activePlan.plan_id);
+      if((hasDraft || hasComparison) && !document.body.dataset.workspaceView)showWorkspaceView('route');
       if(hasDraft && activeCandidate && !selectedKey()){activeCandidate=null;pendingRestore=null;journeySequence++;}
-      document.getElementById('workspaceTabs').hidden=!hasDraft;
+      document.getElementById('workspaceTabs').hidden=!hasDraft && !hasComparison;
       var places=activePlan && activePlan.place_candidates || {};
       var needsPlace=!!((places.origin || []).length || (places.destination || []).length);
-      document.getElementById('planColumn').hidden=!hasDraft && !needsPlace;
+      document.getElementById('planColumn').hidden=!hasDraft && !hasComparison && !needsPlace;
       document.getElementById('taskPreview').hidden=!hasDraft;
+      document.getElementById('routeDecision').hidden=!hasComparison;
       document.getElementById('routeOptions').hidden=!hasDraft && !needsPlace;
       document.getElementById('routeOptions').querySelector('summary').textContent=needsPlace && !hasDraft?'确认地点':activePlan && activePlan.candidates.length>1?'比较其他走法与交通资料':'交通资料与已定安排';
       if(needsPlace && !hasDraft)document.getElementById('routeOptions').open=true;
       if(hasDraft)renderTaskPreview();
+      if(hasComparison)renderRouteDecision();
+    }
+    function comparisonKey(){return JSON.stringify([activePlan && activePlan.plan_id,guideState,conversation && conversation.requirements,conversation && (conversation.preview?.draft?.route || conversation.draft?.route)]);}
+    function currentComparison(){return comparisonCache.get(comparisonKey());}
+    function ensureComparison(){
+      var key=comparisonKey();if(!activePlan?.plan_id || comparisonCache.has(key) || comparisonLoading.has(key) || comparisonErrors.has(key))return;
+      comparisonLoading.add(key);
+      post('/api/anywhere/compare',{plan_id:activePlan.plan_id,preferences:guideState,requirements:conversation?.requirements,current_route:conversation?.preview?.draft?.route || conversation?.draft?.route || []},conversationController && conversationController.signal).then(function(r){
+        if(r.code!==0 || !r.data)throw Error('比较暂未完成');comparisonCache.set(key,r.data);while(comparisonCache.size>20)comparisonCache.delete(comparisonCache.keys().next().value);
+      }).catch(function(){comparisonErrors.add(key);}).finally(function(){comparisonLoading.delete(key);if(key===comparisonKey())syncPlanLayout();});
+    }
+    function renderRouteDecision(){
+      var box=document.getElementById('routeDecision');ensureComparison();var data=currentComparison();
+      if(!data){box._comparisonSignature=null;box.innerHTML='<p class="mt-eyebrow">发现 · 比较走法</p><h2>把每种走法的取舍讲清楚</h2><p class="mt-route-muted" role="status">'+(comparisonErrors.has(comparisonKey())?'比较暂未完成，已确定条件仍保留。':'正在整理基准与沿途选择…')+'</p>'+(comparisonErrors.has(comparisonKey())?'<button type="button" class="mt-button-secondary" data-retry-comparison>重试比较</button>':'');box.onclick=function(e){if(e.target.closest('[data-retry-comparison]')){comparisonErrors.delete(comparisonKey());renderRouteDecision();}};return;}
+      if(!data.routes.length){box.innerHTML='<p class="mt-eyebrow">继续完善旅行</p><h2>先把目的地停留安排起来</h2><p class="mt-route-muted">暂没有额外走法可比较。已确认的交通与条件仍保留，尚未确定的交通继续标注待查。</p><button type="button" class="mt-button-primary" data-start-stay>生成停留草案 →</button>';box.onclick=function(e){if(e.target.closest('[data-start-stay]'))sendConversation('按已确认的地点生成停留草案，未确定交通保持待查。',false,'generate');};return;}
+      var signature=JSON.stringify(data);
+      if(box._comparisonSignature!==signature){box._comparisonSignature=signature;MTDiscovery.render(box,data,{onSelect:selectDiscoveryRoute});}
+      box.querySelectorAll('[data-select-route]').forEach(function(b){b.disabled=conversationBusy || planning || !data.routes.find(function(r){return r.id===b.dataset.selectRoute;})?.eligible;});
+    }
+    function selectDiscoveryRoute(id){
+      if(conversationBusy || planning)return;var data=currentComparison(),row=data?.routes.find(function(r){return (r.id===id || r.variants?.some(function(v){return v.id===id;})) && r.eligible;});if(!row)return;
+      activeCandidate=id;guideMessages.push({role:'user',text:'我选择 '+row.route.join(' → ')+'，请按这条走法生成初稿。'});
+      sendConversation('按刚选择的走法生成初稿，保留其他已确认条件。',false,'generate',id);
     }
     function visibleRoutes() {
+      var compared=currentComparison();if(compared)return compared.routes.map(function(r){return {candidate:activePlan.candidates.find(function(c){return c.id===r.id;}),reason:r.reason};}).filter(function(r){return r.candidate;});
       var list=MTGuide.rank(activePlan && activePlan.candidates || [],guideState).items;
       return MTGuide.groups(list).slice(0,3).map(function(g){return g.items.find(function(x){return x.candidate.id===activeCandidate;}) || g.items[0];});
     }
@@ -410,6 +444,7 @@
       var referenceKey=ensureTransportReferences(route,currentTransportWindow());
       var baseReferences=transportReferenceCache.get(referenceKey) || [];
       var transportReferences=route.slice(1).map(function(to,i){var from=route[i],key=liveTransportKey(from,to),base=baseReferences.find(function(s){return s.from===from && s.to===to;}) || {from:from,to:to,options:[],archive:[]};return Object.assign({},base,{search_window:currentSearchWindow(),live:transportSearchCache.get(key) && Date.now()-Date.parse(transportSearchCache.get(key).retrieved_at)<900000?transportSearchCache.get(key):null,searching:transportSearchLoading.has(key),search_error:transportSearchErrors.has(key)});});
+      ensureComparison();var compared=currentComparison();
       var oldItinerary=box.querySelector('.dynamic-itinerary');
       var conditions=[requirements.trip_days?requirements.trip_days+' 天全程':null,collectTravel().traveler_count?collectTravel().traveler_count+' 人':null,collectConstraints().budget_max_cny?'预算上限 ¥'+collectConstraints().budget_max_cny:null,collectTravel().outbound_window?'出发 '+collectTravel().outbound_window:'出发日期待定',requirements.required_stops?.length?'必经 '+requirements.required_stops.join('、'):null,requirements.verified_cross_border_only?'跨境须核实':null].filter(Boolean);
       var html='<div class="plan-heading"><div><p class="plan-eyebrow">'+(preview?'备选预览':'我的旅行')+'<span class="explore-label">探索草案</span><span class="revision-label">版本 '+conversation.revision+'</span></p><h2>'+MT.esc(draft.title)+'</h2></div><button id="previewSave" class="guide-primary" '+(conversationBusy || planning || preview?'disabled':'')+'>保存行程</button></div>'+
@@ -419,7 +454,7 @@
         '<p class="route-overview">'+MT.esc(draft.overview)+'</p>'+
         '<p class="route-evidence-note">城市与安排供探索；具体班期、耗时和跨境接驳仍需核实。</p>'+
         (!preview?'<details class="route-choices"><summary>比较其他走法 <span>'+visibleRoutes().length+' 个方向</span></summary><div class="route-choice-grid">'+visibleRoutes().map(function(item,i){var c=item.candidate;return '<button type="button" class="route-choice '+(c.id===currentCandidate()?.id?'is-selected':'')+'" data-choose-route="'+MT.esc(c.id)+'" '+(conversationBusy || planning?'disabled':'')+' aria-pressed="'+(c.id===currentCandidate()?.id)+'"><span class="route-choice-label">走法 '+(i+1)+(c.id===currentCandidate()?.id?' · 当前选择':'')+'</span><span class="route-choice-path">'+MT.esc(MTRouteWorkspace.routeFor(null,c).join(' → '))+'</span><span class="route-choice-status">'+MT.esc(c.legs.map(function(l){return {plane:'航班假设',rail:'铁路假设',road:'公路客运待查'}[l.mode_guess] || '交通待查';}).join(' + '))+'</span><span class="route-choice-reason">'+MT.esc(item.reason || MTGuide.reason(c))+'</span><span class="route-choice-status">班期、费用与耗时待查</span></button>';}).join('')+'</div></details>':'')+
-        '<div class="dynamic-itinerary"><div class="route-strip-host"></div><p class="route-focus-note" role="status">点击城市，查看对应安排</p><details class="transport-details" open><summary>交通参考方案 <span>查看走法、来源与乘车线索</span></summary><div class="transport-list"></div></details><div class="itinerary-heading"><h3>沿着路线，慢慢探索</h3><span>逐日建议 · 可以继续聊着调整</span></div><div class="itinerary-list"></div></div>'+
+        '<div class="dynamic-itinerary"><div class="current-route-map discovery-map" aria-label="当前路线地图"></div><p class="map-caption">城市位置示意 · 非实际客运路径</p><div class="route-strip-host"></div><p class="route-focus-note" role="status">点击城市，查看对应安排</p><details class="transport-details" open><summary>交通参考方案 <span>查看走法、来源与乘车线索</span></summary><div class="transport-list"></div></details><div class="itinerary-heading"><h3>沿着路线，慢慢探索</h3><span>逐日建议 · 可以继续聊着调整</span></div><div class="itinerary-list"></div></div>'+
         (draft.pending.length?'<details class="route-pending"><summary>出发前还要确认 <span>'+draft.pending.length+' 项</span></summary><ul>'+draft.pending.map(function(p){return '<li>'+MT.esc(p)+'</li>';}).join('')+'</ul></details>':'');
       var detailsKey=function(el){return el.className+'|'+(el.querySelector('summary')?.textContent || '').replace(/\d+/g,'');};
       var openSections=new Map(Array.from(box.querySelectorAll('details')).map(function(el){return [detailsKey(el),el.open];}));
@@ -427,7 +462,13 @@
       box.querySelectorAll('details').forEach(function(el){if(openSections.has(detailsKey(el)))el.open=openSections.get(detailsKey(el));});
       var itinerary=box.querySelector('.dynamic-itinerary');
       if(oldItinerary){itinerary.replaceWith(oldItinerary);itinerary=oldItinerary;}
-      MTRouteWorkspace.render(itinerary,draft,route,preview?null:candidate,transportReferences,transportReferenceErrors.has(referenceKey)?'error':transportReferenceLoading.has(referenceKey)?'loading':'ready');
+      MTRouteWorkspace.render(itinerary,draft,route,preview?null:candidate,transportReferences,transportReferenceErrors.has(referenceKey)?'error':transportReferenceLoading.has(referenceKey)?'loading':'ready',function(name){MTDiscovery.focusPlace(itinerary.querySelector('.current-route-map'),name);});
+      itinerary.querySelector('.itinerary-heading span').textContent=(draft.cards.some(function(c){return /^第\s*\d+/.test(c.label || '');})?'逐日建议':'分阶段建议')+' · 可以继续聊着调整';
+      if(compared){
+        var currentMap=itinerary.querySelector('.current-route-map');
+        MTDiscovery.renderMap(currentMap,{routes:[compared.current_map]},'current',function(){},function(name){var btn=Array.from(itinerary.querySelectorAll('[data-focus-place]')).find(function(b){return b.dataset.focusPlace===name;});if(btn)btn.click();});
+        var comparisonGrid=box.querySelector('.route-choice-grid');if(comparisonGrid){comparisonGrid.className='discovery-grid';comparisonGrid.innerHTML=MTDiscovery.cardsHtml(compared,candidate?.id);comparisonGrid.querySelectorAll('[data-inspect-route]').forEach(function(b){b.onclick=function(){var r=compared.routes.find(function(r){return r.id===b.dataset.inspectRoute;});if(r)MTDiscovery.renderMap(currentMap,compared,r.id,function(){},function(){});};});comparisonGrid.querySelectorAll('[data-select-route]').forEach(function(b){b.disabled=conversationBusy || planning || !compared.routes.find(function(r){return r.id===b.dataset.selectRoute;})?.eligible;b.onclick=function(){var chosenId=b.closest('article').querySelector('[data-route-variant]')?.value || b.dataset.selectRoute;var c=activePlan.candidates.find(function(c){return c.id===chosenId;});if(c)sendConversation('我选择经由 '+MTRouteWorkspace.routeFor(null,c).join(' → ')+' 的这条走法，请据此更新安排，其他已确认条件保持不变。',false,'chat',c.id);};});}
+      }
       itinerary.onclick=function(e){
         if(e.target.closest('[data-retry-transport]')){transportReferenceErrors.delete(referenceKey);renderTaskPreview();return;}
         var searchButton=e.target.closest('[data-search-leg]');if(searchButton){var index=Number(searchButton.dataset.searchLeg);if(route[index] && route[index+1])searchTransportLeg(route[index],route[index+1]);return;}
@@ -450,8 +491,8 @@
       var name = (activePlan.intent.origin || '') + ' → ' + (activePlan.intent.destination || '');
       var res = MTDrafts.save(name, taskSnapshot());
       if (res.ok) {
-        note.innerHTML = '已保存。<a href="me.html">去我的行程查看</a> · 历史版本 '+res.draft.versions.length+' 个' +
-          (res.warn ? '版本或草案较多，可在我的行程主动整理；历史未删除。' : '');
+        note.innerHTML = '已保存。<a href="me.html">去我的旅行查看</a> · 历史版本 '+res.draft.versions.length+' 个' +
+          (res.warn ? '版本或草案较多，可在我的旅行主动整理；历史未删除。' : '');
         var save=document.getElementById('previewSave');if(save){save.textContent='已保存';save.disabled=true;}
         MT.toast('已保存到私人草案');
       } else {
@@ -603,7 +644,7 @@
        * 恢复引起的 toggle（此时标志仍为 true）不滚动，用户随后的主动展开正常滚动 */
       setTimeout(function(){restoringOpen=false;},0);
     }
-    function actionLabel(){return conversation && conversation.draft?'正在调整安排，原方案仍为你保留…':activePlan && activePlan.plan_id?'正在生成城市与逐日安排…':'正在梳理你的旅行想法…';}
+    function actionLabel(){return conversation && conversation.draft?'正在调整安排，原方案仍为你保留…':activePlan && activePlan.plan_id?'正在生成所选走法的安排…':'正在梳理你的旅行想法…';}
     function startConversation(text) {
       if(planController) planController.abort();planSequence++;planning=false;
       /* #32：重新开始时取消旧对话/检索请求，旧响应不会覆盖新状态（seq 守卫外再断请求本身） */
@@ -682,7 +723,7 @@
         lastRequest=Object.assign({},lastRequest,{origin:routing.origin || undefined,destination:routing.destination || undefined,constraints:collectConstraints()});
         if(routing.origin && routing.destination)delete lastRequest.text;
         conversationBusy=false;renderGuide();rememberSession();
-        if(data.request_generation){await generateConversation();return;}
+        if(data.request_generation || (!conversation.draft && conversation.stage==='ready' && !activePlan?.plan_id)){await generateConversation();return;}
         if(conversation.draft){
           if(action!=='generate' && (JSON.stringify(previous.travel)!==JSON.stringify(collectTravel()) || JSON.stringify(previous.constraints)!==JSON.stringify(collectConstraints()))){
             pendingRestore=data.clear_selection?null:{candidate_key:previous.candidate_key,nights:previous.nights};
@@ -693,13 +734,14 @@
           document.getElementById('taskPreview').hidden=false;renderTaskPreview();
         }
       } catch(e) {
-        if(seq===guideSequence){conversationError={action:action,text:text,message:e.message+' 可直接重新发送。'};if(!document.getElementById('nlInput').value)document.getElementById('nlInput').value=text;}
+        if(seq===guideSequence){conversationError={action:action,text:text,requested_candidate_id:requestedCandidate || null,message:e.message+' 可直接重新发送。'};if(!document.getElementById('nlInput').value)document.getElementById('nlInput').value=text;}
       } finally {
         if(seq===guideSequence){conversationBusy=false;renderGuide();rememberSession();}
       }
     }
     async function generateConversation() {
       if(conversationBusy || !conversation || conversation.stage!=='ready')return;
+      if(activePlan?.plan_id){showWorkspaceView('route');renderRouteDecision();return;}
       conversationBusy=true;conversationError=null;renderGuide();
       var seq=guideSequence;
       try {
@@ -721,7 +763,7 @@
         if(!activePlan || !activePlan.plan_id){
           throw Error(activePlan && activePlan.needs_confirmation && activePlan.needs_confirmation[0] || '交通资料查询暂未完成，已确定的旅行想法仍保留。');
         }
-        await sendConversation('按已确认的旅行想法生成初步方案。',false,'generate');
+        showWorkspaceView('route');renderRouteDecision();
       } catch(e) {
         if(seq===guideSequence){conversationError={action:'generate',text:'继续生成',message:e.message};if(!document.getElementById('nlInput').value)document.getElementById('nlInput').value='继续生成';}
       } finally {
@@ -795,7 +837,7 @@
         if(planController)planController.abort();planSequence++;planning=false;
         activePlan=null;activeCandidate=null;resultArea.innerHTML='';
         document.getElementById('planColumn').hidden=true;document.getElementById('taskPreview').hidden=true;
-        renderGuide();rememberSession();return;
+        renderGuide();rememberSession();if(conversation.stage==='ready' && lastRequest?.origin && lastRequest?.destination)requestPlan();return;
       }
       if (replan) { pendingRestore = { candidate_key: saved.candidate_key, nights: saved.nights }; requestPlan(); }
       else {
@@ -1047,7 +1089,7 @@
       if (!text) return;
       if(conversation){
         if(conversationError && conversationError.text===text){
-          if(conversationError.action==='generate'){generateConversation();return;}
+          if(conversationError.action==='generate'){if(conversationError.requested_candidate_id)sendConversation(text,true,'generate',conversationError.requested_candidate_id);else generateConversation();return;}
           sendConversation(text,true);return;
         }
         sendConversation(text);return;

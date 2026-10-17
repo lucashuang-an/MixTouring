@@ -42,6 +42,8 @@ jobs:
           node server/check-send-retry.mjs
           node server/check-chat-refresh.mjs
           node server/check-route-workspace.mjs
+          node server/check-route-comparison.mjs
+          node server/check-discovery-flow.mjs
           node server/check-travel-sources.mjs
           node server/check-source-time.mjs
           node server/check-journey.mjs
