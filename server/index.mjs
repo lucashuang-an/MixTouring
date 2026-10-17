@@ -23,6 +23,7 @@ import { webSearchStatus } from './lib/llm.mjs';
 import { parseGuideTurn } from './lib/guide.mjs';
 import { conversationTurn } from './lib/conversation.mjs';
 import { buildRouteComparison } from './lib/route-comparison.mjs';
+import { researchSelectedRoute } from './lib/route-research.mjs';
 import { createRequestSignal } from './lib/request-signal.mjs';
 import { routeTransportReferences } from './lib/transport-references.mjs';
 import { searchTransportSources } from './lib/transport-search.mjs';
@@ -368,6 +369,12 @@ app.use(async (ctx, next) => {
     ctx.body = { code: 0, data: await conversationTurn(body, guidePlanFromId(body.plan_id), { signal }) };
     return;
   }
+  if (path === '/api/anywhere/route-research' && ctx.method === 'POST') {
+    const signal=createRequestSignal(ctx.req,ctx.res),body=await readBody(ctx) || {};
+    try{ctx.body={code:0,data:await researchSelectedRoute(body,guidePlanFromId(body.plan_id),searchWeb,{signal})};}
+    catch(error){ctx.body={code:1,msg:error.message};}
+    return;
+  }
   if (path === '/api/anywhere/transport-references' && ctx.method === 'POST') {
     const body=await readBody(ctx) || {};
     try {ctx.body={code:0,data:routeTransportReferences(body.route,Date.now(),body.window || null)};}
@@ -377,7 +384,7 @@ app.use(async (ctx, next) => {
   if (path === '/api/anywhere/transport-search' && ctx.method === 'POST') {
     const signal = createRequestSignal(ctx.req, ctx.res);
     const body=await readBody(ctx) || {};
-    try{ctx.body={code:0,data:await searchTransportSources({from:body.from,to:body.to,window:body.window},searchWeb,{signal})};}
+    try{ctx.body={code:0,data:await searchTransportSources({from:body.from,to:body.to,window:body.window,mode:body.mode},searchWeb,{signal})};}
     catch(error){ctx.body={code:1,msg:error.message};}
     return;
   }

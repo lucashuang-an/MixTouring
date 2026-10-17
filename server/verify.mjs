@@ -306,7 +306,7 @@ async function main() {
   const caps = await (await fetch(BASE + '/api/capabilities')).json();
   if (caps.code === 0 && typeof caps.data.web_search_configured === 'boolean' &&
     ['available', 'quota_exhausted', 'timeout', 'error', 'unknown'].includes(caps.data.web_search_status) &&
-    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.56.0') {
+    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.57.0') {
     console.log('✓ /api/capabilities P1-4：configured 与最近真实状态分开（web_search_configured=' +
       caps.data.web_search_configured + ', status=' + caps.data.web_search_status + '），版本拆分对齐');
   } else { failed++; console.error('✗ /api/capabilities 形状异常：' + JSON.stringify(caps).slice(0, 200)); }
@@ -320,6 +320,13 @@ async function main() {
     const expiredCompare=await (await fetch(BASE+'/api/anywhere/compare',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({plan_id:'expired'})})).json();
     if(expiredCompare.code===1)console.log('✓ 路线比较：过期上下文不可由客户端补造');
     else {failed++;console.error('✗ 过期比较未被拒绝');}
+    const invalidResearch=await (await fetch(BASE+'/api/anywhere/route-research',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({plan_id:ivA.data.plan_id,candidate_id:'伪造',from:'北京',to:'阿拉木图'})})).json();
+    if(invalidResearch.code===1)console.log('✓ 关键交通补查：客户端自报端点不能替代所选候选');
+    else {failed++;console.error('✗ 关键交通补查接受了伪造选择');}
+    const directForResearch=ivA.data.candidates.find(c=>c.legs.length===1);
+    if(directForResearch){const l=directForResearch.legs[0],confirmedResearch=await (await fetch(BASE+'/api/anywhere/route-research',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({plan_id:ivA.data.plan_id,candidate_id:directForResearch.id,anchors:{outbound:{from_city:l.from,to_city:l.to,mode:l.mode_guess}}})})).json();
+      if(confirmedResearch.code===0 && confirmedResearch.data.status==='skipped' && !confirmedResearch.data.verified)console.log('✓ 已确认交通不重复自动检索，也不升级外部核实状态');
+      else {failed++;console.error('✗ 已确认交通补查边界异常');}}
     const rtDetail = await (await fetch(BASE + '/api/anywhere/journey', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ plan_id: ivA.data.plan_id, candidate_id: ivA.data.candidates[0].id, stopover_nights: 0 }) })).json();
     if (rtDetail.code === 0 && rtDetail.data.inbound.length === 1 && rtDetail.data.inbound[0].from === '阿拉木图' && rtDetail.data.inbound[0].evidence_state === 'explore') console.log('✓ /api/anywhere/journey：往返方向独立探索，不继承去程证据');
     else { failed++; console.error('✗ /api/anywhere/journey 往返详情异常：' + JSON.stringify(rtDetail).slice(0, 200)); }

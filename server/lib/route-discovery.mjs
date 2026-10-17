@@ -44,7 +44,7 @@ export function sourceLegConnectionExcerpt(source, from, to, mode) {
   const modeWords = {
     plane: /航班|航空|飞机|机场|直飞|flight|airline/i,
     rail: /客运列车|列车|火车|高铁|动车|铁路|train|rail/i,
-    road: /道路客运|公路客运|客运班线|班车|大巴|长途汽车|bus|coach/i
+    road: /道路客运|公路客运|客运班线|班车|大巴|巴士|长途汽车|bus|coach/i
   };
   if (!modeWords[mode] || !from || !to) return null;
   const title = String(source?.title || '');
