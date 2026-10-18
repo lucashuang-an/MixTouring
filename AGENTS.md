@@ -39,6 +39,7 @@ v0.45.0 起，涉及景点比较、游玩预算或景点状态保存恢复时，
 - v0.52.0 起主规划对话依赖可用模型；无 key／调用失败保留原输入和草案并明确重试，不伪装模板为 AI。旧规则检索与历史接口继续可离线运行；key 走 `server/.env`（gitignored）：`LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL`（OpenAI 兼容端点即可）。G2.5 开放地点核验通道：OSM Nominatim（`OSM_NOMINATIM_BASE` 可覆盖自建镜像）→ Photon（photon.komoot.io）自动兜底，均无需 key；两者都不可达时按「核验通道不可用」诚实阻断。
 - v0.43.7 火山联网搜索使用普通方舟 `/api/v3/responses`，在 `server/.env` 单独配置 `VOLC_SEARCH_API_KEY` 和账号实际开通的 `VOLC_SEARCH_MODEL`（本机为 `deepseek-v4-flash-ga-260731`；不填时旧默认 `doubao-seed-2-1-lite-260915` 可能报 `ModelNotOpen`）。Coding Plan 的 `ARK_API_KEY` 不自动用于此接口；普通模型推理可能另行计费。只采纳完成的真实 `web_search_call` 与结构化网页引用；无引用按搜索失败降级。未配置时保留原智谱／公开搜索路径。v0.44.0 起路线组合走 `composeJson`（同账户 `/api/v3/chat/completions`，`VOLC_COMPOSE_MODEL` 可覆盖；**请求必须带 `thinking: {type:'disabled'}`**，deepseek 默认开思考在 12s 渐进预算内回不来）。火山 429 需看错误码：`SetLimitExceeded`＝账号「安全体验模式」用量上限（模型暂停，需控制台调整，当日回放量大时可能触发），与速率限流区分。
 - LLM 用量逐任务记录在 `server/logs/llm-usage.jsonl`（gitignored），供算法优化分析。
+- v0.60.3 起本机主对话与路线组合独立配置 `VOLC_COMPOSE_MODEL=deepseek-v4-1-flash-260910`，沿现有普通方舟Chat API及 `VOLC_SEARCH_API_KEY`；JSON输出与关闭思考已做最小真实兼容验证，完整规划质量另验。`VOLC_SEARCH_MODEL` 仍为 `deepseek-v4-flash-ga-260731`，不因新增组合模型自动切换搜索；`LLM_MODEL` 旧通道独立。修改 `.env` 后新进程才生效，不自动重启其他协作服务。
 
 ## 2. 项目概览
 

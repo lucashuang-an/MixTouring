@@ -1,5 +1,17 @@
 # MixTouring v1.2 开发流程｜从单程方案库到 Solo Trip 国际往返
 
+### 新增DeepSeek-V4.1-Flash模型配置（v0.60.3 · 2026-10-19）
+
+用户指定接入 [DeepSeek-V4.1-Flash](https://console.volcengine.com/ark/region%3Acn-beijing/docs/deepseek-v4-1-flash)。普通方舟Chat API使用完整Model ID `deepseek-v4-1-flash-260910`，不将控制台页面名称直接作为版本ID，也不与Coding Plan别名混用。
+
+本机已在gitignored的 `server/.env` 独立设置 `VOLC_COMPOSE_MODEL=deepseek-v4-1-flash-260910`，沿 `composeJson` 现有 `/api/v3/chat/completions` 通道，复用服务端 `VOLC_SEARCH_API_KEY`。适用于主规划对话、路线组合及调用composeJson的任务；`VOLC_SEARCH_MODEL` 仍为 `deepseek-v4-flash-ga-260731`，联网搜索能力独立验证。旧 `callJson` 的 `LLM_MODEL` 配置不变，不能据组合模型成功宣称所有旧LLM触点均已切换。
+
+现有 `thinking:{type:'disabled'}` 与 `response_format:{type:'json_object'}` 实测可用。最小真实调用约1255ms返回北京、阿拉木图、十天、必经伊宁和未知日期null，证明账号访问和当前参数兼容，不代表完整规划质量验收。配置在新进程启动时加载，已经运行的服务需重启后才使用新值；不自动重启其他协作实例。
+
+同环境部署时配置上述模型变量及服务端密钥，不提交 `.env` 或凭据。恢复旧组合模型可将 `VOLC_COMPOSE_MODEL` 设为 `deepseek-v4-flash-ga-260731`；移除该变量则沿既有逻辑跟随搜索模型。M1上下文实施与新模型配置分开计验收，真实多轮、预览、改稿和恢复仍按相应开发卡执行。
+
+---
+
 ### 四层上下文与有界研究交付计划（v0.60.1 · 2026-10-19，已确认／待实现）
 
 本节是本轮确认的下一批计划，优先于历史待确认提案；不代表已实现、已通过验收或对旧评审项作通过判定。Codex负责产品／技术方案及验收口径，ZCode按下列卡实施。实现前重新读取工作记录及Issue #5，在最新功能分支上确认基线；仍按既有流程由用户触发被审SHA评审，不自动合并或发布。
