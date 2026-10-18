@@ -24,6 +24,7 @@ import { parseGuideTurn } from './lib/guide.mjs';
 import { conversationTurn } from './lib/conversation.mjs';
 import { buildRouteComparison } from './lib/route-comparison.mjs';
 import { researchSelectedRoute } from './lib/route-research.mjs';
+import { draftResearchChanges,searchDraftChanges } from './lib/draft-research.mjs';
 import { createRequestSignal } from './lib/request-signal.mjs';
 import { routeTransportReferences } from './lib/transport-references.mjs';
 import { searchTransportSources } from './lib/transport-search.mjs';
@@ -366,7 +367,9 @@ app.use(async (ctx, next) => {
     /* #32：客户端断开（提交阶段断开或等待回复时断开）取消下游模型/检索；正常完成不取消 */
     const signal = createRequestSignal(ctx.req, ctx.res);
     const body = await readBody(ctx) || {};
-    ctx.body = { code: 0, data: await conversationTurn(body, guidePlanFromId(body.plan_id), { signal }) };
+    const plan=guidePlanFromId(body.plan_id),data=await conversationTurn(body,plan,{signal});
+    data.research_update=draftResearchChanges(body,data,plan);
+    ctx.body = { code: 0, data };
     return;
   }
   if (path === '/api/anywhere/route-research' && ctx.method === 'POST') {
@@ -384,7 +387,13 @@ app.use(async (ctx, next) => {
   if (path === '/api/anywhere/transport-search' && ctx.method === 'POST') {
     const signal = createRequestSignal(ctx.req, ctx.res);
     const body=await readBody(ctx) || {};
-    try{ctx.body={code:0,data:await searchTransportSources({from:body.from,to:body.to,window:body.window,mode:body.mode},searchWeb,{signal})};}
+    try{ctx.body={code:0,data:await searchTransportSources({from:body.from,to:body.to,window:body.window,mode:body.mode,exclude_road:body.exclude_road},searchWeb,{signal})};}
+    catch(error){ctx.body={code:1,msg:error.message};}
+    return;
+  }
+  if (path === '/api/anywhere/transport-search-batch' && ctx.method === 'POST') {
+    const signal=createRequestSignal(ctx.req,ctx.res),body=await readBody(ctx) || {};
+    try{ctx.body={code:0,data:await searchDraftChanges(body,searchWeb,{signal})};}
     catch(error){ctx.body={code:1,msg:error.message};}
     return;
   }

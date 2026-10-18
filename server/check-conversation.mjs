@@ -81,7 +81,7 @@ const noGeneratedDates=await conversationTurn({action:'generate',conversation:fi
 assert.deepEqual(noGeneratedDates.patch.travel,{},'生成步骤不能擅自添加日历日期');
 assert.deepEqual(noGeneratedDates.conversation.routing,first.conversation.routing,'写稿不能改已确认的交通端点');
 assert.deepEqual(noGeneratedDates.conversation.brief,first.conversation.brief,'写稿不能改已确认意图');
-const changed=await conversationTurn({text:'还是换昆明吧',conversation:revised.conversation},null,{model:async()=>result({brief:{...brief,destination:'昆明'},draft})});
+const changed=await conversationTurn({text:'还是换昆明吧',conversation:revised.conversation},null,{model:async opts=>opts.kind==='conversation_route_change'?{origin:'北京',destination:'昆明'}:result({brief:{...brief,destination:'昆明'},draft})});
 assert.equal(changed.conversation.stage,'ready');assert.equal(changed.conversation.draft,null);
 const confirm=await conversationTurn({text:'就按这个想法生成',conversation:first.conversation},null,{model:async()=>result({confirmed:true})});
 assert.equal(confirm.request_generation,true);

@@ -15,6 +15,6 @@ export async function researchSelectedRoute(input,plan,search,options={}){
   if(!leg)return {status:'skipped',leg:null,verified:false,note:'所选走法的交通已由你确认；本次不重复自动检索。'};
   const window=sourceWindow(input.window);
   if(input.window!=null && !window)throw Error('资料查询时间窗无效，请检查日期后重试');
-  const result=await searchTransportSources({...leg,window},search,options);
+  const result=await searchTransportSources({...leg,window,exclude_road:input.exclude_road},search,options);
   return {...result,leg,verified:false,note:'本次补查只提供交通连接与乘车经验；班期、票价及日期适用性尚未核实。'};
 }

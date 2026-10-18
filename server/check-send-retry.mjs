@@ -128,5 +128,17 @@ const okPayload = (reply, extra = {}) => ({ code: 0, data: Object.assign({ statu
     '#28 undo：快照恢复后本轮用户消息保留一次并跟助手回复（复审 P2：不丢本轮消息）');
 }
 
+/* 后台资料补查不得阻断下一轮；新输入取消旧查询，回复先提交再派发新查询。 */
+{
+  let calls=0,cancelled=0,queued=0,pruned=0;
+  const scope={route:['北京','伊宁','阿拉木图'],legs:[{from:'北京',to:'伊宁',mode:'unknown'}],window:null};
+  const {sandbox}=makeEnv(async()=>{calls++;return okPayload('已加入伊宁。',{conversation:{stage:'draft',revision:2,brief:{},draft:{route:scope.route},routing:{origin:'北京',destination:'阿拉木图'}},research_update:{scope,queries:scope.legs,remaining:[]}});});
+  sandbox.routeResearch={isPending:only=>!only,getState:()=>({input:{kind:'draft'}}),cancel:()=>{cancelled++;}};
+  sandbox.pruneTransportResults=()=>{pruned++;};sandbox.supplementDraftChanges=()=>{queued++;return new Promise(()=>{});};
+  await sandbox.sendConversation('加入伊宁');
+  ok(calls===1 && cancelled===1,'后台补查期间可发送新消息，并取消旧查询');
+  ok(pruned===1 && queued===1 && sandbox.conversation.revision===2,'先提交新草案和查询范围，再派发不阻塞回复的增量补查');
+}
+
 console.log(fail === 0 ? `\n✓ 对话失败重发回归全部通过（${total} 项断言）` : `\n✗ 失败 ${fail} 项（共 ${total} 项断言）`);
 if (fail) process.exit(1);

@@ -20,7 +20,7 @@
       finally{if(seq===sequence){inflight=null;controller=null;}}})();
       return inflight;
     }
-    return {run:run,cancel:cancel,getState:function(){return state;},isPending:function(){return state?.status==='pending';}};
+    return {run:run,cancel:cancel,getState:function(){return state;},isPending:function(blockingOnly){return state?.status==='pending' && (!blockingOnly || state.input.kind!=='draft');}};
   }
   return {create:create};
 });

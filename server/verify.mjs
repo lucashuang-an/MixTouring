@@ -306,7 +306,7 @@ async function main() {
   const caps = await (await fetch(BASE + '/api/capabilities')).json();
   if (caps.code === 0 && typeof caps.data.web_search_configured === 'boolean' &&
     ['available', 'quota_exhausted', 'timeout', 'error', 'unknown'].includes(caps.data.web_search_status) &&
-    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.57.0') {
+    caps.data.trip_planner_version === 'v0.29.1' && caps.data.anywhere_planner_version === 'v0.58.0') {
     console.log('✓ /api/capabilities P1-4：configured 与最近真实状态分开（web_search_configured=' +
       caps.data.web_search_configured + ', status=' + caps.data.web_search_status + '），版本拆分对齐');
   } else { failed++; console.error('✗ /api/capabilities 形状异常：' + JSON.stringify(caps).slice(0, 200)); }
@@ -323,6 +323,10 @@ async function main() {
     const invalidResearch=await (await fetch(BASE+'/api/anywhere/route-research',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({plan_id:ivA.data.plan_id,candidate_id:'伪造',from:'北京',to:'阿拉木图'})})).json();
     if(invalidResearch.code===1)console.log('✓ 关键交通补查：客户端自报端点不能替代所选候选');
     else {failed++;console.error('✗ 关键交通补查接受了伪造选择');}
+    const oversizedBatch=await (await fetch(BASE+'/api/anywhere/transport-search-batch',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({queries:Array(3).fill({from:'北京',to:'伊宁',mode:'rail'})})})).json();
+    const invalidBatch=await (await fetch(BASE+'/api/anywhere/transport-search-batch',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({queries:[{from:'北京',to:'伊宁',mode:'boat'}]})})).json();
+    if(oversizedBatch.code===1 && invalidBatch.code===1)console.log('✓ 增量查询接口：预算和交通字段先校验，不启动无效检索');
+    else {failed++;console.error('✗ 增量查询接口边界异常');}
     const directForResearch=ivA.data.candidates.find(c=>c.legs.length===1);
     if(directForResearch){const l=directForResearch.legs[0],confirmedResearch=await (await fetch(BASE+'/api/anywhere/route-research',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({plan_id:ivA.data.plan_id,candidate_id:directForResearch.id,anchors:{outbound:{from_city:l.from,to_city:l.to,mode:l.mode_guess}}})})).json();
       if(confirmedResearch.code===0 && confirmedResearch.data.status==='skipped' && !confirmedResearch.data.verified)console.log('✓ 已确认交通不重复自动检索，也不升级外部核实状态');
