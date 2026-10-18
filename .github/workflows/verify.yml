@@ -40,6 +40,8 @@ jobs:
           node server/check-guide.mjs
           node server/check-conversation.mjs
           node server/check-send-retry.mjs
+          node server/check-context.mjs
+          node server/check-trip-memory.mjs
           node server/check-chat-refresh.mjs
           node server/check-route-workspace.mjs
           node server/check-route-comparison.mjs
