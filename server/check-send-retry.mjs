@@ -42,6 +42,7 @@ function makeEnv(postImpl) {
     undoGuide() { var snap = sandbox.guideUndo.pop(); if (snap && Array.isArray(snap.messages)) sandbox.guideMessages = JSON.parse(JSON.stringify(snap.messages)); },
     planController: null, planSequence: 0, journeySequence: 0, conversationController: null,
     pendingRestore: null, lastRequest: {}, confirmedPlaces: {}, resultArea: { set innerHTML(v) {} },
+    cancelRouteResearch(){sandbox.routeResearch.cancel();},
     post: postImpl
   };
   sandbox.globalThis = sandbox;

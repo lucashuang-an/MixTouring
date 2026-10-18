@@ -6,6 +6,24 @@ import {randomUUID} from 'node:crypto';
 import {retrievalContext,partitionTimedSources,sourceWindow} from './source-time.mjs';
 const results=new Map();
 export function discardTransportSearch(ids){for(const id of ids)results.delete(id);}
+/* 只读恢复本进程仍有效的记录；不联网、不续期、不采纳客户端计数。 */
+export function resolveTransportSearch({ids=[],legs=[],window=null}={}, {now=Date.now()}={}){
+  if(!Array.isArray(ids) || ids.length>20 || ids.some(id=>typeof id!=='string' || id.length>120) || !Array.isArray(legs) || legs.length>11 || legs.some(l=>!l || [l.from,l.to].some(v=>typeof v!=='string' || !v.trim() || v.length>80) || !['unknown','plane','rail','road'].includes(l.mode)))throw Error('查询记录字段无效');
+  if(window!==null && (typeof window!=='string' || !sourceWindow(window)))throw Error('查询时间窗无效');
+  const records=[];
+  for(const id of new Set(ids)){
+    const item=results.get(id),data=item?.data;
+    if(!data || item.expires<=now || Date.parse(data.retrieved_at)>now || sourceWindow(window)!==data.temporal.target_window || !legs.some(l=>!l.locked && l.from===data.from && l.to===data.to && l.mode===data.requested_mode && !!l.exclude_road===!!data.exclude_road))continue;
+    const current=structuredClone(data),context=retrievalContext({window,purpose:'transport',now});
+    const transport=partitionTimedSources(current.sources,context),experience=partitionTimedSources(current.experiences,retrievalContext({window,purpose:'experience',now}));
+    current.sources=transport.current;current.experiences=experience.current;
+    current.archive=[...current.archive,...transport.archive,...experience.archive];
+    current.temporal={...current.temporal,today:context.today};current.restored_lookup=true;
+    current.results=current.sources.map(s=>({title:s.title,link:s.url,content:s.excerpt,date:s.published_at,date_basis:s.date_basis,source_kind:s.kind,platform:s.platform,read_status:s.read_status,temporal:s.temporal}));
+    current.evidence_state=current.sources.length?'source_lead':'explore';records.push(current);
+  }
+  return {records};
+}
 export function transportSearchCovered(ids,{from,to,mode,exclude_road=false,window=null,now=Date.now()}){
   return (Array.isArray(ids)?ids:[]).slice(0,20).some(id=>{const item=results.get(id);return item?.expires>now && item.data.from===from && item.data.to===to && item.data.requested_mode===mode && !!item.data.exclude_road===exclude_road && sourceWindow(window)===item.data.temporal.target_window;});
 }

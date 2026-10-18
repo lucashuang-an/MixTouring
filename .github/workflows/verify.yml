@@ -46,6 +46,7 @@ jobs:
           node server/check-discovery-flow.mjs
           node server/check-route-research.mjs
           node server/check-draft-research.mjs
+          node server/check-research-tasks.mjs
           node server/check-save-state.mjs
           node server/check-travel-sources.mjs
           node server/check-source-time.mjs

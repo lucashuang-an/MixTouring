@@ -32,6 +32,12 @@ body.product-page .route-overview{font-size:15px;}
 .route-research-progress p{margin:0 0 6px;}
 .route-research-progress .research-scope{font-size:12px;color:var(--mixtouring-muted-foreground);}
 .route-research-progress button{background:transparent;color:var(--color-accent-text);border:0;font:inherit;font-size:12px;min-height:44px;margin-right:16px;}
+.research-task-list summary{cursor:pointer;min-height:44px;display:list-item;align-content:center;}
+.research-task-list ul{list-style:none;margin:8px 0;padding:0;}
+.research-task-list li{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--mixtouring-border);}
+.research-task-list li>div{min-width:0;overflow-wrap:anywhere;}
+.research-task-list small{display:block;margin-top:4px;color:var(--mixtouring-muted-foreground);font-size:12px;}
+.research-task-list li button{flex-shrink:0;margin:0;}
 .discovery-heading h2{font-size:24px;line-height:1.35;font-weight:500;letter-spacing:-.03em;margin:0 0 8px;}
 .discovery-heading>div>p:last-child{font-size:13px;color:var(--mixtouring-muted-foreground);margin:0 0 20px;}
 .discovery-map{height:280px;position:relative;background:var(--color-map-background);border:1px solid #E0E6DE;border-radius:16px;overflow:hidden;}

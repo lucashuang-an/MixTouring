@@ -27,7 +27,7 @@ import { researchSelectedRoute } from './lib/route-research.mjs';
 import { draftResearchChanges,searchDraftChanges } from './lib/draft-research.mjs';
 import { createRequestSignal } from './lib/request-signal.mjs';
 import { routeTransportReferences } from './lib/transport-references.mjs';
-import { searchTransportSources } from './lib/transport-search.mjs';
+import { searchTransportSources,resolveTransportSearch } from './lib/transport-search.mjs';
 import {searchWeb} from './lib/llm.mjs';
 import planningGuide from '../mixtouring-hifi/assets/trip-guide.js';
 import { sightCatalog, compareSights } from './lib/sights.mjs';
@@ -388,6 +388,12 @@ app.use(async (ctx, next) => {
     const signal = createRequestSignal(ctx.req, ctx.res);
     const body=await readBody(ctx) || {};
     try{ctx.body={code:0,data:await searchTransportSources({from:body.from,to:body.to,window:body.window,mode:body.mode,exclude_road:body.exclude_road},searchWeb,{signal})};}
+    catch(error){ctx.body={code:1,msg:error.message};}
+    return;
+  }
+  if (path === '/api/anywhere/transport-search-status' && ctx.method === 'POST') {
+    const body=await readBody(ctx) || {};
+    try{ctx.body={code:0,data:resolveTransportSearch({ids:body.ids,legs:body.legs,window:body.window})};}
     catch(error){ctx.body={code:1,msg:error.message};}
     return;
   }
