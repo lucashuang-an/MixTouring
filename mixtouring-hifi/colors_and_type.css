@@ -65,14 +65,21 @@
 
 /* 当前规划、路线灵感、我的旅行；历史页面继续使用原有令牌。 */
 body.product-page {
-  --mixtouring-background: #F7F8F5;
-  --mixtouring-foreground: #202520;
-  --mixtouring-primary: #202720;
+  --mixtouring-background: #F8F9FA;
+  --mixtouring-foreground: #202220;
+  --mixtouring-primary: #111111;
   --mixtouring-muted-foreground: #626873;
-  --mixtouring-border: #E3E7E2;
+  --mixtouring-border: #E5E7EB;
   --color-brand-accent: #B35E45;
   --color-accent-text: #8A523D;
-  --color-route-soft: #F0F5EE;
+  --color-route-soft: #F5F3EF;
   --color-route-selected: #FFFDF9;
   --color-map-background: #E8EFE7;
+  --mt-type-caption: 12px;
+  --mt-type-small: 14px;
+  --mt-type-body: 15px;
+  --mt-type-card: 20px;
+  --mt-type-title: 28px;
+  --mt-control-radius: 12px;
+  --mt-panel-radius: 20px;
 }

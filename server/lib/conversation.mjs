@@ -164,7 +164,7 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
       explanation:c.explanation, basis:c.basis })),
     destination_material: guides[destination] || null,
     sight_material: /伊宁|伊犁/.test(destination || '') ? sightCatalog() : null };
-  context.route_comparison=buildRouteComparison(plan,{preferences:input.preferences,requirements:before.requirements});
+  context.route_comparison=buildRouteComparison(plan,{preferences:input.preferences,requirements:before.requirements,constraints:input.constraints,travel:input.travel,retrieval_ids:input.retrieval_ids,now:deps.now || Date.now()});
   const explicitChoice=action==='generate'?(plan?.candidates || []).find(c=>c.id===input.requested_candidate_id):null;
   const requestedChoice=(plan?.candidates || []).find(c=>c.id===input.requested_candidate_id);
   if(explicitChoice)context.output_contract.selected_route=workspace.routeFor(null,explicitChoice);

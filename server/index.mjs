@@ -360,7 +360,7 @@ app.use(async (ctx, next) => {
   }
   if (path === '/api/anywhere/compare' && ctx.method === 'POST') {
     const body=await readBody(ctx) || {},plan=guidePlanFromId(body.plan_id);
-    ctx.body=plan?{code:0,data:buildRouteComparison(plan,{preferences:body.preferences,requirements:body.requirements,current_route:body.current_route})}:{code:1,msg:'路线比较已过期，请重新发现走法'};
+    ctx.body=plan?{code:0,data:buildRouteComparison(plan,{preferences:body.preferences,requirements:body.requirements,constraints:body.constraints,travel:body.travel,retrieval_ids:body.retrieval_ids,current_route:body.current_route})}:{code:1,msg:'路线比较已过期，请重新发现走法'};
     return;
   }
   if (path === '/api/anywhere/conversation' && ctx.method === 'POST') {
