@@ -4,7 +4,7 @@
 
 用户指定接入 [DeepSeek-V4.1-Flash](https://console.volcengine.com/ark/region%3Acn-beijing/docs/deepseek-v4-1-flash)。普通方舟Chat API使用完整Model ID `deepseek-v4-1-flash-260910`，不将控制台页面名称直接作为版本ID，也不与Coding Plan别名混用。
 
-本机已在gitignored的 `server/.env` 独立设置 `VOLC_COMPOSE_MODEL=deepseek-v4-1-flash-260910`，沿 `composeJson` 现有 `/api/v3/chat/completions` 通道，复用服务端 `VOLC_SEARCH_API_KEY`。适用于主规划对话、路线组合及调用composeJson的任务；`VOLC_SEARCH_MODEL` 仍为 `deepseek-v4-flash-ga-260731`，联网搜索能力独立验证。旧 `callJson` 的 `LLM_MODEL` 配置不变，不能据组合模型成功宣称所有旧LLM触点均已切换。
+本机已在gitignored的 `server/.env` 独立设置 `VOLC_COMPOSE_MODEL=deepseek-v4-1-flash-261017`（v0.60.4 按用户指令自 260910 切换，最小真实兼容调用已验证），沿 `composeJson` 现有 `/api/v3/chat/completions` 通道，复用服务端 `VOLC_SEARCH_API_KEY`。适用于主规划对话、路线组合及调用composeJson的任务；`VOLC_SEARCH_MODEL` 仍为 `deepseek-v4-flash-ga-260731`，联网搜索能力独立验证。旧 `callJson` 的 `LLM_MODEL` 配置不变，不能据组合模型成功宣称所有旧LLM触点均已切换。
 
 现有 `thinking:{type:'disabled'}` 与 `response_format:{type:'json_object'}` 实测可用。最小真实调用约1255ms返回北京、阿拉木图、十天、必经伊宁和未知日期null，证明账号访问和当前参数兼容，不代表完整规划质量验收。配置在新进程启动时加载，已经运行的服务需重启后才使用新值；不自动重启其他协作实例。
 
