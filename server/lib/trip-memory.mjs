@@ -104,3 +104,37 @@ export function revokeMemoryEntry(memory, id, { now = Date.now() } = {}) {
   if (entry && entry.status === 'current') { entry.status = 'revoked'; entry.updated_at = new Date(now).toISOString(); }
   return next;
 }
+
+/* ---------- M2：跨旅行偏好（scope=device，本机存储，服务端只校验与召回注入） ---------- */
+const PREFERENCE_KEYS = ['pace', 'road', 'preferred_mode', 'experience', 'nature_theme'];
+const PREFERENCE_VALUES = {
+  pace: ['simple', 'explore', 'any'],
+  road: ['open', 'prefer_other', 'exclude'],
+  preferred_mode: ['rail', 'plane'],
+  experience: ['balanced', 'city', 'nature'],
+  nature_theme: ['mountains', 'canyon', 'lake', 'forest']
+};
+
+/** 偏好候选白名单校验：一次性条件（日期/预算/必经/住宿/天数等）不在白名单，
+ *  任何来源都不能把它们升级为跨旅行偏好（M03）；未开启记忆时候选全部丢弃（M09/M04）。 */
+export function validatePreferenceUpserts(raw, { memoryEnabled = false } = {}) {
+  const list = Array.isArray(raw?.upserts) ? raw.upserts : [];
+  if (!memoryEnabled) return { accepted: [], rejected: [], disabled: list.length > 0 };
+  const accepted = [], rejected = [];
+  for (const item of list.slice(0, 3)) {
+    const key = item?.key, value = item?.value;
+    if (!PREFERENCE_KEYS.includes(key)) { rejected.push({ key: str(key, 40), reason: 'key 不在跨旅行偏好白名单（一次性条件不能升级为长期偏好）' }); continue; }
+    if (!PREFERENCE_VALUES[key].includes(value)) { rejected.push({ key, reason: 'value 不在偏好枚举' }); continue; }
+    accepted.push({ key, value });
+  }
+  return { accepted, rejected, disabled: false };
+}
+
+/** 召回快照白名单化：仅白名单键与枚举值进入上下文；结构化条件永不来自偏好。 */
+export function sanitizeRecalledPreferences(raw) {
+  if (!raw?.enabled || !Array.isArray(raw.preferences)) return { enabled: false, preferences: [] };
+  const preferences = raw.preferences
+    .filter(p => PREFERENCE_KEYS.includes(p?.key) && PREFERENCE_VALUES[p.key].includes(p?.value))
+    .slice(0, 5).map(p => ({ key: p.key, value: p.value }));
+  return { enabled: preferences.length > 0, preferences };
+}

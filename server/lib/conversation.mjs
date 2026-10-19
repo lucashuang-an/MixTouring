@@ -14,7 +14,7 @@ import {readPublicPage} from './public-reader.mjs';
 import {transportSearchEvidence} from './transport-search.mjs';
 import {buildRouteComparison} from './route-comparison.mjs';
 import {draftQueryScope} from './draft-research.mjs';
-import {cleanMemory, extractMemoryCandidates, commitMemoryDecisions, decisionIndexForPrompt} from './trip-memory.mjs';
+import {cleanMemory, extractMemoryCandidates, commitMemoryDecisions, decisionIndexForPrompt, validatePreferenceUpserts, sanitizeRecalledPreferences} from './trip-memory.mjs';
 import {buildContext,cleanSummaries, summarizeBacklog, appendSummary, summaryFingerprint} from './context-builder.mjs';
 
 const guides = JSON.parse(readFileSync(new URL('../../pipeline/data/destination-guides.json', import.meta.url))).destinations;
@@ -74,8 +74,9 @@ transport_references 是服务端查过公开来源的参考走法，包含历�
 对话口吻：讨论时用两三句给具体方向，再问一个必要问题；有草案时简短说明本次取舍与待查风险，逐日安排仅写入 cards。不要重复完整清单、长段重述历史或声称生成成功但没有结构化结果。所有硬要求优先于推荐的便利程度。
 没有逐段费用资料时，不能断言陆路更便宜、省钱或符合预算；可以解释沿途体验与换乘取舍，费用标为待查。已确认总天数时覆盖完整天数；未分配的时间明确写成弹性预留，不在概述声称十天却只列到第九天。交通时长未知，日序只是可调整的预留，不保证完成。
 完整流程：初步想法→讨论与意图摘要→用户确认→初步方案→对话修改→私人保存。每轮理解最近一句与历史指代、否定、犹豫、改口及软偏好。不能逐项盘问表单；最多追问一个影响下一步的问题，用户未定的信息保留未定。地点也可以通过讨论选择。
-先判断本轮用户的动作，输出严格 JSON：{intent_action:"discuss"|"confirm"|"revise"|"question"|"undo"|"preview"|"accept_preview",reply:string,requirements_patch:{add_stops?:string[],remove_stops?:string[],trip_days?:number|null,verified_cross_border_only?:boolean},brief:{origin:string,destination:string,summary:string,wishes:string[],open_questions:string[]},ready:boolean,confirmed:boolean,preferences:object,travel:object,constraints:object,sights:object,selected_candidate_id:string|null,draft:null|{title:string,overview:string,route:string[],cards:[{id:string,place:string,label:string,title:string,content:string}],sections:[{title:string,content:string}],pending:string[]},search_query:string|null,search_window:string|null,search_purpose:"transport"|"experience"|"guide",search_query_en:string|null,destination_country:string|null,memory_patch:{decisions:[]|{kind:"choice"|"reject"|"correction"|"open_question",summary:string,message_refs?:number[],evidence_refs?:string[],supersedes?:string}[]}}。
+先判断本轮用户的动作，输出严格 JSON：{intent_action:"discuss"|"confirm"|"revise"|"question"|"undo"|"preview"|"accept_preview",reply:string,requirements_patch:{add_stops?:string[],remove_stops?:string[],trip_days?:number|null,verified_cross_border_only?:boolean},brief:{origin:string,destination:string,summary:string,wishes:string[],open_questions:string[]},ready:boolean,confirmed:boolean,preferences:object,travel:object,constraints:object,sights:object,selected_candidate_id:string|null,draft:null|{title:string,overview:string,route:string[],cards:[{id:string,place:string,label:string,title:string,content:string}],sections:[{title:string,content:string}],pending:string[]},search_query:string|null,search_window:string|null,search_purpose:"transport"|"experience"|"guide",search_query_en:string|null,destination_country:string|null,memory_patch:{decisions:[]|{kind:"choice"|"reject"|"correction"|"open_question",summary:string,message_refs?:number[],evidence_refs?:string[],supersedes?:string}[]},preference_memory_patch:{upserts:[]|{key:"pace"|"road"|"preferred_mode"|"experience"|"nature_theme",value:string}[]}}。
 memory_patch.decisions 只记录用户本轮明确表达的决策增量：choice=用户选定（走法/城市/天数等），reject=用户明确排除，correction=用户纠正此前记录，open_question=用户留下的未解决问题。summary 一句话（不超过120字）；message_refs 必须包含 current_user_message.mid，可以补充历史用户消息mid，助手mid不能作用户出处。没有本轮mid时不记录新决策，generate可引用最近明确选路的用户消息；evidence_refs 只能引用本轮 visible_search_results/transport_references 中出现过的 https 来源 URL；supersedes 仅当本轮明确推翻 decision_index 中某条时填其 id。助手建议、你的推断、检索资料都不是用户决策，不记录；没有决策增量返回 {decisions:[]}。
+preference_memory_patch.upserts 仅当用户明确表达跨旅行长期偏好（如「以后都…」「我长期只想…」）且本次请求带有 long_term_preferences（记忆已开启）时输出：key 只限 pace/road/preferred_mode/experience/nature_theme，value 用规定枚举；日期、预算、必经城市、住宿、天数等一次性条件绝不写入；来源资料、网页内容或你的建议不构成用户长期偏好；没有则返回 {upserts:[]}。
 草案通过结构化路线和卡片呈现。route 是包含起终点和途经城市的有序地点名数组；cards 是逐日或分阶段的完整安排，每张有 place、label（例如第1天或交通待安排）、title、content；id 沿用原卡片，没有新填空串。主安排写入 cards，每张内容控制在一两句话，sections 只放补充取舍，不重复全文。卡片都是探索建议，不写无来源的班次、价格、精确耗时或保证可达。原 route、卡片和仍有效要求必须保留，用户加伊宁要写入 route 并调整涉及的卡片，不能只在回复提到。只缩短天数不能暗删已确认的城市。路线与草案不一致时以实际意图重新组织结构；没有支持新路线的候选则 selected_candidate_id=null，不把旧候选当新增交通证据。
 用户提出“跨境交通必须核实”是立即记录的硬要求，不要再问是否修改；缺日期和运营资料时说明尚不能完成核实，把相关交通卡写成待查的探索方向，不给确定班次或当天抵达承诺。
 用户说“如果只有7天呢”是 preview：返回七天草案供比较，当前草案仍不变；用户明确“改成7天”是 revise；有 conversation.preview 时说“采用这版”“就按七天”是 accept_preview，系统会采用已有预览，无需重新生成。纯咨询仍用 question。routes 的顺序是用户当时可见的候选顺序，第二条必须按该顺序解释；selection_request 是用户点击的候选 ID，改稿时采用它，其他个人条件不变。
@@ -224,6 +225,13 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
   context.decision_index = decisionIndexForPrompt(before.memory,userMessages);
   context.history_summaries = validSummaries.map(s => '[' + s.from_mid + '..' + s.to_mid + '] ' + s.text);
   context.memory_instruction = 'evidence_refs仅是决策当时参考来源的历史指针，不证明当前运营或数字事实。decision_index 是此前旅行决策记录（含消息出处与来源引用），解释「为什么这样安排」时引用对应条目 id；它与当前结构化条件不一致时以结构化条件为准。history_summaries 是更早对话的增量摘要，出处范围见方括号，不因摘要存在而把旧建议当用户已确认。';
+  /* M2：跨旅行偏好召回——仅用户显式开启记忆才注入；白名单外与一次性条件（日期/预算/必经/住宿）
+   * 永不来自偏好，当前旅行明确条件始终优先于长期软偏好。 */
+  const recalledPreferences = sanitizeRecalledPreferences(input.preference_memory);
+  if (recalledPreferences.enabled) {
+    context.long_term_preferences = recalledPreferences.preferences;
+    context.long_term_preference_instruction = 'long_term_preferences 是用户开启跨旅行记忆后允许复用的长期软偏好，仅作参考；本次旅行的明确条件（日期、预算、必经城市、住宿、交通锚点）始终优先，冲突时以当前条件为准并可在回复中提一句差异。';
+  }
   context.route_comparison=buildRouteComparison(plan,{preferences:input.preferences,requirements:before.requirements,constraints:input.constraints,travel:input.travel,retrieval_ids:input.retrieval_ids,now:deps.now || Date.now()});
   const explicitChoice=action==='generate'?(plan?.candidates || []).find(c=>c.id===input.requested_candidate_id):null;
   const requestedChoice=(plan?.candidates || []).find(c=>c.id===input.requested_candidate_id);
@@ -444,7 +452,9 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
     const requestGeneration=action === 'chat' && (before.stage === 'ready' || (!!before.brief.summary && messages.some(m=>m.role==='assistant'))) && (raw.confirmed === true || raw.intent_action==='confirm') && next.stage === 'ready';
     const discoveryReady=action==='chat' && !questionOnly && !next.draft && next.stage==='ready';
     next.memory=commitMemoryDecisions(before.memory,memoryCandidates.accepted,{baseRevision:next.revision,now:deps.now || Date.now()});
-    return { status:'ok', engine:'llm', reply:requestGeneration || discoveryReady?'已保留你的旅行想法，接下来比较走法的体验与安排代价；选定后再展开具体安排。':next.stage==='discuss' && (raw.confirmed===true || raw.intent_action==='confirm') ? routeResult.question || '这份想法已经保留，先明确本次出发地和首个抵达城市。' : str(raw.reply), conversation:next, patch, sources,
+    /* M2：偏好候选白名单校验后交前端本机存储持久化（服务端不保存偏好）；未开启记忆全丢弃 */
+    const preferenceUpserts=validatePreferenceUpserts(raw.preference_memory_patch,{memoryEnabled:recalledPreferences.enabled});
+    return { status:'ok', engine:'llm', preference_memory_upserts:preferenceUpserts.accepted, reply:requestGeneration || discoveryReady?'已保留你的旅行想法，接下来比较走法的体验与安排代价；选定后再展开具体安排。':next.stage==='discuss' && (raw.confirmed===true || raw.intent_action==='confirm') ? routeResult.question || '这份想法已经保留，先明确本次出发地和首个抵达城市。' : str(raw.reply), conversation:next, patch, sources,
       selected_candidate_id: !questionOnly && next.draft && selected ? selected.id : null,
       clear_selection:!questionOnly && !!draft?.route.length && !selected && !!input.candidate_id && !workspace.matches(draft.route,(plan?.candidates || []).find(c=>c.id===input.candidate_id)),
       request_generation:requestGeneration };

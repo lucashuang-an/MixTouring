@@ -102,6 +102,16 @@
       </div>
     </div>
 
+    <!-- M2：跨旅行偏好记忆——独立本机存储，默认关闭；与旅行快照隔离 -->
+    <details id="prefMemoryPanel" style="margin-top:12px;">
+      <summary style="font-size:13px;color:var(--mixtouring-muted-foreground);cursor:pointer;min-height:44px;">跨旅行偏好记忆<span id="prefMemoryState" style="margin-left:8px;"></span></summary>
+      <div style="margin-top:10px;padding:12px 14px;border:0.5px solid var(--mixtouring-border);border-radius:14px;">
+        <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--mixtouring-foreground);"><input id="prefMemoryToggle" type="checkbox" /> 记住我的长期旅行偏好（节奏、交通方式等；仅保存在本机浏览器）</label>
+        <div id="prefMemoryList" style="margin-top:8px;"></div>
+        <div style="font-size:11.5px;color:var(--mixtouring-muted-foreground);margin-top:8px;line-height:1.6;">只记录你在对话中明确表达的长期软偏好；日期、预算、必经城市等一次性条件不会被记住。关闭后立即停止召回与记录；删除的条目不会因恢复旧行程而回来。</div>
+      </div>
+    </details>
+
     <!-- 结果区：先展示走法，核查信息按需展开 -->
     <div id="planStatus" role="status" aria-live="polite"></div>
     <div id="workspaceTabs" class="workspace-tabs" hidden aria-label="规划视图"><button type="button" data-workspace-tab="chat" aria-pressed="true">对话</button><button type="button" data-workspace-tab="route" aria-pressed="false">路线与安排</button></div>
@@ -127,6 +137,7 @@
 
   <script src="../assets/app.js"></script>
   <script src="../assets/draft-store.js"></script>
+  <script src="../assets/preference-store.js"></script>
   <script src="../assets/trip-guide.js"></script>
   <script src="../assets/sight-planner.js"></script>
   <script src="../assets/route-workspace.js"></script>
@@ -317,6 +328,32 @@
       box.querySelectorAll('[data-edit]').forEach(function (btn) { btn.addEventListener('click', function () { editAnchor(btn.getAttribute('data-edit')); }); });
       box.querySelectorAll('[data-revoke]').forEach(function (btn) { btn.addEventListener('click', function () { revokeAnchor(btn.getAttribute('data-revoke')); }); });
     }
+    /* ---------- M2：跨旅行偏好记忆面板——查看/开启/删除；独立本机存储 ---------- */
+    function renderPreferencePanel() {
+      if (!window.MTPreferences) return;
+      var stateEl = document.getElementById('prefMemoryState'), listEl = document.getElementById('prefMemoryList'), toggle = document.getElementById('prefMemoryToggle');
+      if (!toggle) return;
+      toggle.checked = MTPreferences.isEnabled();
+      if (stateEl) stateEl.textContent = MTPreferences.isEnabled() ? '（已开启 ' + MTPreferences.list().length + ' 条）' : '（未开启）';
+      var entries = MTPreferences.entries().filter(function (e) { return e.status === 'active'; });
+      var html = entries.length ? '<div style="display:flex;flex-direction:column;gap:6px;">' + entries.map(function (e) {
+        return '<div style="display:flex;align-items:center;gap:10px;font-size:12.5px;"><span style="flex:1;">' + MT.esc(MTPreferences.KEY_LABEL[e.key] || e.key) + '：' + MT.esc(e.value) + '</span>' +
+          '<button type="button" data-pref-remove="' + MT.esc(e.id) + '" style="min-height:34px;padding:4px 12px;border:0.5px solid var(--mixtouring-border);border-radius:8px;background:none;font-family:inherit;font-size:12px;cursor:pointer;">删除</button></div>';
+      }).join('') + '</div>' : '<div style="font-size:12px;color:var(--mixtouring-muted-foreground);">' + (MTPreferences.isEnabled() ? '还没有记住的偏好；对话中明确说「以后都…」时才会记下。' : '开启后，对话中明确表达的长期偏好会记在这里。') + '</div>';
+      listEl.innerHTML = html;
+      listEl.querySelectorAll('[data-pref-remove]').forEach(function (btn) {
+        btn.onclick = function () { MTPreferences.remove(btn.getAttribute('data-pref-remove')); renderPreferencePanel(); };
+      });
+    }
+    (function initPreferencePanel() {
+      var toggle = document.getElementById('prefMemoryToggle');
+      if (!toggle) return;
+      toggle.addEventListener('change', function () {
+        if (window.MTPreferences) { MTPreferences.setEnabled(toggle.checked); renderPreferencePanel(); }
+      });
+      renderPreferencePanel();
+    })();
+
     buildAnchorForms();
     MTSights.init(document.getElementById('sightContent'), function () {
       return { plan_id:activePlan && activePlan.plan_id, relevant:MTGuide.sightRelevant(activePlan?{intent:activePlan.intent,anchors:activePlan.anchors,candidates:activePlan.candidates.filter(function(c){return c.id===activeCandidate;})}:null,(MTSights.getState().requested?'伊犁 ':'')+(lastRequest && lastRequest.text || '')), destination:activePlan && activePlan.intent && activePlan.intent.destination_place && activePlan.intent.destination_place.name || lastRequest && lastRequest.destination, anchors:anchors, constraints:collectConstraints() };
@@ -789,6 +826,12 @@
           guideMessages.push(undoUser,{role:'assistant',text:data.reply});renderGuide();rememberSession();return;
         }
         guideUndo.push(previous);conversation=data.conversation;
+        /* M2：偏好候选（服务端已白名单校验）写入本机偏好存储，关联本轮用户消息 mid */
+        if (Array.isArray(data.preference_memory_upserts) && data.preference_memory_upserts.length && window.MTPreferences) {
+          var prefMid = guideMessages[guideMessages.length-1] && guideMessages[guideMessages.length-1].mid;
+          MTPreferences.applyUpserts(data.preference_memory_upserts, prefMid);
+          if (typeof renderPreferencePanel === 'function') renderPreferencePanel();
+        }
         if(pendingUserMsg)delete pendingUserMsg.pending;
         if(data.clear_selection){activeCandidate=null;pendingRestore=null;journeySequence++;var oldJourney=document.getElementById('journeyArea');if(oldJourney)oldJourney.innerHTML='';}
         guideState=MTGuide.clean(Object.assign({},guideState,data.patch.preferences));
@@ -1019,6 +1062,8 @@
       body.constraints = collectConstraints();
       /* 卡 B：锚点随每次规划提交（锁定/修改/撤销后触发重规划共用同一路径） */
       if (anchors.outbound || anchors.return) body.anchors = { outbound: anchors.outbound, return: anchors.return };
+      /* M2：偏好记忆快照（关闭时为空，服务端不召回不提交） */
+      body.preference_memory = window.MTPreferences ? MTPreferences.snapshotForRequest() : { enabled: false, preferences: [] };
       /* 已提交字段归入本次意图；下次全新查询只带入提交之后明确编辑的字段。 */
       travelDirty = { type: false, out: false, ret: false, count: false };
       constraintDirty = {};
