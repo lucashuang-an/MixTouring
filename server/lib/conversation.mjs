@@ -166,10 +166,11 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
     .filter(m => ['user','assistant'].includes(m?.role))
     .map(m => ({ mid: Number.isSafeInteger(m?.mid) ? m.mid : null, role: m.role, text: str(m.text, 2000) }));
   const messages = allMessages.slice(-16);
+  const currentText=typeof input.text==='string'?input.text.trim():'';
   const supplied=input.current_message;
   const currentMessage=supplied?.role==='user' && Number.isSafeInteger(supplied.mid) &&
-    str(supplied.text,2000)===str(input.text,2000) && !allMessages.some(m=>m.mid===supplied.mid && (m.role!=='user' || m.text!==str(input.text,2000)))
-    ? {mid:supplied.mid,role:'user',text:str(input.text,2000)}:null;
+    typeof supplied.text==='string' && supplied.text.trim()===currentText && !allMessages.some(m=>m.mid===supplied.mid && (m.role!=='user' || m.text!==currentText))
+    ? {mid:supplied.mid,role:'user',text:currentText}:null;
   const userMessages=allMessages.filter(m=>m.role==='user').concat(currentMessage?[currentMessage]:[]);
   /* M1：增量摘要——滑出近期窗口且未被有效摘要覆盖的范围一次提炼；失败用已验证摘要与
    * 近期原文继续，不阻塞主流程（摘要触发按未摘要范围，非每轮）。 */
@@ -206,7 +207,7 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
   if(action==='generate')before.routing=initialRouting.routing;
   const destination = before.brief.destination || plan?.intent?.destination;
   const context = { date: new Date(deps.now || Date.now()).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' }), action,
-    text: str(input.text, 2000), current_user_message:currentMessage,conversation: before, messages,
+    text: currentText, current_user_message:currentMessage,conversation: before, messages,
     output_contract:{route_origin:before.routing.origin,route_destination:before.routing.destination,route_includes_return:false,trip_type:input.travel?.trip_type || 'pending',max_cards:30},
     can_undo:input.can_undo===true,
     current: { requirements:before.requirements, preferences: guide.clean(input.preferences), travel: sanitizeIntentFields(input.travel),

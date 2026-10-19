@@ -134,6 +134,7 @@ function buildPayloadContext(payload,{coreRules,rulesVersion,budgetChars}){
   const routeView=r=>({id:r.id,kind:r.kind,explanation:r.explanation,basis:r.basis,legs:(r.legs || []).map(legView)});
   const comparison=payload.route_comparison;
   const projected={...payload};
+  if(payload.current_user_message && payload.current_user_message.text===payload.text)projected.current_user_message={mid:payload.current_user_message.mid,role:'user'};
   if(payload.routes)projected.routes=payload.routes.map(routeView);
   if(payload.displayed_routes)projected.displayed_routes=payload.displayed_routes.map(routeView);
   if(comparison)projected.route_comparison={
