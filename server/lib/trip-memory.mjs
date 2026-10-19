@@ -13,8 +13,10 @@ export function cleanMemory(raw = {}, { now = Date.now() } = {}) {
   if (raw.schema_version == null) return emptyMemory();
   if (raw.schema_version !== MEMORY_SCHEMA_VERSION) {
     return { ...emptyMemory(), degraded: true, stored_schema_version: raw.schema_version,
-      degraded_note: '记忆数据使用了未识别的格式版本，本轮以空记忆继续；原文未覆盖。' };
+      unrecognized:structuredClone(raw),degraded_note: '记忆数据使用了未识别的格式版本，本轮以空记忆继续；原文未覆盖。' };
   }
+  if(raw.degraded)return {...emptyMemory(),degraded:true,stored_schema_version:raw.stored_schema_version,
+    unrecognized:structuredClone(raw.unrecognized),degraded_note:raw.degraded_note};
   const entries = Array.isArray(raw.entries) ? raw.entries.map((e, i) => cleanEntry(e, i, now)).filter(Boolean) : [];
   return { schema_version: MEMORY_SCHEMA_VERSION, entries, next_id: validId(raw.next_id, entries) };
 }
@@ -43,17 +45,17 @@ function cleanEntry(e, i, now) {
 
 /** 模型候选 → 可提交增量。逐条校验：kind 枚举、摘要有内容、消息引用必须是真实 mid、
  *  来源引用必须属于本轮证据（同旅行可见来源）；不合规候选丢弃并记录原因，不阻塞其余。 */
-export function extractMemoryCandidates(rawPatch, { allowedMessageIds = [], allowedEvidenceRefs = [] } = {}) {
+export function extractMemoryCandidates(rawPatch, { userMessages = [], currentMessageId = null, allowedEvidenceRefs = [] } = {}) {
   const list = Array.isArray(rawPatch?.decisions) ? rawPatch.decisions : [];
   const accepted = [], rejected = [];
-  const messages = new Set(allowedMessageIds), evidence = new Set(allowedEvidenceRefs);
+  const messages = new Set(userMessages.filter(m=>m?.role==='user' && Number.isSafeInteger(m.mid)).map(m=>m.mid)), evidence = new Set(allowedEvidenceRefs);
   for (const raw of list.slice(0, 4)) {
     const kind = raw?.kind;
     const summary = str(raw?.summary, 300);
     if (!MEMORY_KINDS.includes(kind)) { rejected.push({ reason: 'kind 无效', summary }); continue; }
     if (!summary) { rejected.push({ reason: '摘要为空', summary }); continue; }
     const message_refs = (Array.isArray(raw.message_refs) ? raw.message_refs : []).filter(id => messages.has(id)).slice(0, 8);
-    if (Array.isArray(raw.message_refs) && raw.message_refs.length && !message_refs.length) { rejected.push({ reason: '消息引用不在本次会话', summary }); continue; }
+    if (!message_refs.length || currentMessageId!==null && !message_refs.includes(currentMessageId)) { rejected.push({ reason: '缺少本次用户明确表达的消息出处', summary }); continue; }
     const evidence_refs = (Array.isArray(raw.evidence_refs) ? raw.evidence_refs : []).filter(u => evidence.has(u)).slice(0, 4);
     if (Array.isArray(raw.evidence_refs) && raw.evidence_refs.length && !evidence_refs.length) { rejected.push({ reason: '来源引用不属于本次旅行的可见证据', summary }); continue; }
     accepted.push({ kind, summary, message_refs, evidence_refs, supersedes: /^mem_\d+$/.test(String(raw.supersedes)) ? raw.supersedes : null });
@@ -65,8 +67,11 @@ export function extractMemoryCandidates(rawPatch, { allowedMessageIds = [], allo
  *  旅行状态与记忆增量在同一状态转换中生效——调用方在成功路径一次性写入 next.memory。 */
 export function commitMemoryDecisions(memory, candidates, { baseRevision = 0, now = Date.now() } = {}) {
   const next = cleanMemory(memory, { now });
+  if(next.degraded)return next;
   const byId = new Map(next.entries.map(e => [e.id, e]));
   for (const c of candidates) {
+    // 重试同一用户消息不重复建立决策，已撤销条目也不能被重发复活。
+    if(next.entries.some(e=>e.kind===c.kind && e.summary===c.summary && JSON.stringify(e.message_refs)===JSON.stringify(c.message_refs)))continue;
     if (c.supersedes && byId.has(c.supersedes)) {
       const old = byId.get(c.supersedes);
       if (old.status === 'current') { old.status = 'superseded'; old.updated_at = new Date(now).toISOString(); }
@@ -75,7 +80,7 @@ export function commitMemoryDecisions(memory, candidates, { baseRevision = 0, no
       id: 'mem_' + next.next_id, kind: c.kind, summary: c.summary,
       message_refs: c.message_refs, evidence_refs: c.evidence_refs,
       status: 'current', supersedes: c.supersedes || null,
-      base_revision: baseRevision, created_at: new Date(now).toISOString(), updated_at: new Date(now).toISOString()
+      base_revision: baseRevision, evidence_use:'decision_reference_only',created_at: new Date(now).toISOString(), updated_at: new Date(now).toISOString()
     };
     byId.set(entry.id, entry); next.entries.push(entry); next.next_id += 1;
   }
@@ -83,10 +88,12 @@ export function commitMemoryDecisions(memory, candidates, { baseRevision = 0, no
 }
 
 /** 供模型引用的当前决策索引（只含 current；摘要/理由可指向 id，不复制权威条件值）。 */
-export function decisionIndexForPrompt(memory) {
+export function decisionIndexForPrompt(memory, userMessages) {
+  const userIds=userMessages && new Set(userMessages.filter(m=>m.role==='user').map(m=>m.mid));
   const entries = (memory?.entries || []).filter(e => e.status === 'current')
+    .filter(e=>!userIds || e.message_refs.some(id=>userIds.has(id)))
     .map(e => ({ id: e.id, kind: KIND_LABEL[e.kind] || e.kind, summary: e.summary,
-      message_refs: e.message_refs, evidence_refs: e.evidence_refs, base_revision: e.base_revision }));
+      message_refs: e.message_refs, evidence_refs: e.evidence_refs, evidence_use:'decision_reference_only',base_revision: e.base_revision }));
   return { count: entries.length, entries };
 }
 

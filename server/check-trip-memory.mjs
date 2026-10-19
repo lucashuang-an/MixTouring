@@ -1,84 +1,87 @@
-/* check-trip-memory.mjs · v0.60.1 M1：旅行决策记忆——候选校验、提交、预览原子性、
- * 撤销不复活、旧快照兼容、晚到丢弃与无重复。无网络、无密钥、注入模型桩。
- * 运行：node server/check-trip-memory.mjs */
+/* M1修复回归：实际编排中的用户出处、预览原子提交、恢复与隔离；无网络无密钥。 */
 import assert from 'node:assert/strict';
-import { cleanMemory, extractMemoryCandidates, commitMemoryDecisions, decisionIndexForPrompt, revokeMemoryEntry } from './lib/trip-memory.mjs';
-import { cleanConversation } from './lib/conversation.mjs';
-
-const okPayload = (over = {}) => ({ reply: '好', brief: { origin: '北京', destination: '阿拉木图', summary: 's', wishes: [], open_questions: [] }, ready: true, confirmed: false, preferences: {}, travel: {}, constraints: {}, sights: {}, requirements_patch: {}, ...over });
-const messages = n => Array.from({ length: n }, (_, i) => ({ mid: i + 1, role: i % 2 ? 'assistant' : 'user', text: 'm' + (i + 1) }));
-
-/* 候选校验：kind 枚举、空摘要、消息与来源引用越权 */
+import {cleanMemory,extractMemoryCandidates,commitMemoryDecisions,decisionIndexForPrompt,revokeMemoryEntry} from './lib/trip-memory.mjs';
+import {conversationTurn,cleanConversation} from './lib/conversation.mjs';
+const brief={origin:'北京',destination:'阿拉木图',summary:'自然与文化',wishes:[],open_questions:[]};
+const base={stage:'ready',revision:2,brief,routing:{origin:'北京',destination:'阿拉木图'}};
+const payload=(over={})=>({intent_action:'discuss',reply:'继续保留条件。',brief,ready:true,confirmed:false,preferences:{},travel:{},constraints:{},sights:{},requirements_patch:{},...over});
+const user={mid:3,role:'user',text:'我选择经伊宁'};
+const candidate={kind:'choice',summary:'选择经伊宁，因为想沿途停留',message_refs:[3],evidence_refs:[]};
+const history=[{mid:1,role:'user',text:'想看自然与文化'},{mid:2,role:'assistant',text:'可以考虑伊宁'}];
+const input={text:user.text,current_message:user,conversation:base,messages:history};
+const deps={model:async()=>payload({memory_patch:{decisions:[candidate]}}),search:async()=>[]};
 {
-  const { accepted, rejected } = extractMemoryCandidates({ decisions: [
-    { kind: 'choice', summary: '用户选择必经伊宁', message_refs: [2, 99], evidence_refs: ['https://a.example/1'] },
-    { kind: 'hack', summary: '非法类型' },
-    { kind: 'reject', summary: '' },
-    { kind: 'open_question', summary: '口岸衔接未解决', evidence_refs: ['https://evil.example/1'] }
-  ] }, { allowedMessageIds: [1, 2, 3], allowedEvidenceRefs: ['https://a.example/1'] });
-  assert.equal(accepted.length, 1, '校验：仅合法候选通过');
-  assert.equal(accepted[0].message_refs.includes(99), false, '校验：越权消息引用被剥离');
-  assert.deepEqual(rejected.map((r) => r.reason), ['kind 无效', '摘要为空', '来源引用不属于本次旅行的可见证据'],
-    '校验：不合规候选逐条记录原因，不阻塞其余');
+  const checks=extractMemoryCandidates({decisions:[candidate,{...candidate,message_refs:[2]},{...candidate,message_refs:[]},{...candidate,message_refs:[3],evidence_refs:['https://evil.example/']}]},{userMessages:[...history,user],currentMessageId:3});
+  assert.equal(checks.accepted.length,1);assert.equal(checks.rejected.length,3);
+  const result=await conversationTurn(input,null,deps);
+  assert.equal(result.status,'ok');assert.deepEqual(result.conversation.memory.entries[0].message_refs,[3]);
+  assert.equal(result.conversation.memory.entries[0].base_revision,result.conversation.revision);
+  const same=await conversationTurn({...input,conversation:result.conversation},null,deps);
+  assert.equal(same.conversation.memory.entries.length,1,'同消息重试不重复记忆');
+  const legacy=await conversationTurn({...input,current_message:undefined},null,deps);
+  assert.equal(legacy.status,'ok');assert.equal(legacy.conversation.memory.entries.length,0,'无本轮身份的旧调用正常继续但不编记忆');
 }
-
-/* 提交与替代：id 单调、supersedes 置被替代、base_revision 记录 */
 {
-  let mem = cleanMemory(undefined);
-  assert.equal(mem.schema_version, 1, '旧快照：缺记忆字段补当前 schema');
-  assert.equal(mem.entries.length, 0, '旧快照：缺记忆字段视为空');
-  mem = commitMemoryDecisions(mem, [{ kind: 'choice', summary: '必经伊宁', message_refs: [2], evidence_refs: [] }], { baseRevision: 3 });
-  mem = commitMemoryDecisions(mem, [{ kind: 'correction', summary: '改为必经塔城', supersedes: 'mem_1', message_refs: [5], evidence_refs: [] }], { baseRevision: 5 });
-  assert.deepEqual(mem.entries.map((e) => e.id), ['mem_1', 'mem_2'], '提交：id 单调分配');
-  assert.equal(mem.entries[0].status, 'superseded', '提交：被替代条目状态更新');
-  assert.equal(mem.entries[1].status, 'current', '提交：新条目为当前');
-assert.equal(mem.entries[1].base_revision, 5, '提交：base_revision 记录旅行版本');
-  const index = decisionIndexForPrompt(mem);
-  assert.deepEqual(index.entries.map((e) => e.id), ['mem_2'], '索引：只含当前条目（M01 理由引用不指向被替代记录）');
-  const revoked = revokeMemoryEntry(mem, 'mem_2');
-  assert.equal(revoked.entries[1].status, 'revoked', '撤销：显式撤销置为已撤销');
-  assert.equal(decisionIndexForPrompt(revoked).entries.length, 0, '撤销：已撤销条目不进索引（M05 不复活）');
+  let memory=commitMemoryDecisions(cleanMemory(),[candidate],{baseRevision:3});
+  memory=commitMemoryDecisions(memory,[{...candidate,kind:'correction',summary:'取消途经伊宁',message_refs:[5],supersedes:'mem_1'}],{baseRevision:4});
+  assert.equal(memory.entries[0].status,'superseded');
+  assert.deepEqual(decisionIndexForPrompt(memory).entries.map(e=>e.id),['mem_2']);
+  memory=revokeMemoryEntry(memory,'mem_2');assert.equal(decisionIndexForPrompt(memory).entries.length,0);
+  const unknown=cleanMemory({schema_version:99,entries:[{raw:'不能丢失'}]});
+  assert.equal(unknown.degraded,true);assert.deepEqual(unknown.unrecognized.entries,[{raw:'不能丢失'}]);
+  const again=cleanConversation({memory:unknown});assert.equal(again.memory.degraded,true);
+  assert.deepEqual(commitMemoryDecisions(again.memory,[candidate]).unrecognized,unknown.unrecognized);
+  const old=cleanConversation({stage:'draft'});assert.equal(old.memory.entries.length,0);assert.equal(old.summaries.items.length,0);
 }
-
-/* 旧快照兼容与坏 schema：不覆盖、明确降级（M07） */
+const draft={title:'十天探索',overview:'交通仍待核实',route:['北京','伊宁','阿拉木图'],cards:[{id:'card-a',place:'阿拉木图',label:'第1—10天',title:'阶段预留',content:'待核实交通后安排。'}],sections:[],pending:['班次待查']};
 {
-  const legacy = cleanConversation({ stage: 'draft', revision: 2 });
-  assert.equal(legacy.memory.entries.length, 0 && legacy.summaries.items.length, 0, '旧快照：无记忆字段=空，主流程不变');
-  const unknown = cleanMemory({ schema_version: 99, entries: [{ kind: 'choice', summary: 'x' }] });
-  assert.equal(unknown.entries.length, 0 && unknown.degraded === true, '未知 schema：降级为空并标记，不猜不覆盖');
-  const broken = cleanConversation({ memory: 'not-an-object', summaries: 42 });
-  assert.equal(broken.memory.entries.length, 0 && broken.summaries.items.length, 0, '损坏输入：空记忆继续');
-}
-
-/* 编排：成功轮提交决策；重复压缩无重复条目（M10）；晚到轮次的旧候选按当轮校验（M08） */
-{
-  let modelCalls = [];
-  const model = async (opts) => {
-    modelCalls.push(opts.kind);
-    if (opts.kind === 'conversation_digest') return { summary: '早期：用户选定必经伊宁[2]' };
-    return okPayload({ memory_patch: { decisions: [{ kind: 'choice', summary: '用户选择经乌鲁木齐走法', message_refs: [messages(4).at(-1).mid], evidence_refs: [] }] } });
+  const url='https://example.com/experience';
+  const generate=async source=>{
+    const model=async opts=>{
+      if(opts.kind==='conversation_intent')return {intent_action:'preview',requirements_patch:{trip_days:7}};
+      if(opts.kind==='conversation_review')return {reply:'压缩为七天的备选。',draft:{...draft,cards:[{...draft.cards[0],label:'第1—7天'}]}};
+      return payload({intent_action:'preview',requirements_patch:{trip_days:7},draft:{...draft,cards:[{...draft.cards[0],label:'第1—7天'}]},search_query:source?'阿拉木图旅行':null,memory_patch:{decisions:[{...candidate,summary:'比较七天安排',evidence_refs:source?[url]:[]}]}});
+    };
+    return conversationTurn({...input,text:'如果只有七天呢',current_message:{...user,text:'如果只有七天呢'},conversation:{...base,stage:'draft',draft,requirements:{trip_days:10,required_stops:['伊宁']}}},null,{model,search:async q=>source && !q.includes('site:')?[{title:'阿拉木图旅行参考',link:url,content:'当地文化和自然的旅行体验。',date:'2026-10-18'}]:[],now:Date.parse('2026-10-19T04:00:00Z')});
   };
-  const input = { text: '就选经乌鲁木齐的吧', conversation: cleanConversation({ stage: 'ready', brief: { origin: '北京', destination: '阿拉木图', summary: 's', wishes: [], open_questions: [] } }), messages: messages(4) };
-  const turn1 = await (await import('./lib/conversation.mjs')).conversationTurn(input, null, { model });
-  assert.equal(turn1.status, 'ok');
-  assert.equal(turn1.conversation.memory.entries.length, 1, '编排：成功轮提交一条决策');
-  assert.equal(turn1.conversation.memory.entries[0].base_revision, turn1.conversation.revision, '编排：base_revision 对齐本轮版本');
-  /* 相同候选重复出现（重复压缩/重发）：提交产生新条目但摘要不重复——记忆层面由 supersedes/唯一性约束，直接重复提交会新增条目，此处验证同轮幂等 */
-  const same = commitMemoryDecisions(turn1.conversation.memory, [], { baseRevision: 4 });
-  assert.equal(same.entries.length, turn1.conversation.memory.entries.length, 'M10：空候选不产生重复条目');
-  /* 长对话触发增量摘要：滑出窗口 ≥4 条时出现 digest 调用，摘要随快照返回 */
-  const longInput = { text: '继续', conversation: cleanConversation({ stage: 'ready', brief: { origin: '北京', destination: '阿拉木图', summary: 's', wishes: [], open_questions: [] } }), messages: messages(24) };
-  modelCalls = [];
-  const longTurn = await (await import('./lib/conversation.mjs')).conversationTurn(longInput, null, { model });
-  assert.ok(modelCalls.includes('conversation_digest'), 'M01：长对话触发增量摘要调用');
-  assert.equal(longTurn.conversation.summaries.items.length, 1, 'M01：摘要随旅行快照保存并绑定范围');
-  assert.equal(longTurn.conversation.summaries.items[0].to_mid - longTurn.conversation.summaries.items[0].from_mid + 1, 24 - 16, 'M01：摘要覆盖恰为滑出窗口的范围');
+  for(const source of [false,true]){
+    const preview=await generate(source);assert.equal(preview.status,'ok');
+    assert.equal(preview.conversation.requirements.trip_days,10);assert.equal(preview.conversation.memory.entries.length,0);
+    assert.equal(preview.conversation.preview.memory_candidates.length,1);
+    if(source)assert.deepEqual(preview.conversation.preview.memory_evidence_refs,[url]);
+    const restored=JSON.parse(JSON.stringify(preview.conversation));
+    const adopted=await conversationTurn({action:'accept_preview',conversation:restored,messages:[...history,user]});
+    assert.equal(adopted.status,'ok');assert.equal(adopted.conversation.requirements.trip_days,7);
+    assert.equal(adopted.conversation.preview,null);assert.equal(adopted.conversation.memory.entries.length,1);
+    assert.deepEqual(adopted.conversation.memory.entries[0].evidence_refs,source?[url]:[]);
+    assert.deepEqual(adopted.sources,[],'历史决策出处不升级现时证据，不重搜或续期');
+    const legacySignature=JSON.parse(restored.preview.base_signature);
+    legacySignature.anchors={};legacySignature.travel={trip_type:'pending',traveler_count:1};
+    const oldDefault={...restored,preview:{...restored.preview,base_signature:JSON.stringify(legacySignature)}};
+    const formRestored=await conversationTurn({action:'accept_preview',conversation:oldDefault,messages:[...history,user],travel:{traveler_count:1},anchors:{outbound:null,return:null}});
+    assert.equal(formRestored.status,'ok','旧快照空锚点和未定类型与表单默认值语义等价');
+    const actualChange=await conversationTurn({action:'accept_preview',conversation:oldDefault,messages:[...history,user],travel:{traveler_count:2}});
+    assert.equal(actualChange.status,'unavailable','真实人数变化仍拦截旧预览');
+    const discarded=await conversationTurn({action:'discard_preview',conversation:restored});
+    assert.equal(discarded.conversation.preview,null);assert.equal(discarded.conversation.memory.entries.length,0);
+    assert.equal(discarded.conversation.requirements.trip_days,10);
+    const stale=await conversationTurn({action:'accept_preview',conversation:{...restored,revision:3},messages:[...history,user]});
+    assert.equal(stale.status,'unavailable');assert.equal(stale.conversation.requirements.trip_days,10);
+    const invalid=await conversationTurn({action:'accept_preview',conversation:restored,messages:history});
+    assert.equal(invalid.status,'unavailable','出处未恢复时整次采纳失败');assert.equal(invalid.conversation.requirements.trip_days,10);
+  }
 }
-
-/* M02：预览内记忆增量随采纳提交、丢弃删除；base_revision 变化拒绝旧预览 */
 {
-  const result = await (await import('./lib/conversation.mjs')).conversationTurn;
-  assert.equal(typeof result, 'function', '编排出口可用');
+  let digestCalls=0;
+  const messages=Array.from({length:64},(_,i)=>({mid:i+1,role:i%2?'assistant':'user',text:i===0?'必须途经伊宁，因为想看沿途文化':'继续讨论可调整的安排'}));
+  const run=async state=>conversationTurn({text:'先聊安排',conversation:state,messages},null,{model:async opts=>{
+    if(opts.kind==='conversation_digest'){digestCalls++;const c=JSON.parse(opts.user);assert.equal(c.messages.length,8);return {summary:'用户必经伊宁，想了解沿途文化[1]'};}
+    return payload();
+  },search:async()=>[]});
+  let state={...base,requirements:{required_stops:['伊宁']}};
+  for(let i=0;i<6;i++){const r=await run(state);assert.equal(r.status,'ok');state=r.conversation;}
+  assert.equal(digestCalls,6);const count=state.summaries.items.length;
+  const r=await run(state);assert.equal(r.status,'ok');assert.equal(digestCalls,6,'同范围不反复压缩');assert.equal(r.conversation.summaries.items.length,count);
+  assert.deepEqual(r.conversation.requirements.required_stops,['伊宁']);
 }
-
-console.log('✓ 旅行决策记忆回归通过');
+console.log('✓ M1用户出处、去重、未知格式保留、预览生成/采纳/丢弃/恢复及长对话摘要通过');

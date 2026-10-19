@@ -4,6 +4,7 @@
  * 无精确 token 计数，预算按字符保守估算并记录在清单中；清单是可重建的派生物，
  * 不进入保存脏状态、不记录正文到公共日志。 */
 
+import {createHash} from 'node:crypto';
 export const RECENT_WINDOW = 16;
 export const CONTEXT_BUDGET_CHARS = 24000;
 
@@ -31,7 +32,7 @@ export function nextSummaryId(summaries) {
 }
 
 /** 条件指纹：revision 或结构化条件变化使旧摘要失效（字段变化失效传播）。 */
-export function summaryFingerprint(revision, conditionSignature) { return revision + '|' + str(conditionSignature, 120); }
+export function summaryFingerprint(revision, conditionSignature) { return revision + '|' + createHash('sha256').update(String(conditionSignature || '')).digest('hex'); }
 
 export function isStale(summary, fingerprint) { return summary.condition_hash !== fingerprint; }
 
@@ -42,8 +43,7 @@ export function summarizeBacklog(messages, summaries, fingerprint, window = RECE
   const sorted = messages.slice().sort((a, b) => (a.mid || 0) - (b.mid || 0));
   if (sorted.length <= window) return { pending: [] };
   const overflow = sorted.slice(0, sorted.length - window);
-  const covered = new Set(valid.flatMap(s => Array.from({ length: s.to_mid - s.from_mid + 1 }, (_, k) => s.from_mid + k)));
-  const pending = overflow.filter(m => Number.isSafeInteger(m.mid) && !covered.has(m.mid));
+  const pending = overflow.filter(m => Number.isSafeInteger(m.mid) && !valid.some(s=>m.mid>=s.from_mid && m.mid<=s.to_mid));
   return { pending, overflow };
 }
 
@@ -60,8 +60,9 @@ export function appendSummary(summaries, { fromMid, toMid, text }, fingerprint, 
 export function buildContext({
   rulesVersion = 'unknown', coreRules = '', text = '', conversation = null,
   messages = [], summaries = { items: [] }, fingerprint = '', decisionIndex = { entries: [] },
-  evidenceSources = [], budgetChars = CONTEXT_BUDGET_CHARS
+  evidenceSources = [], budgetChars = CONTEXT_BUDGET_CHARS, payload
 } = {}) {
+  if(payload !== undefined)return buildPayloadContext(payload,{coreRules,rulesVersion,budgetChars});
   const manifest = { rules_version: rulesVersion, trip_revision: conversation?.revision ?? 0,
     included_ids: [], omitted_ids: [], source_ids: [], estimated_chars: 0, budget_chars: budgetChars, gaps: [] };
   const sections = [];
@@ -100,8 +101,7 @@ export function buildContext({
   const validSummaries = summaries.items.filter(s => !isStale(s, fingerprint));
   if (validSummaries.length) push('history_summaries', '[更早对话摘要（出处见范围，原文已省略）]\n' +
     validSummaries.map(s => '· [' + s.from_mid + '..' + s.to_mid + '] ' + s.text).join('\n'));
-  const covered = new Set(validSummaries.flatMap(s => Array.from({ length: s.to_mid - s.from_mid + 1 }, (_, k) => s.from_mid + k)));
-  const recent = messages.slice(-RECENT_WINDOW).filter(m => Number.isSafeInteger(m.mid) && !covered.has(m.mid));
+  const recent = messages.slice(-RECENT_WINDOW).filter(m => Number.isSafeInteger(m.mid) && !validSummaries.some(s=>m.mid>=s.from_mid && m.mid<=s.to_mid));
   const history = [];
   let historyChars = 0;
   for (const m of recent.slice().reverse()) {   /* 从最新往旧纳入，装不下省略最旧并记录 */
@@ -113,4 +113,73 @@ export function buildContext({
   manifest.estimated_chars = sections.reduce((sum, s) => sum + s.body.length, 0);
   if (summarizeBacklog(messages, summaries, fingerprint).pending.length) manifest.gaps.push('存在未摘要的早期消息');
   return { sections, manifest };
+}
+
+/* 实际模型调用入口使用同一组装器。持久化对象与模型视图分离，任何嵌套路径都不携带
+ * 原始记忆仓库或失效摘要；JSON字段形状保留，以兼容既有意图与校对工具。 */
+function buildPayloadContext(payload,{coreRules,rulesVersion,budgetChars}){
+  const hidden=new Set(['memory','summaries','memory_candidates','memory_evidence_refs','manifest']);
+  const seenSources=new Set();
+  const clean=v=>{
+    if(Array.isArray(v))return v.map(x=>clean(x));
+    if(!v || typeof v!=='object')return v;
+    const url=v.url || v.link;
+    if(typeof url==='string' && (v.excerpt || v.content) && /^https?:/.test(url)){
+      if(seenSources.has(url))return {...(v.link?{link:url}:{url}),reference_only:true};
+      seenSources.add(url);
+    }
+    return Object.fromEntries(Object.entries(v).filter(([k])=>!hidden.has(k)).map(([k,x])=>[k,clean(x)]));
+  };
+  const legView=l=>({from:l.from,to:l.to,mode_guess:l.mode_guess || l.mode,evidence_state:l.evidence_state || l.status});
+  const routeView=r=>({id:r.id,kind:r.kind,explanation:r.explanation,basis:r.basis,legs:(r.legs || []).map(legView)});
+  const comparison=payload.route_comparison;
+  const projected={...payload};
+  if(payload.routes)projected.routes=payload.routes.map(routeView);
+  if(payload.displayed_routes)projected.displayed_routes=payload.displayed_routes.map(routeView);
+  if(comparison)projected.route_comparison={
+    recommended_id:comparison.recommended_id,recommendation:comparison.recommendation,
+    budget_notice:comparison.budget_notice,notice:comparison.notice,background_boundary:comparison.background_boundary,
+    routes:(comparison.routes || []).map(r=>({
+      id:r.id,route:r.route,eligible:r.eligible,reason:r.reason,benefits:r.benefits,
+      tradeoff:r.tradeoff,time:r.time,cost:r.cost,critical:r.critical,verified:r.verified,
+      variants:(r.variants || []).map(v=>({id:v.id,label:v.label,
+        connections:(v.connections || []).map(l=>({...legView(l),summary:l.summary}))}))
+    }))
+  };
+  const value=clean(projected);
+  const manifest={rules_version:rulesVersion,trip_revision:payload.conversation?.revision ?? 0,
+    included_ids:[],omitted_ids:[],source_ids:[],estimated_chars:0,budget_chars:budgetChars,gaps:[]};
+  if(comparison || payload.routes || payload.displayed_routes)manifest.omitted_ids.push('重复候选原始资料与地图坐标');
+  value.manifest=manifest;
+  const size=()=>String(coreRules || '').length+JSON.stringify(value).length;
+  const target=Math.max(0,budgetChars-1200); // 为清单和省略说明预留空间，最终仍按实际长度检查。
+  const omit=id=>{if(!manifest.omitted_ids.includes(id))manifest.omitted_ids.push(id);};
+  // 优先移走最旧原文与重复／补充资料，再缩减决策索引；权威条件与完整草案始终保留。
+  const arrays=['messages','user_messages','search_results','experience_results','visible_search_results','visible_experiences','transport_references'];
+  for(const key of arrays){
+    const a=value[key];
+    while(size()>target && Array.isArray(a) && a.length){a.shift();omit(key);}
+  }
+  for(const key of ['destination_material','sight_material']){
+    if(size()>target && value[key]){value[key]=null;omit(key);}
+  }
+  const entries=value.decision_index?.entries;
+  while(size()>target && entries?.length){entries.shift();value.decision_index.count=entries.length;omit('decision_index');}
+  while(size()>target && value.history_summaries?.length){value.history_summaries.shift();omit('history_summaries');}
+  if(manifest.omitted_ids.length)manifest.gaps.push('部分历史或补充资料因上下文预算省略，缺失内容不能作为本轮依据');
+  manifest.included_ids=Object.keys(value).filter(k=>k!=='manifest');
+  const urls=new Set();
+  const collect=v=>{if(!v || typeof v!=='object')return;for(const [k,x]of Object.entries(v)){
+    if((k==='url' || k==='link') && typeof x==='string' && /^https?:/.test(x))urls.add(x);
+    else if(k!=='manifest')collect(x);
+  }};
+  collect(value);manifest.source_ids=[...urls];
+  // 清单自身也计入预算；清单过大时仅保留计数，详细条目仍在返回的省略清单中。
+  if(size()>budgetChars && manifest.source_ids.length){manifest.source_count=manifest.source_ids.length;manifest.source_ids=[];}
+  for(let i=0;i<4;i++){const measured=size();if(manifest.estimated_chars===measured)break;manifest.estimated_chars=measured;}
+  if(size()>budgetChars){
+    const error=Object.assign(Error('核心条件与当前草案超过本轮上下文预算，原安排保留'),{code:'CONTEXT_BUDGET_EXCEEDED',manifest});
+    throw error;
+  }
+  return {value,manifest,sections:[]};
 }

@@ -762,7 +762,7 @@
       conversationBusy=true;conversationError=null;renderGuide();rememberSession();
       document.getElementById('planStatus').textContent='';
       try {
-        var res=await post('/api/anywhere/conversation',{action:action,text:text,conversation:conversation,messages:guideMessages.slice(0,action==='chat'?-1:undefined),plan_id:activePlan && activePlan.plan_id,candidate_id:currentCandidate()?.id || null,          preferences:guideState,travel:collectTravel(),constraints:collectConstraints(),anchors:anchors,sights:MTSights.getState(),can_undo:guideUndo.length>0,
+        var res=await post('/api/anywhere/conversation',{action:action,text:text,current_message:pendingUserMsg?{mid:pendingUserMsg.mid,role:'user',text:pendingUserMsg.text}:null,conversation:conversation,messages:guideMessages.slice(0,action==='chat'?-1:undefined),plan_id:activePlan && activePlan.plan_id,candidate_id:currentCandidate()?.id || null,          preferences:guideState,travel:collectTravel(),constraints:collectConstraints(),anchors:anchors,sights:MTSights.getState(),can_undo:guideUndo.length>0,
           displayed_candidate_ids:visibleRoutes().map(function(x){return x.candidate.id;}),requested_candidate_id:requestedCandidate || null,research_scope:typeof researchScope==='undefined'?null:researchScope,
           /* #29：只提交当前可见城市链相邻方向、同窗口且未过期的检索 ID，最新查询优先，上限与服务端有界扫描一致 */
           retrieval_ids:(function(){

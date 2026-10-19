@@ -36,7 +36,7 @@ function makeEnv(postImpl) {
     MTGuide: { clean: (p) => p || {} }, MTSights: { getState: () => ({}), applyPatch() {}, reset() {} },
     MTRouteWorkspace: { changes: () => [], routeFor: () => [] },
     fillTravel() {}, fillConstraints() {},
-    renderGuide() {}, rememberSession() {}, renderTaskPreview() {}, showWorkspaceView() {},
+    renderGuide() {let seq=Math.max(0,...sandbox.guideMessages.map(m=>m.mid || 0));sandbox.guideMessages.forEach(m=>{if(!m.mid)m.mid=++seq;});}, rememberSession() {}, renderTaskPreview() {}, showWorkspaceView() {},
     openJourney() {}, requestPlan: async () => true, generateConversation: async () => {},
     /* 模拟真实 undoGuide→restoreGuideSnapshot：用快照整体覆盖消息列表（复审指出的漏桩） */
     undoGuide() { var snap = sandbox.guideUndo.pop(); if (snap && Array.isArray(snap.messages)) sandbox.guideMessages = JSON.parse(JSON.stringify(snap.messages)); },
@@ -65,6 +65,8 @@ const okPayload = (reply, extra = {}) => ({ code: 0, data: Object.assign({ statu
   await sandbox.sendConversation('查一下北京到乌鲁木齐的火车');
   ok(sandbox.guideMessages.length === 1 && sandbox.guideMessages[0].role === 'user' && sandbox.guideMessages[0].pending === true,
     '#28 断网后：用户消息恰好一条且标记未决');
+  ok(payloads[0].current_message?.mid===sandbox.guideMessages[0].mid && payloads[0].current_message?.role==='user',
+    'M1：本轮用户消息身份与原话独立传入，不混入历史助手');
   ok(sandbox.conversationError && sandbox.conversationError.text === '查一下北京到乌鲁木齐的火车',
     '#28 断网后：失败态可触发重发提示');
   await sandbox.sendConversation('查一下北京到乌鲁木齐的火车');
