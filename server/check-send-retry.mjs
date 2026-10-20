@@ -35,7 +35,7 @@ function makeEnv(postImpl) {
     anchors: {}, collectTravel: () => ({}), collectConstraints: () => ({}),
     MTGuide: { clean: (p) => p || {} }, MTSights: { getState: () => ({}), applyPatch() {}, reset() {} },
     MTRouteWorkspace: { changes: () => [], routeFor: () => [] },
-    fillTravel() {}, fillConstraints() {},
+    fillTravel() {}, fillConstraints() {}, renderPreferencePanel() {}, prefMemoryFeedback:'',
     renderGuide() {let seq=Math.max(0,...sandbox.guideMessages.map(m=>m.mid || 0));sandbox.guideMessages.forEach(m=>{if(!m.mid)m.mid=++seq;});}, rememberSession() {}, renderTaskPreview() {}, showWorkspaceView() {},
     openJourney() {}, requestPlan: async () => true, generateConversation: async () => {},
     /* 模拟真实 undoGuide→restoreGuideSnapshot：用快照整体覆盖消息列表（复审指出的漏桩） */
@@ -46,6 +46,7 @@ function makeEnv(postImpl) {
     post: postImpl
   };
   sandbox.globalThis = sandbox;
+  sandbox.window = sandbox;
   vm.createContext(sandbox);
   sandbox.sendConversation = vm.runInContext('(' + fnSrc + ')', sandbox);
   return { sandbox, el };

@@ -108,6 +108,8 @@
       <div style="margin-top:10px;padding:12px 14px;border:0.5px solid var(--mixtouring-border);border-radius:14px;">
         <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--mixtouring-foreground);"><input id="prefMemoryToggle" type="checkbox" /> 记住我的长期旅行偏好（节奏、交通方式等；仅保存在本机浏览器）</label>
         <div id="prefMemoryList" style="margin-top:8px;"></div>
+        <p id="prefMemoryNote" role="status" aria-live="polite" style="font-size:12px;line-height:1.6;"></p>
+        <button id="prefMemoryRetry" type="button" hidden style="min-height:44px;">重新读取本机偏好</button>
         <div style="font-size:11.5px;color:var(--mixtouring-muted-foreground);margin-top:8px;line-height:1.6;">只记录你在对话中明确表达的长期软偏好；日期、预算、必经城市等一次性条件不会被记住。关闭后立即停止召回与记录；删除的条目不会因恢复旧行程而回来。</div>
       </div>
     </details>
@@ -329,28 +331,36 @@
       box.querySelectorAll('[data-revoke]').forEach(function (btn) { btn.addEventListener('click', function () { revokeAnchor(btn.getAttribute('data-revoke')); }); });
     }
     /* ---------- M2：跨旅行偏好记忆面板——查看/开启/删除；独立本机存储 ---------- */
+    var prefMemoryBusy=false,prefMemoryFeedback='';
     function renderPreferencePanel() {
       if (!window.MTPreferences) return;
       var stateEl = document.getElementById('prefMemoryState'), listEl = document.getElementById('prefMemoryList'), toggle = document.getElementById('prefMemoryToggle');
       if (!toggle) return;
+      var memoryStatus=MTPreferences.status();
       toggle.checked = MTPreferences.isEnabled();
-      if (stateEl) stateEl.textContent = MTPreferences.isEnabled() ? '（已开启 ' + MTPreferences.list().length + ' 条）' : '（未开启）';
+      toggle.disabled=prefMemoryBusy || memoryStatus.health!=='ready';
+      if (stateEl) stateEl.textContent = memoryStatus.health!=='ready'?'（暂不可用）':memoryStatus.paused?'（本页暂停）':MTPreferences.isEnabled() ? '（已开启 ' + MTPreferences.list().length + ' 条）' : '（未开启）';
       var entries = MTPreferences.entries().filter(function (e) { return e.status === 'active'; });
       var html = entries.length ? '<div style="display:flex;flex-direction:column;gap:6px;">' + entries.map(function (e) {
-        return '<div style="display:flex;align-items:center;gap:10px;font-size:12.5px;"><span style="flex:1;">' + MT.esc(MTPreferences.KEY_LABEL[e.key] || e.key) + '：' + MT.esc(e.value) + '</span>' +
-          '<button type="button" data-pref-remove="' + MT.esc(e.id) + '" style="min-height:34px;padding:4px 12px;border:0.5px solid var(--mixtouring-border);border-radius:8px;background:none;font-family:inherit;font-size:12px;cursor:pointer;">删除</button></div>';
+        return '<div style="display:flex;align-items:center;gap:10px;font-size:12.5px;"><span style="flex:1;">' + MT.esc(MTPreferences.KEY_LABEL[e.key] || e.key) + '：' + MT.esc(MTPreferences.VALUE_LABEL[e.value] || '待确认') + '</span>' +
+          '<button type="button" data-pref-remove="' + MT.esc(e.id) + '" '+(prefMemoryBusy?'disabled':'')+' style="min-height:44px;padding:4px 12px;border:0.5px solid var(--mixtouring-border);border-radius:8px;background:none;font-family:inherit;font-size:12px;cursor:pointer;">删除</button></div>';
       }).join('') + '</div>' : '<div style="font-size:12px;color:var(--mixtouring-muted-foreground);">' + (MTPreferences.isEnabled() ? '还没有记住的偏好；对话中明确说「以后都…」时才会记下。' : '开启后，对话中明确表达的长期偏好会记在这里。') + '</div>';
       listEl.innerHTML = html;
+      var messages={write_failed:'偏好保存失败，本页已暂停记忆；原记录未改，刷新或其他标签可能仍使用原设置。',read_failed:'本机偏好暂时无法读取，已停用召回与记录；原数据未覆盖。',corrupted_store:'本机偏好数据损坏，原文已保留，普通操作已暂停。',unsupported_schema:'本机偏好使用了暂不支持的格式，原文已保留，普通操作已暂停。',not_found:'偏好已经变化，请重新查看后操作。'};
+      var note=document.getElementById('prefMemoryNote');if(note)note.textContent=messages[memoryStatus.error || memoryStatus.health] || prefMemoryFeedback;
+      var retry=document.getElementById('prefMemoryRetry');if(retry)retry.hidden=!memoryStatus.error && memoryStatus.health==='ready' && !memoryStatus.paused;
       listEl.querySelectorAll('[data-pref-remove]').forEach(function (btn) {
-        btn.onclick = function () { MTPreferences.remove(btn.getAttribute('data-pref-remove')); renderPreferencePanel(); };
+        btn.onclick = async function () { if(prefMemoryBusy)return;prefMemoryBusy=true;renderPreferencePanel();try{var result=await MTPreferences.remove(btn.getAttribute('data-pref-remove'));prefMemoryFeedback=result.ok?'已删除这条长期偏好。':'';}finally{prefMemoryBusy=false;renderPreferencePanel();} };
       });
     }
     (function initPreferencePanel() {
       var toggle = document.getElementById('prefMemoryToggle');
       if (!toggle) return;
-      toggle.addEventListener('change', function () {
-        if (window.MTPreferences) { MTPreferences.setEnabled(toggle.checked); renderPreferencePanel(); }
+      toggle.addEventListener('change', async function () {
+        if (window.MTPreferences && !prefMemoryBusy) { var wanted=toggle.checked;prefMemoryBusy=true;renderPreferencePanel();try{var ok=await MTPreferences.setEnabled(wanted);prefMemoryFeedback=ok?(wanted?'已开启本机长期偏好记忆。':'已关闭长期偏好记忆，原记录保留供管理。'):'';}finally{prefMemoryBusy=false;renderPreferencePanel();} }
       });
+      if(window.MTPreferences)MTPreferences.subscribe(function(reason){if(reason==='external')prefMemoryFeedback='已同步其他页面的偏好设置。';renderPreferencePanel();});
+      document.getElementById('prefMemoryRetry').onclick=function(){MTPreferences.reload();prefMemoryFeedback='';renderPreferencePanel();};
       renderPreferencePanel();
     })();
 
@@ -798,8 +808,10 @@
       var input=document.getElementById('nlInput');if(input)input.value='';
       conversationBusy=true;conversationError=null;renderGuide();rememberSession();
       document.getElementById('planStatus').textContent='';
+      var preferenceRequest=window.MTPreferences?MTPreferences.snapshotForRequest():{enabled:false,preferences:[]};
+      prefMemoryFeedback='';renderPreferencePanel();
       try {
-        var res=await post('/api/anywhere/conversation',{action:action,text:text,current_message:pendingUserMsg?{mid:pendingUserMsg.mid,role:'user',text:pendingUserMsg.text}:null,conversation:conversation,messages:guideMessages.slice(0,action==='chat'?-1:undefined),plan_id:activePlan && activePlan.plan_id,candidate_id:currentCandidate()?.id || null,          preferences:guideState,travel:collectTravel(),constraints:collectConstraints(),anchors:anchors,sights:MTSights.getState(),can_undo:guideUndo.length>0,
+        var res=await post('/api/anywhere/conversation',{action:action,text:text,current_message:pendingUserMsg?{mid:pendingUserMsg.mid,role:'user',text:pendingUserMsg.text}:null,preference_memory:preferenceRequest,conversation:conversation,messages:guideMessages.slice(0,action==='chat'?-1:undefined),plan_id:activePlan && activePlan.plan_id,candidate_id:currentCandidate()?.id || null,          preferences:guideState,travel:collectTravel(),constraints:collectConstraints(),anchors:anchors,sights:MTSights.getState(),can_undo:guideUndo.length>0,
           displayed_candidate_ids:visibleRoutes().map(function(x){return x.candidate.id;}),requested_candidate_id:requestedCandidate || null,research_scope:typeof researchScope==='undefined'?null:researchScope,
           /* #29：只提交当前可见城市链相邻方向、同窗口且未过期的检索 ID，最新查询优先，上限与服务端有界扫描一致 */
           retrieval_ids:(function(){
@@ -828,10 +840,14 @@
         guideUndo.push(previous);conversation=data.conversation;
         /* M2：偏好候选（服务端已白名单校验）写入本机偏好存储，关联本轮用户消息 mid */
         if (Array.isArray(data.preference_memory_upserts) && data.preference_memory_upserts.length && window.MTPreferences) {
-          var prefMid = guideMessages[guideMessages.length-1] && guideMessages[guideMessages.length-1].mid;
-          MTPreferences.applyUpserts(data.preference_memory_upserts, prefMid);
+          var prefContext=data.preference_memory_context;
+          var prefValid=pendingUserMsg && prefContext?.enabled===true && prefContext.store_id===preferenceRequest.store_id && prefContext.revision===preferenceRequest.revision && data.preference_memory_upserts.every(function(p){return p.source_message_mid===pendingUserMsg.mid;});
+          var prefResult=prefValid?await MTPreferences.applyUpserts(data.preference_memory_upserts,pendingUserMsg.mid,preferenceRequest,{isCurrent:function(){return seq===guideSequence && !conversationController?.signal.aborted;}}):{ok:false,reason:'stale_response'};
+          if(seq!==guideSequence)return;
+          prefMemoryFeedback=prefResult.ok?(prefResult.changed?'已更新长期偏好，可在此查看或删除。':'长期偏好已是此设置。'):prefResult.reason==='stale_response'?'偏好已变化，旧回复未更新记忆。':'';
           if (typeof renderPreferencePanel === 'function') renderPreferencePanel();
         }
+        if(data.preference_memory_notice){prefMemoryFeedback=data.preference_memory_notice;renderPreferencePanel();}
         if(pendingUserMsg)delete pendingUserMsg.pending;
         if(data.clear_selection){activeCandidate=null;pendingRestore=null;journeySequence++;var oldJourney=document.getElementById('journeyArea');if(oldJourney)oldJourney.innerHTML='';}
         guideState=MTGuide.clean(Object.assign({},guideState,data.patch.preferences));
@@ -1062,8 +1078,6 @@
       body.constraints = collectConstraints();
       /* 卡 B：锚点随每次规划提交（锁定/修改/撤销后触发重规划共用同一路径） */
       if (anchors.outbound || anchors.return) body.anchors = { outbound: anchors.outbound, return: anchors.return };
-      /* M2：偏好记忆快照（关闭时为空，服务端不召回不提交） */
-      body.preference_memory = window.MTPreferences ? MTPreferences.snapshotForRequest() : { enabled: false, preferences: [] };
       /* 已提交字段归入本次意图；下次全新查询只带入提交之后明确编辑的字段。 */
       travelDirty = { type: false, out: false, ret: false, count: false };
       constraintDirty = {};

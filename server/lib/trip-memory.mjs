@@ -132,9 +132,11 @@ export function validatePreferenceUpserts(raw, { memoryEnabled = false } = {}) {
 
 /** 召回快照白名单化：仅白名单键与枚举值进入上下文；结构化条件永不来自偏好。 */
 export function sanitizeRecalledPreferences(raw) {
-  if (!raw?.enabled || !Array.isArray(raw.preferences)) return { enabled: false, preferences: [] };
+  if (raw?.enabled!==true || !Array.isArray(raw.preferences)) return { enabled: false, preferences: [] };
   const preferences = raw.preferences
     .filter(p => PREFERENCE_KEYS.includes(p?.key) && PREFERENCE_VALUES[p.key].includes(p?.value))
     .slice(0, 5).map(p => ({ key: p.key, value: p.value }));
-  return { enabled: preferences.length > 0, preferences };
+  return { enabled: true, preferences,
+    store_id:typeof raw.store_id==='string' && raw.store_id.length<=120?raw.store_id:null,
+    revision:Number.isSafeInteger(raw.revision) && raw.revision>=0?raw.revision:null };
 }

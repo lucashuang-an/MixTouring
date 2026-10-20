@@ -1,156 +1,102 @@
-/* check-preference-memory.mjs · v0.60.1 M2：跨旅行偏好——本机存储生命周期、召回边界与
- * 候选白名单。无网络、无密钥；前端 store 以真实脚本+localStorage 桩驱动。
- * 运行：node server/check-preference-memory.mjs */
+/* M2原始反例回归：真实存储脚本、并发标签、拒写、坏格式及前端到实际对话编排。 */
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import vm from 'node:vm';
-import { validatePreferenceUpserts, sanitizeRecalledPreferences } from './lib/trip-memory.mjs';
-import { conversationTurn } from './lib/conversation.mjs';
-
-
-/* ---------- 前端 preference-store：真实脚本 + localStorage 桩 ---------- */
-function makeStore() {
-  const backing = { value: null };
-  const localStorageStub = {
-    getItem: (k) => (k === 'mt:preference-memory' ? backing.value : null),
-    setItem: (k, v) => { if (k === 'mt:preference-memory') backing.value = v; },
-    getItemRaw: () => backing.value
-  };
-  const listeners = [];
-  const sandbox = {
-    console, JSON, Object, Array, Date, Number, String, Boolean, Math, Error,
-    localStorage: localStorageStub,
-    setTimeout: (fn) => fn(),
-    window: { addEventListener: (ev, fn) => { if (ev === 'storage') listeners.push(fn); } },
-    module: { exports: {} }
-  };
-  sandbox.globalThis = sandbox;
-  vm.createContext(sandbox);
-  const src = readFileSync(new URL('../mixtouring-hifi/assets/preference-store.js', import.meta.url), 'utf8');
-  vm.runInContext(src, sandbox);
-  const store = sandbox.window.MTPreferences || sandbox.module.exports;
-  return { store, backing, listeners, sandbox };
+import fs from 'node:fs';import vm from 'node:vm';
+import {conversationTurn,cleanConversation} from './lib/conversation.mjs';
+import {sanitizeRecalledPreferences,validatePreferenceUpserts} from './lib/trip-memory.mjs';
+const source=fs.readFileSync(new URL('../mixtouring-hifi/assets/preference-store.js',import.meta.url),'utf8');
+const backing=()=>({raw:null,failRead:false,failWrite:false,writes:0});
+let lockQueue=Promise.resolve();const locks={request(_name,fn){const p=lockQueue.then(fn);lockQueue=p.catch(()=>{});return p;}};
+function make(data=backing()){
+ const events=[];const env={console,window:{addEventListener:(name,fn)=>{if(name==='storage')events.push(fn);}},navigator:{locks},localStorage:{getItem:()=>{if(data.failRead)throw Error('拒读');return data.raw;},setItem:(_k,v)=>{if(data.failWrite)throw Error('拒写');data.raw=v;data.writes++;}}};
+ vm.createContext(env);vm.runInContext(source,env);return {p:env.window.MTPreferences,data,fire:()=>events.forEach(fn=>fn({key:'mt:preference-memory'}))};
 }
-
-/* 默认关闭：未开启时零召回、零提交（M03/M09 前提） */
 {
-  const { store } = makeStore();
-  assert.equal(store.isEnabled(), false, '偏好：默认关闭');
-  const prop = store.propose('road', 'exclude', 3);
-  assert.equal(prop.ok, false, '偏好：未开启时提交被拒');
-  assert.equal(prop.reason, 'memory_disabled', '偏好：拒绝原因如实标注');
-  const emptySnap = store.snapshotForRequest();
-  assert.equal(emptySnap.enabled, false, '偏好：关闭时请求快照未开启');
-  assert.equal(emptySnap.preferences.length, 0, '偏好：关闭时请求快照零召回');
-  const v = validatePreferenceUpserts({ upserts: [{ key: 'road', value: 'exclude' }] }, { memoryEnabled: false });
-  assert.equal(v.accepted.length, 0 && v.disabled === true, '服务端：未开启记忆时候选全部丢弃');
+ const {p}=make();assert.equal(p.isEnabled(),false);assert.equal((await p.propose('road','exclude',1)).ok,false);
+ assert.equal(await p.setEnabled(true),true);const empty=p.snapshotForRequest();assert.equal(empty.enabled,true);assert.equal(empty.preferences.length,0);
+ assert.equal(sanitizeRecalledPreferences(empty).enabled,true,'开关授权不能依赖条目数量');
+ assert.equal(sanitizeRecalledPreferences({enabled:'true',preferences:[]}).enabled,false);
+ const first=await p.propose('preferred_mode','rail',1);assert.equal(first.ok,true);assert.equal(p.list()[0].value,'rail');
+ const corrected=await p.propose('preferred_mode','plane',3);assert.equal(corrected.ok,true);assert.equal(corrected.id,first.id);assert.equal(p.list()[0].revision,1);
+ assert.equal((await p.remove(first.id)).ok,true);assert.equal(p.list().length,0);assert.equal(p.entries()[0].status,'removed');
+ assert.equal(sanitizeRecalledPreferences(p.snapshotForRequest()).enabled,true,'删除最后一条仍可重新记录');
+ assert.equal((await p.propose('road','open',5)).ok,true);assert.equal((await p.propose('trip_days','7',7)).ok,false);
+ assert.equal((await p.propose('road','非法值',7)).ok,false);assert.equal((await p.propose('pace','explore',null)).ok,false);
 }
-
-/* 开启后：propose/list/纠正 revision 递增/快照只含 active */
+for(const operation of ['delete','close_reopen','correct']){
+ const data=backing(),a=make(data);await a.p.setEnabled(true);const first=await a.p.propose('road','exclude',1),request=a.p.snapshotForRequest();const b=make(data);
+ if(operation==='delete')await b.p.remove(first.id);
+ if(operation==='close_reopen'){await b.p.setEnabled(false);await b.p.setEnabled(true);}
+ if(operation==='correct')await b.p.propose('road','prefer_other',9);
+ a.fire();const delayed=await a.p.applyUpserts([{key:'road',value:'exclude'},{key:'preferred_mode',value:'rail'}],1,request);
+ assert.equal(delayed.ok,false,operation+'后旧响应整批失效');assert.equal(delayed.reason,'stale_response');
+ assert.equal(a.p.list().some(e=>e.key==='preferred_mode'),false,'不能部分写入第二个候选');
+ if(operation==='delete'){assert.equal(a.p.list().length,0);const fresh=await a.p.propose('road','exclude',21);assert.equal(fresh.ok,true,'新的明确授权仍能添加');}
+ if(operation==='correct')assert.equal(a.p.list().find(e=>e.key==='road').value,'prefer_other');
+}
 {
-  const { store } = makeStore();
-  assert.equal(store.setEnabled(true), true, '偏好：显式开启成功');
-  const first = store.propose('road', 'exclude', 3);
-  assert.equal(first.ok, true, '偏好：开启后记录长期表达');
-  assert.equal(store.list().length, 1, '偏好：开启后记录一条');
-  assert.equal(store.list()[0].value, 'exclude', '偏好：记录值为长期表达');
-  const fix = store.propose('road', 'prefer_other', 9);
-  assert.equal(fix.ok && fix.corrected === true, true, '偏好：同 key 纠正走更新');
-  assert.equal(store.list()[0].value, 'prefer_other', '偏好：纠正后值为新表达');
-  const snap = store.snapshotForRequest();
-  assert.equal(snap.enabled, true, '偏好：开启时快照带 enabled');
-  assert.equal(snap.preferences.length, 1, '偏好：开启时快照携带生效条目');
-  store.propose('trip_days', '7', 9);
-  assert.equal(store.list().length, 1, '偏好：一次性条件（天数）不是合法偏好键，不记录');
+ const data=backing(),a=make(data);await a.p.setEnabled(true);const b=make(data),ra=a.p.snapshotForRequest(),rb=b.p.snapshotForRequest();
+ const results=await Promise.all([a.p.applyUpserts([{key:'road',value:'exclude'}],1,ra),b.p.applyUpserts([{key:'pace',value:'explore'}],1,rb)]);
+ assert.equal(results.filter(r=>r.ok).length,1,'并发同版本响应经Web Locks只提交一批');assert.equal(make(data).p.list().length,1);
+ const request=a.p.snapshotForRequest(),before=data.raw;
+ const invalid=await a.p.applyUpserts([{key:'road',value:'open'},{key:'trip_days',value:'7'}],3,request);assert.equal(invalid.ok,false);assert.equal(data.raw,before,'非法批次原子拒绝');
+ const cancelled=await a.p.applyUpserts([{key:'road',value:'open'}],3,request,{isCurrent:()=>false});assert.equal(cancelled.ok,false);assert.equal(data.raw,before);
 }
-
-/* 删除=撤销标记：list 不再含、entries 可审计、请求快照不含（M04 恢复不复活） */
+for(const op of ['enable','remove','disable','correct','batch']){
+ const data=backing(),a=make(data);let id;
+ if(op!=='enable'){await a.p.setEnabled(true);id=(await a.p.propose('preferred_mode','rail',1)).id;}
+ const old=data.raw;data.failWrite=true;
+ const r=op==='enable'?await a.p.setEnabled(true):op==='remove'?await a.p.remove(id):op==='disable'?await a.p.setEnabled(false):op==='batch'?await a.p.applyUpserts([{key:'preferred_mode',value:'plane'},{key:'road',value:'exclude'}],3,a.p.snapshotForRequest()):await a.p.propose('preferred_mode','plane',3);
+ assert.equal(typeof r==='boolean'?r:r.ok,false);assert.equal(data.raw,old,'拒写时原存储不变');
+ assert.equal(a.p.status().error,'write_failed');assert.equal(a.p.isEnabled(),false,'拒写后本页暂停记忆并报告原因');
+ if(op!=='enable'){assert.equal(a.p.entries()[0].value,'rail','候选不能先污染内存');assert.equal(a.p.entries().length,1,'拒写整批不部分新增');}
+ data.failWrite=false;const fresh=make(data);assert.equal(fresh.p.isEnabled(),op!=='enable');a.p.reload();assert.equal(a.p.status().paused,false);
+}
+for(const raw of ['{损坏',JSON.stringify({schema_version:99,enabled:true,entries:[{key:'road',value:'exclude'}]}),'[]']){
+ const data=backing();data.raw=raw;const a=make(data);assert.equal(a.p.isEnabled(),false);
+ assert.equal(await a.p.setEnabled(true),false);assert.equal(await a.p.setEnabled(false),false);assert.equal((await a.p.remove('pref_1')).ok,false);
+ assert.equal(data.raw,raw,'同一存储读取、操作后原文字节保留');assert.equal(data.writes,0);assert.equal(make(data).p.isEnabled(),false);
+}
 {
-  const { store } = makeStore();
-  store.setEnabled(true);
-  const p = store.propose('preferred_mode', 'rail', 2);
-  store.remove(p.id);
-  assert.equal(store.list().length, 0, 'M04：删除后召回不含该条');
-  assert.equal(store.snapshotForRequest().preferences.length, 0, 'M04：删除后请求快照不含该条');
-  assert.equal(store.entries().some((e) => e.id === p.id && e.status === 'removed'), true, 'M04：撤销标记保留可审计（不物理删）');
+ const data=backing(),a=make(data);await a.p.setEnabled(true);const raw=data.raw;data.failRead=true;
+ assert.equal(a.p.snapshotForRequest().enabled,false);assert.equal(await a.p.setEnabled(false),false);assert.equal(data.raw,raw);assert.equal(a.p.status().health,'read_failed');
 }
-
-/* 跨标签页失效：存储侧 revision 前进后，旧状态写回被拒并重载（M04） */
 {
-  const { store, backing } = makeStore();
-  store.setEnabled(true);
-  store.propose('pace', 'explore', 1);
-  const staleState = JSON.parse(backing.value);      /* 模拟另一标签页在其之上又改了一轮 */
-  staleState.revision += 3;
-  staleState.entries.push({ id: 'pref_99', key: 'pace', value: 'simple', status: 'active', revision: 0, created_at: '', updated_at: '' });
-  backing.value = JSON.stringify(staleState);
-  const result = store.propose('preferred_mode', 'rail', 5);  /* 旧内存状态发起写入 */
-  const fresh = JSON.parse(backing.value);
-  assert.equal(fresh.entries.some((e) => e.id === 'pref_99'), true, 'M04：另一标签页的新条目未被旧状态覆盖');
-  assert.equal(fresh.entries.filter((e) => e.key === 'preferred_mode').length, 0, 'M04：旧标签页的迟到写入被拒绝');
-  assert.notEqual(result.ok, true, 'M04：迟到写返回不成功语义');
+ const recalled=sanitizeRecalledPreferences({enabled:true,preferences:[{key:'road',value:'exclude'},{key:'trip_days',value:'7'},{key:'budget_max_cny',value:'8000'}]});
+ assert.deepEqual(recalled.preferences,[{key:'road',value:'exclude'}]);
+ const checked=validatePreferenceUpserts({upserts:[{key:'road',value:'open'},{key:'required_stops',value:'伊宁'}]},{memoryEnabled:true});assert.equal(checked.accepted.length,1);assert.equal(checked.rejected.length,1);
 }
-
-/* 未知 schema：保留原文并降级运行，不覆盖（M07 同策略） */
-{
-  const { store, backing } = makeStore();
-  backing.value = JSON.stringify({ schema_version: 99, enabled: true, entries: [{ key: 'road', value: 'exclude' }] });
-  const fresh = makeStore();
-  assert.equal(fresh.store.isEnabled(), false, '未知 schema：降级为默认关闭');
-  assert.ok(JSON.parse(backing.value).schema_version === 99, '未知 schema：原文保留未覆盖');
+/* 提取实际前端发送函数，并连接真实conversationTurn；请求快照、用户出处及候选落盘一起验证。 */
+const helper=fs.readFileSync(new URL('./check-send-retry.mjs',import.meta.url),'utf8');
+const setup=helper.slice(helper.indexOf('const html ='),helper.indexOf('const okPayload')).replace("new URL('../mixtouring-hifi/pages/trip.html', import.meta.url)","new URL('../mixtouring-hifi/pages/trip.html', baseUrl)");
+const outer={readFileSync:fs.readFileSync,vm,console,process,URL,baseUrl:import.meta.url};vm.createContext(outer);vm.runInContext(setup+'\nglobalThis.make=makeEnv;',outer);
+const brief={origin:'北京',destination:'阿拉木图',summary:'讨论走法',wishes:[],open_questions:[]};
+for(const fault of ['throw','malformed']){
+ const result=await conversationTurn({text:'以后旅行我都优先火车',current_message:{mid:1,role:'user',text:'以后旅行我都优先火车'},conversation:cleanConversation({brief}),preference_memory:{enabled:true,preferences:[],store_id:'test',revision:1}},null,{search:async()=>[],model:async o=>{
+  if(o.kind==='conversation_preference_intent'){if(fault==='throw')throw Error('临时模型故障');return {};}
+  return {reply:'本次对话继续。',brief,ready:true,requirements_patch:{},preferences:{},preference_memory_patch:{upserts:[{key:'preferred_mode',value:'rail'}]}};
+ }});
+ assert.equal(result.status,'ok','可选记忆核对失败不能丢失本轮对话');assert.equal(result.preference_memory_upserts.length,0);assert.match(result.preference_memory_notice,/暂未记录/);
 }
-
-/* ---------- 服务端：召回边界与候选白名单 ---------- */
-/* 召回：仅开启且白名单内注入；当前条件优先说明随附（M03） */
-{
-  const recalled = sanitizeRecalledPreferences({ enabled: true, preferences: [
-    { key: 'road', value: 'exclude' }, { key: 'trip_days', value: '7' }, { key: 'night_arrival', value: 'avoid' }] });
-  assert.deepEqual(recalled.preferences, [{ key: 'road', value: 'exclude' }], 'M03：召回白名单过滤——天数/夜间到达等一次性条件不进偏好');
-  assert.deepEqual(sanitizeRecalledPreferences({ enabled: false, preferences: [{ key: 'road', value: 'exclude' }] }).preferences, [], 'M03：未开启不召回');
-}
-
-/* 候选白名单：一次性条件拒绝并给原因（M03）；未开启丢弃并标记（M09） */
-{
-  const v = validatePreferenceUpserts({ upserts: [
-    { key: 'road', value: 'prefer_other' },
-    { key: 'trip_days', value: '7' },
-    { key: 'required_stops', value: '伊宁' },
-    { key: 'budget_max_cny', value: '8000' },
-    { key: 'pace', value: 'overnight_bus' }
-  ] }, { memoryEnabled: true });
-  assert.deepEqual(v.accepted, [{ key: 'road', value: 'prefer_other' }], 'M03：仅枚举软偏好通过');
-  assert.equal(v.rejected.length, 2, 'M03：单轮上限内的一次性条件全部拒绝（天数/必经）');
-  const v2 = validatePreferenceUpserts({ upserts: [
-    { key: 'budget_max_cny', value: '8000' },
-    { key: 'pace', value: 'overnight_bus' }
-  ] }, { memoryEnabled: true });
-  assert.equal(v2.accepted.length, 0 && v2.rejected.length, 2, 'M03：预算与非法枚举值同样拒绝');
-  assert.ok(v.rejected[0].reason.includes('白名单'), 'M03：拒绝原因说明一次性条件不升级');
-}
-
-/* 编排：关闭时模型给了候选也不返回 upserts（M09）；开启时经白名单返回 */
-{
-  const brief = { origin: '北京', destination: '阿拉木图', summary: 's', wishes: [], open_questions: [] };
-  const modelNoPatch = async () => ({ reply: '好', brief, ready: true, confirmed: false, requirements_patch: {} });
-  const off = await conversationTurn({ text: '记住了', conversation: cleanConversation({ stage: 'ready', brief }), messages: messages4(),
-    preference_memory: { enabled: false, preferences: [] } }, null, { model: async (opts) => {
-      assert.ok(!JSON.parse(opts.user).long_term_preferences, 'M09：未开启时上下文不含偏好召回');
-      return { ...okPayload2(), preference_memory_patch: { upserts: [{ key: 'road', value: 'exclude' }] } };
-    } });
-  assert.equal((off.preference_memory_upserts || []).length, 0, 'M09：未开启记忆时候选不返回（来源/网页内容更不可能写偏好）');
-  const seen = [];
-  const on = await conversationTurn({ text: '以后都不想坐长途巴士', conversation: cleanConversation({ stage: 'ready', brief }), messages: messages4(),
-    preference_memory: { enabled: true, preferences: [{ key: 'pace', value: 'explore' }] } }, null, { model: async (opts) => {
-      const user = JSON.parse(opts.user);
-      seen.push(user.long_term_preferences || null);
-      return { ...okPayload2(), preference_memory_patch: { upserts: [{ key: 'road', value: 'exclude' }, { key: 'trip_days', value: '5' }] } };
-    } });
-  assert.ok(seen.some((p) => p && p.some((x) => x.key === 'pace')), 'M03：开启时召回已启用偏好进入上下文');
-  assert.deepEqual(on.preference_memory_upserts, [{ key: 'road', value: 'exclude' }], 'M03：一次性条件在返回前被白名单剥离');
-}
-function messages4() { return Array.from({ length: 4 }, (_, i) => ({ mid: i + 1, role: i % 2 ? 'assistant' : 'user', text: 'm' + (i + 1) })); }
-import { cleanConversation } from './lib/conversation.mjs';
-function okPayload2() { return { reply: '好', brief: { origin: '北京', destination: '阿拉木图', summary: 's', wishes: [], open_questions: [] }, ready: true, confirmed: false, requirements_patch: {} }; }
-
-
-console.log('✓ 跨旅行偏好回归通过');
+let payloads=[],release=null,hold=false,seen=[];
+const {sandbox}=outer.make(async(_url,body)=>{
+ payloads.push(JSON.parse(JSON.stringify(body)));
+ const model=async o=>{
+  const c=JSON.parse(o.user);seen.push(c);
+  if(o.kind==='conversation_preference_intent')return {upserts:body.text.startsWith('以后')?[{key:'preferred_mode',value:body.text.includes('航班')?'plane':'rail'}]:[]};
+  return {reply:'本次安排继续保留。',brief,ready:true,requirements_patch:{},preferences:body.text.startsWith('这次')?{preferred_mode:'plane'}:{},preference_memory_patch:{upserts:[{key:'preferred_mode',value:body.text.includes('航班')?'plane':'rail'}]}};
+ };
+ const r=await conversationTurn(body,null,{model,search:async()=>[]});
+ if(hold)await new Promise(resolve=>release=resolve);
+ return {code:0,data:r};
+});
+const data=backing();sandbox.localStorage={getItem:()=>data.raw,setItem:(_k,v)=>data.raw=v};sandbox.addEventListener=()=>{};sandbox.navigator={locks};sandbox.renderPreferencePanel=()=>{};sandbox.prefMemoryFeedback='';
+vm.runInContext(source,sandbox);const store=sandbox.MTPreferences;await store.setEnabled(true);
+await sandbox.sendConversation('以后旅行我都优先火车');assert.equal(payloads[0].preference_memory.enabled,true);assert.equal(payloads[0].preference_memory.preferences.length,0);
+assert.equal(store.list()[0].value,'rail');assert.equal(store.entries()[0].source_message_mid,payloads[0].current_message.mid);
+await sandbox.sendConversation('这次改为航班，长期偏好不变');assert.equal(store.list()[0].value,'rail');assert.equal(sandbox.guideState.preferred_mode,'plane');
+assert.ok(seen.some(c=>Array.isArray(c.long_term_preferences)),'真实发送路径包含召回');
+await sandbox.sendConversation('以后偏好纠正为航班');assert.equal(store.list()[0].value,'plane');
+hold=true;const pending=sandbox.sendConversation('以后旅行我都优先火车');while(!release)await new Promise(r=>setTimeout(r,0));
+await store.remove(store.list()[0].id);release();await pending;assert.equal(store.list().length,0,'实际前端在途回复不复活已删偏好');
+assert.match(sandbox.prefMemoryFeedback,/旧回复/);
+console.log('✓ M2空库首条、纠正、跨标签在途失效、原子拒写、坏格式保护及真实前端编排通过');
