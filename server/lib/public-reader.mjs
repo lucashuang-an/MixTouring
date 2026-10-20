@@ -36,26 +36,44 @@ export function extractPublicPage(html){
   return {title:plain(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || '').slice(0,160),excerpt:content.slice(0,6000),published_at:published,updated_at:updated,read_status:'page_excerpt',truncated:content.length>6000};
 }
 export async function readPublicPage(value,{timeoutMs=6000,maxBytes=524288,resolve=lookup,signal}={}){
+  const started=Date.now(),diagnostics={phase:'validation',http_status:null,content_type:'unknown',redirects:0,elapsed_ms:0};
+  const messages={unsafe_url:'仅支持公开网页地址',unsafe_address:'地址不是公开网络地址',dns_error:'域名解析失败',network_error:'公开网页连接失败',timeout:'读取超时',cancelled:'读取已取消',non_html:'网页不是可读HTML',body_too_large:'网页超过读取上限',decode_error:'网页编码不可读取',verification_required:'网页要求验证，未读取内容',login_required:'网页需要登录，未读取文章',empty_body:'未取得可读正文',too_many_redirects:'网页跳转过多'};
+  const fail=code=>Object.assign(Error(messages[code] || '网页不可公开读取'),{reader_code:code});
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
   const abort=()=>controller.abort();signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted)abort();
   try{
     let url=publicUrl(value);
     for(let step=0;step<4;step++){
-      if(controller.signal.aborted)throw Error('读取超时或已取消');
-      const addresses=await Promise.race([resolve(url.hostname,{all:true,verbatim:true}),new Promise((_,reject)=>controller.signal.addEventListener('abort',()=>reject(Error('读取超时或已取消')),{once:true}))]);
-      if(!addresses.length || addresses.some(a=>!publicAddress(a.address)))throw Error('地址不是公开网络地址');
+      if(controller.signal.aborted)throw fail('cancelled');
+      diagnostics.phase='dns';
+      let onAbort;
+      const addresses=await Promise.race([resolve(url.hostname,{all:true,verbatim:true}),new Promise((_,reject)=>{onAbort=()=>reject(fail('cancelled'));controller.signal.addEventListener('abort',onAbort,{once:true});})]).finally(()=>controller.signal.removeEventListener('abort',onAbort));
+      if(controller.signal.aborted)throw fail('cancelled');
+      if(!addresses.length || addresses.some(a=>!publicAddress(a.address)))throw fail('unsafe_address');
       const chosen=addresses.find(a=>a.family===4) || addresses[0];
+      diagnostics.phase='http';diagnostics.http_status=null;diagnostics.content_type='unknown';
       const response=await new Promise((accept,reject)=>{
         const request=(url.protocol==='https:'?https:http).get(url,{agent:false,headers:{'user-agent':'MixTouring-PublicReader/1.0','accept':'text/html,application/xhtml+xml'},signal:controller.signal,lookup:(_host,opts,done)=>opts?.all?done(null,[chosen]):done(null,chosen.address,chosen.family)},res=>{
+          diagnostics.http_status=res.statusCode;
+          const type=String(res.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+          diagnostics.content_type=type==='text/html'?'html':type==='application/xhtml+xml'?'xhtml':type?'other':'unknown';
           if([301,302,303,307,308].includes(res.statusCode)){res.resume();accept({redirect:res.headers.location});return;}
-          if(res.statusCode!==200 || !/text\/html|application\/xhtml\+xml/i.test(res.headers['content-type'] || '')){res.resume();reject(Error('网页不可公开读取'));return;}
-          let length=0;const chunks=[];res.on('data',chunk=>{length+=chunk.length;if(length>maxBytes){res.destroy();reject(Error('网页超过读取上限'));}else chunks.push(chunk);});res.on('end',()=>{try{const buffer=Buffer.concat(chunks),header=String(res.headers['content-type'])+' '+buffer.subarray(0,2048).toString('ascii');accept({html:new TextDecoder(/gbk|gb2312|gb18030/i.test(header)?'gb18030':'utf-8').decode(buffer)});}catch{reject(Error('网页编码不可读取'));}});res.on('error',reject);
+          if(res.statusCode!==200){res.resume();reject(fail('http_'+res.statusCode));return;}
+          if(!['html','xhtml'].includes(diagnostics.content_type)){res.resume();reject(fail('non_html'));return;}
+          diagnostics.phase='body';let length=0,failed=false;const chunks=[];
+          res.on('data',chunk=>{if(failed)return;length+=chunk.length;if(length>maxBytes){failed=true;res.destroy();reject(fail('body_too_large'));}else chunks.push(chunk);});
+          res.on('end',()=>{if(failed)return;try{diagnostics.phase='decode';const buffer=Buffer.concat(chunks),header=String(res.headers['content-type'])+' '+buffer.subarray(0,2048).toString('ascii');accept({html:new TextDecoder(/gbk|gb2312|gb18030/i.test(header)?'gb18030':'utf-8').decode(buffer)});}catch{reject(fail('decode_error'));}});res.on('error',reject);
         });request.on('error',reject);
       });
-      if(response.redirect){url=publicUrl(new URL(response.redirect,url).href);continue;}
-      return {...extractPublicPage(response.html),url:url.href,checked_at:new Date().toISOString()};
+      if(controller.signal.aborted)throw fail('cancelled');
+      if(response.redirect){diagnostics.redirects++;diagnostics.phase='validation';url=publicUrl(new URL(response.redirect,url).href);continue;}
+      diagnostics.phase='extract';let page;
+      try{page=extractPublicPage(response.html);}catch(error){throw fail(error.message.includes('验证')?'verification_required':error.message.includes('登录')?'login_required':'empty_body');}
+      diagnostics.phase='complete';diagnostics.elapsed_ms=Date.now()-started;
+      return {...page,url:url.href,checked_at:new Date().toISOString(),diagnostics};
     }
-    throw Error('网页跳转过多');
-  }catch(error){return {url:String(value),read_status:'unavailable',reason:error.message.slice(0,120),checked_at:new Date().toISOString()};}
+    throw fail('too_many_redirects');
+  }catch(error){const code=controller.signal.aborted?(signal?.aborted?'cancelled':'timeout'):error.reader_code || (diagnostics.phase==='validation'?'unsafe_url':diagnostics.phase==='dns'?'dns_error':'network_error');diagnostics.elapsed_ms=Date.now()-started;
+    return {url:String(value),read_status:'unavailable',reason:messages[code] || (/^http_\d{3}$/.test(code)?'网页返回HTTP '+diagnostics.http_status:'网页不可公开读取'),reason_code:code,checked_at:new Date().toISOString(),diagnostics};}
   finally{clearTimeout(timer);signal?.removeEventListener('abort',abort);}
 }

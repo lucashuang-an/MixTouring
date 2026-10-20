@@ -25,6 +25,7 @@
 | 数字事实关联测试 | `node server/check-numeric-grounding.mjs` | 预算复述、事实范围／单位／用途及编辑后守门，v0.60.8 起 |
 | 检索时效测试 | `node server/check-source-time.mjs` | 时间窗、旧文隔离、原文日期与公共读取边界，v0.55.0 起 |
 | 来源基线回归 | `node server/check-source-baseline.mjs` | 请求归因、回退／冷却、任务分层与未知费用，v0.60.10 起；手动真实采集用 baseline-sources.mjs --live |
+| 搜索适配与读取回归 | `node server/check-search-adapters.mjs` | 服务选择、计费点／估计日期、HTTP阶段诊断和同任务对照，v0.60.11 起 |
 | CI | push 自动触发 | GitHub Actions 跑 verify + check-pages + check-geo + check-trip + check-anywhere + calibrate-routes + check-drafts；collect 定时任务需配 Secrets 并设 `LLM_COLLECT=1` |
 
 **提交前必跑（全绿才提交）**：`check-pages` + `check-geo` + `verify` + `check-trip` + `check-anywhere` + `calibrate-routes` + `check-drafts`。
@@ -143,6 +144,8 @@ MIXTOURING/
 - 布局：柔和投影 + 大圆角卡片 + 8pt 网格；触控目标 ≥44pt；次级文字对比度 ≥4.5:1；≥768px 走侧边栏（`desktop.css`，选择器加 body 前缀提特异性）。
 
 ## 8. 经验教训
+
+- **先区分服务估计、读取状态与真实对照**（v0.60.11）：Tavily可选，默认current；TAVILY_API_KEY与TRAVEL_SEARCH_PROVIDER=tavily独立配置，失败不暗中跨服务，429与额度分别记录。官方published_date可能是更新时间估计，保留estimated_date但不作近期准入；api_credits不换算成已知金额。对照要求同数据集、参考日、查询／范围／语言和完整轮次，未配置不能当零命中，同run只是重算。公开读取保留DNS固定与登录／验证边界，HTTP202／403不能冒充正文；诊断保留阶段／状态码，不输出原始错误／响应头。控制页和目标来源分别计分母，不续期旧报告；修改运行check-search-adapters及来源／时效回归。
 
 - **搜索引用不等于目标原帖，读取失败不是无资料**（v0.60.10）：S1逐请求使用searchWebDetailed的request_id／run_id，不能从全局最后状态拼并发记录；主备HTTP调用、冷却跳过、服务内工具次数分别统计。固定十二项两轮单查询探针共用来源清洗与读取，结果不代表完整规划质量；关闭应用缓存不证明上游未缓存。目标域名、路径／类型、日期分区、原文读取和结论支持分别计数，GetYourGuide归商业目录；索引日期不冒充原文核实。没有正文时支持率未知，费用未返回也未知。实采报告默认私有临时目录，不提交正文／凭据；--replay只重算保存记录，不联网续期。相关修改运行check-source-baseline及既有来源／时效回归。
 

@@ -1,5 +1,24 @@
 # MixTouring v1.2 开发流程｜从单程方案库到 Solo Trip 国际往返
 
+### S1后续：搜索适配器与公开读取诊断（v0.60.11 · 2026-10-20）
+
+用户授权继续，并在确认缺少Tavily密钥后选择先完成无需密钥部分。本批适配器、对照入口和读取诊断代码完成；**Tavily真实服务质量、跨服务增益、R1循环仍未验收**，不以HTTP桩或未配置报告代替真实对照。
+
+新增可选Tavily Search出口，依据[官方Search契约](https://docs.tavily.com/documentation/api-reference/endpoint/search)与[tavily-mcp参考实现](https://github.com/tavily-ai/tavily-mcp)。只使用检索结果，不采纳生成答案／raw_content；显式基本搜索、限定域名、语言与用量返回，关闭自动参数升级。API计费点记录为api_credits，不自动换算金额。published_date可能是发布或更新时间的估计，单列estimated_date，不能成为近期资料准入日期；公开原文有可靠发布日期时才依既有规则评估。
+
+默认服务仍为current（现有火山／智谱／公开备用链路）。TAVILY_API_KEY只配服务端；部署时显式设置TRAVEL_SEARCH_PROVIDER=tavily并重启新进程才选择新服务，配置与实际状态分开报告。当前未修改本机配置，Tavily失败不会暗中切换现有服务或自动重试；429冷却一分钟，鉴权／额度冷却五分钟，速率与额度分别表达。本轮不接入Extract，也不引入SDK／MCP运行依赖。
+
+- 手动采集：`node --env-file-if-exists=server/.env server/baseline-sources.mjs --live --provider current`或`--provider tavily`；未配置Tavily在发请求前停止，不记零命中。SOURCE_BASELINE_OUT指定不同私有文件，避免覆盖已有采样。
+- 同任务对照：`node server/baseline-sources.mjs --compare 当前报告 新服务报告`。只接受同数据集／同参考日／同查询与范围／语言及完整轮次；未配置不能对照，同一run只作same_run_replay。对照报告不可覆盖输入，默认临时目录；不从新增URL数量推定有效证据增益。
+- 只诊断既有原文：`node server/baseline-sources.mjs --diagnose-reads 基线报告`，最多两路并发，逐项保存检查点；不重搜、登记或续写旧来源。默认mixtouring-reader-diagnostics.json，与原始基线分开。
+- 回归：`node server/check-search-adapters.mjs`已加入CI；覆盖实际适配出口／来源采集传参、估计日期与计费点、失败停止、真实HTTP链路桩与同任务对照边界。
+
+读取器新增稳定reason_code及diagnostics，记录validation／dns／http／body／decode／extract阶段、状态码、HTML类别、跳转数与耗时；原始错误和响应头不进入诊断，面向用户仍按来源摘要与原文缺口解释。本机复读原10次读取目标：GetYourGuide六次403、马蜂窝四次202，均未取得可采纳正文；另两个控制页（example.com、JR东海官方页面）均200且正文可读。控制页不混入0/10分母，HTTP状态不被解释成已确认反爬原因，更不能把202响应当文章完成。无需登录或验证操作。
+
+29组回归、12/12样本与27/27候选校准、隔离3085无密钥接口验证通过。两份私有读取报告保留，实采正文不提交。本批无需新密钥即可交付的工程范围完成；Tavily真实同任务对照等待后续配置，未运行付费搜索、不改默认模型／服务、不自动启动R1或合并发布。
+
+---
+
 ### S1来源质量基线交付（v0.60.10 · 2026-10-20）
 
 用户授权进入下一开发卡，启动S1；上轮数字守门原始反例预检通过，先前自验不当作独立评审批准。本节更新下方S1待实施状态，R1仍未实施。

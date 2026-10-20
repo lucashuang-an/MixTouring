@@ -47,24 +47,25 @@ export function summarizeBaseline(records,planned){
     support_rate:ratio(count(decisive,s=>s.review.supports_conclusion===true),decisive.length),support_unresolved:sources.length-decisive.length,
     by_group:grouped('group'),by_domain:grouped('target_domain'),by_language:grouped('language'),repeat_stability:stability,
     latency:{task:latency(records),query:latency(queries),attempt:latency(attempts),read:latency(reads)},
-    usage: Object.fromEntries(['input_tokens','output_tokens','total_tokens','web_search_calls'].map(k=>{const reported=attempts.filter(a=>Number.isFinite(a.usage?.[k]));return [k,{reported_attempts:reported.length,total:reported.length?reported.reduce((n,a)=>n+a.usage[k],0):null}];})),
+    usage: Object.fromEntries(['input_tokens','output_tokens','total_tokens','web_search_calls','api_credits'].map(k=>{const reported=attempts.filter(a=>Number.isFinite(a.usage?.[k]));return [k,{reported_attempts:reported.length,total:reported.length?reported.reduce((n,a)=>n+a.usage[k],0):null}];})),
     cost:{amount:null,currency:null,basis:'服务未返回金额；调用及用量不等于已知费用'},
     outcomes:Object.fromEntries(records.map(r=>[r.task_id+'#'+r.repeat,r.outcome]))};
 }
-export async function runSourceBaseline(dataset,{search,readPage,repeat=2,now=Date.now(),concurrency=2,onRecord=()=>{},signal}={}){
-  const plan=baselinePlan(dataset,{repeat,now}),report={schema_version:1,harness_version:'0.60.10',cache:'应用层关闭，上游缓存不可判定',search_timeout_ms:12000,run_id:randomUUID(),profile:dataset.profile,dataset_sha256:createHash('sha256').update(JSON.stringify(dataset)).digest('hex'),
+export async function runSourceBaseline(dataset,{search,readPage,repeat=2,now=Date.now(),concurrency=2,onRecord=()=>{},signal,provider='current'}={}){
+  if(!['current','tavily'].includes(provider))throw Error('不支持的搜索服务');
+  const plan=baselinePlan(dataset,{repeat,now}),report={schema_version:1,harness_version:'0.60.11',provider,cache:'应用层关闭，上游缓存不可判定',search_timeout_ms:12000,run_id:randomUUID(),profile:dataset.profile,dataset_sha256:createHash('sha256').update(JSON.stringify(dataset)).digest('hex'),
     frozen_at:new Date(now).toISOString(),started_at:new Date().toISOString(),repeat,concurrency,planned:plan.length,records:[],summary:null};
   if(!Number.isInteger(concurrency) || concurrency<1 || concurrency>2 || typeof search!=='function' || typeof readPage!=='function')throw Error('基线依赖或并发参数无效');
   let next=0;
   const worker=async()=>{while(next<plan.length && !signal?.aborted){
     const {task,repeat:iteration,query,window}=plan[next++],started=Date.now(),searches=[],reads=[];
     const collected=await collectTravelSources({destination:task.destination,purpose:task.purpose,window},async(q,opts)=>{
-      const result=await search(q,{...opts,run_id:report.run_id});searches.push(result);
+      const result=await search(q,{...opts,provider,run_id:report.run_id});searches.push(result);
       // 公开索引明确返回零项与通道错误分开；不改变原业务接口的 null 契约。
       return result.results || (result.status==='empty'?[]:null);
-    },{now,useCache:false,signal,diagnostics:true,queryPlans:[{channel:task.id,text:query,domain:task.domain,kinds:task.kinds}],readPage:async(url,opts)=>{
+    },{now,useCache:false,signal,diagnostics:true,queryPlans:[{channel:task.id,text:query,domain:task.domain,kinds:task.kinds,language:task.language}],readPage:async(url,opts)=>{
       const start=Date.now();let page;try{page=await readPage(url,opts);}catch{page={read_status:'unavailable'};}
-      reads.push({url,elapsed_ms:Date.now()-start,status:page?.read_status || 'unavailable',identity_match:false});return page;
+      reads.push({url,elapsed_ms:Date.now()-start,status:page?.read_status || 'unavailable',identity_match:false,reason_code:page?.reason_code || null,diagnostics:page?.diagnostics || null});return page;
     }});
     const sources=(collected.diagnostics?.all_sources || []).map(s=>assessBaselineSource(task,s));
     for(const read of reads){const source=sources.find(s=>s.url===read.url || s.original_url===read.url);read.identity_match=source?.read_status==='page_excerpt';if(read.status==='page_excerpt' && !read.identity_match)read.status='identity_mismatch';}

@@ -6,7 +6,7 @@ export function searchAttempt(callback,{provider,model=null,query,status,started
   const safe=v=>Number.isFinite(v) && v>=0?v:null;
   const event={attempt_id:randomUUID(),provider,model,query:String(query).slice(0,100),status,network_request:!!network_request,
     elapsed_ms:Math.max(0,Date.now()-started),http_status:safe(http_status),reason_code:typeof reason_code==='string' && /^[A-Za-z0-9_.-]{1,80}$/.test(reason_code)?reason_code:null,
-    usage:usage?Object.fromEntries(['input_tokens','output_tokens','total_tokens','web_search_calls'].map(k=>[k,safe(usage[k])])):null,cost:unknownCost()};
+    usage:usage?Object.fromEntries(['input_tokens','output_tokens','total_tokens','web_search_calls','api_credits'].map(k=>[k,safe(usage[k])])):null,cost:unknownCost()};
   try{callback(event);}catch{/* 诊断失败不改变业务检索结果。 */}
 }
 export async function detailedSearch(search,query,{run_id=null,onAttempt,...options}={}){

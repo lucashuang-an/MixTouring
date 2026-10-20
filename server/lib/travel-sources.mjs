@@ -2,6 +2,7 @@
 import {retrievalContext,partitionTimedSources,sourceDay} from './source-time.mjs';
 const cache=new Map();
 const hostIs=(host,domain)=>host===domain || host.endsWith('.'+domain);
+export const articleIdentity=url=>{try{const x=new URL(url);x.hash='';for(const k of [...x.searchParams.keys()])if(/^utm_|^(spm|share_source|share_from)$/i.test(k))x.searchParams.delete(k);return x.host.replace(/^www\./,'')+x.pathname.replace(/\/$/,'')+x.search;}catch{return url;}};
 export function classifyTravelSource(link){
   let url;try{url=new URL(link);}catch{return null;}
   if(!['https:','http:'].includes(url.protocol))return null;
@@ -27,13 +28,15 @@ export function classifyTravelSource(link){
 }
 function cleanResult(raw,now=Date.now()){
   const meta=classifyTravelSource(raw?.link);if(!meta)return null;
+  const published=raw.date_basis==='provider_estimate'?null:raw.date;
   const url=new URL(raw.link);url.hash='';
   if(url.username || url.password)return null;
   if(url.pathname==='/' || /\/search(?:\/|$)/.test(url.pathname))return null;
   if(hostIs(meta.host,'xiaohongshu.com') && !/^\/(explore|discovery\/item)\/[^/]+/.test(url.pathname))return null;
   for(const key of [...url.searchParams.keys()])if(/^utm_|^(spm|share_source|share_from)$/i.test(key))url.searchParams.delete(key);
   return {...meta,url:url.href,title:String(raw.title || meta.platform).slice(0,160),excerpt:String(raw.content || '').slice(0,500),
-    published_at:sourceDay(raw.date),published_raw:raw.date || null,date_basis:raw.date?'search_index':'unknown',read_status:'search_excerpt',checked_at:new Date(now).toISOString()};
+    ...(raw.date_basis==='provider_estimate'?{estimated_date:String(raw.estimated_date || '').slice(0,100),estimated_date_basis:'provider_estimate'}:{}),
+    published_at:sourceDay(published),published_raw:published || null,date_basis:published?'search_index':'unknown',read_status:'search_excerpt',checked_at:new Date(now).toISOString()};
 }
 export async function collectTravelSources({destination='',query='',international=false,foreignQuery='',travel={},window=null,purpose='experience'},search,{useCache=true,readPage=null,now=Date.now(),signal=null,queryPlans=null,diagnostics=false}={}){
   const temporal=retrievalContext({travel,window,purpose,now});
@@ -62,7 +65,7 @@ export async function collectTravelSources({destination='',query='',internationa
   const cancelledResult=()=>({sources:[],archive:[],experiences:[],channels:[],temporal,status:'unavailable',reader:{attempted:0,available:0},excluded_count:0,cache_hit:false,retrieved_at:new Date(now).toISOString(),results:[],cancelled:true});
   const cached=cache.get(key);
   if(useCache && cached?.until>now){if(signal?.aborted)return cancelledResult();return {...structuredClone(cached.value),cache_hit:true};}
-  const settled=signal?.aborted?[]:await Promise.allSettled(queries.map(q=>search(q.text,{limit:5,timeoutMs:12000,signal})));
+  const settled=signal?.aborted?[]:await Promise.allSettled(queries.map(q=>search(q.text,{limit:5,timeoutMs:12000,signal,domains:q.domain?[q.domain]:null,language:q.language || null})));
   /* #32（复审 P2）：部分查询先成功、其余被取消时，本轮不产出可用结果、不登记来源、不写缓存 */
   if(signal?.aborted)return cancelledResult();
   const pool=[],seen=new Set(),channels=[],queryDiagnostics=[];
@@ -86,7 +89,6 @@ export async function collectTravelSources({destination='',query='',internationa
   /* #30：文章身份核对——最终 URL 规范化后须与检索 URL 同 host 同 path（或读取器未报告最终 URL）
    * 才合并正文/标题/平台/日期；跳转到其他文章时保留原索引记录与读取缺口，不把别站文章
    * 嫁接原平台日期或冒充原平台原帖。 */
-  const articleIdentity=url=>{try{const x=new URL(url);x.hash='';for(const k of [...x.searchParams.keys()])if(/^utm_|^(spm|share_source|share_from)$/i.test(k))x.searchParams.delete(k);return x.host.replace(/^www\./,'')+x.pathname.replace(/\/$/,'')+x.search;}catch{return url;}};
   let readCount=0;
   reads.forEach((out,i)=>{
     const source=pool.find(s=>s.url===targets[i].url),page=out.status==='fulfilled'?out.value:null;
