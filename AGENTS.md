@@ -24,6 +24,7 @@
 | 动态路线卡测试 | `node server/check-route-workspace.mjs` | 结构保留、预览采纳、候选顺序与证据隔离，v0.53.0 起 |
 | 数字事实关联测试 | `node server/check-numeric-grounding.mjs` | 预算复述、事实范围／单位／用途及编辑后守门，v0.60.8 起 |
 | 检索时效测试 | `node server/check-source-time.mjs` | 时间窗、旧文隔离、原文日期与公共读取边界，v0.55.0 起 |
+| 来源基线回归 | `node server/check-source-baseline.mjs` | 请求归因、回退／冷却、任务分层与未知费用，v0.60.10 起；手动真实采集用 baseline-sources.mjs --live |
 | CI | push 自动触发 | GitHub Actions 跑 verify + check-pages + check-geo + check-trip + check-anywhere + calibrate-routes + check-drafts；collect 定时任务需配 Secrets 并设 `LLM_COLLECT=1` |
 
 **提交前必跑（全绿才提交）**：`check-pages` + `check-geo` + `verify` + `check-trip` + `check-anywhere` + `calibrate-routes` + `check-drafts`。
@@ -142,6 +143,8 @@ MIXTOURING/
 - 布局：柔和投影 + 大圆角卡片 + 8pt 网格；触控目标 ≥44pt；次级文字对比度 ≥4.5:1；≥768px 走侧边栏（`desktop.css`，选择器加 body 前缀提特异性）。
 
 ## 8. 经验教训
+
+- **搜索引用不等于目标原帖，读取失败不是无资料**（v0.60.10）：S1逐请求使用searchWebDetailed的request_id／run_id，不能从全局最后状态拼并发记录；主备HTTP调用、冷却跳过、服务内工具次数分别统计。固定十二项两轮单查询探针共用来源清洗与读取，结果不代表完整规划质量；关闭应用缓存不证明上游未缓存。目标域名、路径／类型、日期分区、原文读取和结论支持分别计数，GetYourGuide归商业目录；索引日期不冒充原文核实。没有正文时支持率未知，费用未返回也未知。实采报告默认私有临时目录，不提交正文／凭据；--replay只重算保存记录，不联网续期。相关修改运行check-source-baseline及既有来源／时效回归。
 
 - **预算归属和计价口径必须分开核对**（v0.60.9）：最多／不超过不是用户授权，预算不能放行实际价格上限。金额关联保留项目、组合、票种、人数、税费与计费单位；未知限定不能猜，否定和转折按各自作用范围检查。裸金额识别先确认数词边界，不从一律／一并等普通词截出数字。数字回归同时覆盖正确项目引用与错误项目拒绝，真实回放用九组replay-numeric-grounding。
 

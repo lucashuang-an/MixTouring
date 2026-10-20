@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "profile": "固定单查询探针，共用生产搜索、来源清洗、时效与公开读取链路；不代表完整多查询规划流程质量",
+  "tasks": [
+    {"id":"route-beijing-almaty","group":"route","destination":"阿拉木图","purpose":"transport","language":"zh","domain":"csair.com","kinds":["guide","official"],"query":"site:csair.com 北京 阿拉木图 航班","terms":[["北京","Beijing"],["阿拉木图","Almaty"],["航班","flight"]],"allowed_use":"连接线索，班期和可用性待核实"},
+    {"id":"route-yining-almaty","group":"route","destination":"阿拉木图","purpose":"transport","language":"en","domain":"caravanistan.com","kinds":["experience","guide"],"query":"site:caravanistan.com Yining Almaty bus Khorgos border","terms":[["Yining","伊宁"],["Almaty","阿拉木图"],["bus","coach","班车"]],"allowed_use":"跨境客运探索，经验不能证明当期运营"},
+    {"id":"route-chengdu-kunming","group":"route","destination":"昆明","purpose":"transport","language":"zh","domain":"12306.cn","kinds":["guide","official"],"query":"site:12306.cn 成都 昆明 高铁 列车","terms":[["成都","Chengdu"],["昆明","Kunming"],["列车","高铁","train"]],"allowed_use":"铁路连接线索，不推定指定日期班次"},
+    {"id":"route-tokyo-osaka","group":"route","destination":"大阪","purpose":"transport","language":"en","domain":"global.jr-central.co.jp","kinds":["guide","official"],"query":"site:global.jr-central.co.jp Tokyo Shin-Osaka Tokaido Shinkansen","terms":[["Tokyo","東京"],["Osaka","大阪"],["Shinkansen","train","新幹線"]],"allowed_use":"运营方路线参考，余票和具体时刻待核实"},
+    {"id":"experience-almaty-reddit","group":"experience","destination":"阿拉木图","purpose":"experience","language":"en","domain":"reddit.com","kinds":["experience"],"query":"site:reddit.com/r/travel/comments Almaty solo travel without car","terms":[["Almaty","阿拉木图"]],"allowed_use":"个人经验参考，不能证明交通事实"},
+    {"id":"experience-yili-xhs","group":"experience","destination":"伊犁","purpose":"experience","language":"zh","domain":"xiaohongshu.com","kinds":["experience"],"query":"site:xiaohongshu.com/explore 伊犁 无车 独自旅行 攻略","terms":[["伊犁","伊宁","Yili","Yining"]],"allowed_use":"公开个人经验参考，不绕过登录或验证"},
+    {"id":"experience-osaka-gyg","group":"experience","destination":"大阪","purpose":"guide","language":"en","domain":"getyourguide.com","kinds":["guide"],"query":"site:getyourguide.com Osaka walking tour food market","terms":[["Osaka","大阪"]],"allowed_use":"商业活动目录，仅作玩法线索，不冒充个人游记或购票入口"},
+    {"id":"experience-chengdu-mafengwo","group":"experience","destination":"成都","purpose":"experience","language":"zh","domain":"mafengwo.cn","kinds":["experience"],"query":"site:mafengwo.cn/i 成都 独自旅行 游记 茶馆","terms":[["成都","Chengdu"]],"allowed_use":"个人体验参考，价格和开放信息待核实"},
+    {"id":"boundary-sparse-xhs","group":"boundary","destination":"阿拉木图","purpose":"experience","language":"zh","domain":"xiaohongshu.com","kinds":["experience"],"query":"site:xiaohongshu.com/explore 北京 阿拉木图 全程铁路 无换乘 亲历","terms":[["北京"],["阿拉木图"],["铁路","火车"]],"allowed_use":"稀少资料探针，查无结果不证明路线不存在"},
+    {"id":"boundary-future-almaty","group":"boundary","destination":"阿拉木图","purpose":"transport","language":"en","domain":"airastana.com","kinds":["guide","official"],"future_days":60,"query":"site:airastana.com Beijing Almaty flight {date}","terms":[["Beijing","北京"],["Almaty","阿拉木图"],["flight","航班"]],"allowed_use":"未来窗查询，现时发布资料不证明覆盖该窗"},
+    {"id":"boundary-thai-reddit","group":"boundary","destination":"清迈","purpose":"experience","language":"en","domain":"reddit.com","kinds":["experience"],"query":"site:reddit.com/r/ThailandTourism/comments Chiang Mai solo without scooter","terms":[["Chiang Mai","清迈"]],"allowed_use":"英文社区经验，语言与原帖可读性分别记录"},
+    {"id":"boundary-undated-guide","group":"boundary","destination":"阿拉木图","purpose":"guide","language":"en","domain":"kazakhstan.travel","kinds":["official","guide"],"query":"site:kazakhstan.travel Almaty mountains public transport","terms":[["Almaty","阿拉木图"]],"allowed_use":"目的地背景；日期不明保留历史区，不能按最新运营资料使用"}
+  ]
+}

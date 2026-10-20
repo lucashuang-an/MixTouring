@@ -35,14 +35,14 @@ function cleanResult(raw,now=Date.now()){
   return {...meta,url:url.href,title:String(raw.title || meta.platform).slice(0,160),excerpt:String(raw.content || '').slice(0,500),
     published_at:sourceDay(raw.date),published_raw:raw.date || null,date_basis:raw.date?'search_index':'unknown',read_status:'search_excerpt',checked_at:new Date(now).toISOString()};
 }
-export async function collectTravelSources({destination='',query='',international=false,foreignQuery='',travel={},window=null,purpose='experience'},search,{useCache=true,readPage=null,now=Date.now(),signal=null}={}){
+export async function collectTravelSources({destination='',query='',international=false,foreignQuery='',travel={},window=null,purpose='experience'},search,{useCache=true,readPage=null,now=Date.now(),signal=null,queryPlans=null,diagnostics=false}={}){
   const temporal=retrievalContext({travel,window,purpose,now});
   const since=new Date(Date.parse(temporal.today+'T00:00:00Z')-temporal.max_age_days*86400000).toISOString().slice(0,10);
   const stamp=' after:'+since+(temporal.target_window?' '+temporal.target_window.replaceAll(' ',''):' before:'+temporal.today);
   const topic=String(query || destination+' 旅行').slice(0,36);
   const aliases={'北京':'Beijing','乌鲁木齐':'Urumqi','伊宁':'Yining','阿拉木图':'Almaty','霍尔果斯':'Khorgos'};
   const english=String(foreignQuery || destination+' travel report').replace(/北京|乌鲁木齐|伊宁|阿拉木图|霍尔果斯/g,x=>aliases[x]);
-  const queries=[
+  const defaults=[
     {channel:'小红书',domain:'xiaohongshu.com',text:'site:xiaohongshu.com '+destination+' 旅行 乘车'},
     {channel:'马蜂窝',domain:'mafengwo.cn',text:'site:mafengwo.cn '+destination+' 游记'},
     {channel:'穷游',domain:'qyer.com',text:'site:bbs.qyer.com '+destination+' 交通'},
@@ -52,6 +52,10 @@ export async function collectTravelSources({destination='',query='',internationa
       {channel:'背包客栈',domain:'backpackers.com.tw',text:'site:backpackers.com.tw/forum '+destination+' 交通'}]:[]),
     {channel:'官方与目的地资料',text:topic+' 官方 交通 开放 最新'}
   ].map(q=>{const scope=q.domain?stamp.replace(since,new Date(Date.parse(temporal.today+'T00:00:00Z')-365*86400000).toISOString().slice(0,10)):stamp;return {...q,text:q.text.slice(0,100-scope.length)+scope};});
+  // 固定探针仅供内部基线工具注入，不接受 HTTP 入参；默认产品检索计划与筛选保持原样。
+  if(queryPlans!==null && (!Array.isArray(queryPlans) || !queryPlans.length || queryPlans.length>8 || queryPlans.some(q=>!q || typeof q.text!=='string' || !q.text.trim() || q.text.length>100 || !/^[a-z0-9.-]+$/.test(q.domain || '') || !Array.isArray(q.kinds) || !q.kinds.length || q.kinds.some(k=>!['experience','guide','official'].includes(k)))))throw Error('基线查询计划无效');
+  const queries=queryPlans || defaults;
+  if(diagnostics || queryPlans)useCache=false;
   const key=JSON.stringify([queries,temporal]);
   /* #32（复审二轮）：取消检查统一三处——缓存命中前、搜索阶段后、原文读取阶段后；
    * 取消轮一律返回 cancelled（不产出来源、不登记、缓存命中也不放行），重试重新全量检索。 */
@@ -61,10 +65,12 @@ export async function collectTravelSources({destination='',query='',internationa
   const settled=signal?.aborted?[]:await Promise.allSettled(queries.map(q=>search(q.text,{limit:5,timeoutMs:12000,signal})));
   /* #32（复审 P2）：部分查询先成功、其余被取消时，本轮不产出可用结果、不登记来源、不写缓存 */
   if(signal?.aborted)return cancelledResult();
-  const pool=[],seen=new Set(),channels=[];
+  const pool=[],seen=new Set(),channels=[],queryDiagnostics=[];
   settled.forEach((item,i)=>{
     const results=item.status==='fulfilled' && Array.isArray(item.value)?item.value:[];
-    const valid=results.map(raw=>cleanResult(raw,now)).filter(r=>r && (!queries[i].domain || hostIs(r.host,queries[i].domain) && r.kind==='experience'));
+    const plan=queries[i],cleaned=results.map(raw=>cleanResult(raw,now)),domainHits=results.filter(raw=>{try{return hostIs(new URL(raw.link).hostname.toLowerCase(),plan.domain);}catch{return false;}});
+    const valid=cleaned.filter(r=>r && (!plan.domain || hostIs(r.host,plan.domain) && (plan.kinds || ['experience']).includes(r.kind)));
+    queryDiagnostics.push({query:plan.text,raw_count:results.length,domain_hit_count:domainHits.length,accepted_count:valid.length,rejected_count:results.length-valid.length});
     channels.push({channel:queries[i].channel,status:valid.length?'found':item.status==='fulfilled' && Array.isArray(item.value)?'empty':'unavailable',query:queries[i].text});
     for(const result of valid){if(seen.has(result.url))continue;seen.add(result.url);pool.push(result);}
   });
@@ -106,6 +112,7 @@ export async function collectTravelSources({destination='',query='',internationa
   const available=channels.filter(c=>c.status!=='unavailable').length;
   const value={sources,archive,experiences,channels,temporal,status:available===0?'unavailable':available<channels.length?'partial':'available',reader:{attempted:reads.length,available:readCount},excluded_count:partition.excluded.length,cache_hit:false,retrieved_at:new Date(now).toISOString(),
     results:sources.map(s=>({title:s.title,link:s.url,content:s.excerpt,date:s.published_at,date_basis:s.date_basis,source_kind:s.kind,platform:s.platform,read_status:s.read_status,temporal:s.temporal}))};
+  if(diagnostics)value.diagnostics={queries:queryDiagnostics,all_sources:[...partition.current,...partition.archive,...partition.excluded]};
   if(useCache && available && !signal?.aborted){cache.set(key,{value:structuredClone(value),until:now+300000});if(cache.size>80)cache.delete(cache.keys().next().value);}
   return value;
 }

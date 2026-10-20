@@ -55,6 +55,7 @@ jobs:
           node server/check-my-trips.mjs
           node server/check-travel-sources.mjs
           node server/check-source-time.mjs
+          node server/check-source-baseline.mjs
           node server/check-journey.mjs
           node server/check-progressive.mjs
           node server/check-inspirations.mjs
