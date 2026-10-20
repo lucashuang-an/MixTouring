@@ -165,7 +165,7 @@ function buildPayloadContext(payload,{coreRules,rulesVersion,budgetChars}){
   const target=Math.max(0,budgetChars-1200); // 为清单和省略说明预留空间，最终仍按实际长度检查。
   const omit=id=>{if(!manifest.omitted_ids.includes(id))manifest.omitted_ids.push(id);};
   // 优先移走最旧原文与重复／补充资料，再缩减决策索引；权威条件与完整草案始终保留。
-  const arrays=['messages','user_messages','search_results','experience_results','visible_search_results','visible_experiences','transport_references'];
+  const arrays=['messages','user_messages','search_results','experience_results','visible_search_results','visible_experiences','transport_references','numeric_fact_catalog'];
   for(const key of arrays){
     const a=value[key];
     while(size()>target && Array.isArray(a) && a.length){a.shift();omit(key);}

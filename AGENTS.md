@@ -22,6 +22,7 @@
 | G4 私人草案存储测试 | `node server/check-drafts.mjs` | 存储层 + 失败场景矩阵（内存假体），v0.42.2 起 |
 | 卡 C 景点与时间预算测试 | `node server/check-sights.mjs` | 预算冲突、无车未知、景点取舍和来源隔离，v0.45.0 起 |
 | 动态路线卡测试 | `node server/check-route-workspace.mjs` | 结构保留、预览采纳、候选顺序与证据隔离，v0.53.0 起 |
+| 数字事实关联测试 | `node server/check-numeric-grounding.mjs` | 预算复述、事实范围／单位／用途及编辑后守门，v0.60.8 起 |
 | 检索时效测试 | `node server/check-source-time.mjs` | 时间窗、旧文隔离、原文日期与公共读取边界，v0.55.0 起 |
 | CI | push 自动触发 | GitHub Actions 跑 verify + check-pages + check-geo + check-trip + check-anywhere + calibrate-routes + check-drafts；collect 定时任务需配 Secrets 并设 `LLM_COLLECT=1` |
 
@@ -141,6 +142,8 @@ MIXTOURING/
 - 布局：柔和投影 + 大圆角卡片 + 8pt 网格；触控目标 ≥44pt；次级文字对比度 ≥4.5:1；≥768px 走侧边栏（`desktop.css`，选择器加 body 前缀提特异性）。
 
 ## 8. 经验教训
+
+- **同数不是同一事实，否定和预算也不是价格**（v0.60.8）：数字守门按输出路径和每次位置处理，不用整份资料includes或首次indexOf。价格／时长／距离关联具体字段、单位、对象／方向、来源原句和日期用途；经验与历史方向不升级运营事实。预算独立校验，否定用户数字和紧邻参考限定语须允许正常解释；同时测放行与拒绝，运行check-numeric-grounding，真实表达用replay-numeric-grounding。来源摘要只作参考，不证明当前可售。
 
 - **偏好授权须绑定请求，落盘成功才改界面**（v0.60.7）：实际对话请求必须携带独立偏好快照，开启空库仍是已授权。记录仅核对本轮用户明确长期表达，本次条件优先；删除、纠正及关闭再开启后，旧请求候选整批失效，storage重载同时刷新面板。存储先克隆验证、同源锁内重读并一次落盘，再发布内存；失败明确本页暂停与刷新边界。损坏、不可读和未知格式不能被普通开关覆盖，回归须用同一存储操作后刷新核对原文字节。运行check-preference-memory；真实表达用replay-preferences，搜索桩与旅行事实分别报告。
 

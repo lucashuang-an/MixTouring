@@ -137,7 +137,7 @@ await conversationTurn({...restored,text:'按刚才的偏好继续'},null,{model
     const u=JSON.parse(opts.user);
     if(!(u.search_results||[]).length)return {...okShaped('我查一下当前票价。'),search_query:'阿拉木图 机票 价格'};
     assert.ok(u.search_results.some(s=>String(s.content||s.excerpt||'').includes('8000')),'G1:检索后来源含票价数字');
-    return okShaped('来源显示票价8000元,可作参考。');
+    return okShaped('来源显示北京到阿拉木图航班票价8000元，仅供参考，本次日期仍待确认。');
   },search:async()=>[{title:'阿拉木图航班',link:'https://example.com/fare',content:'北京到阿拉木图航班当前票价8000元',date:'2026-10-01'}]});
   assert.ok(r4calls>=2,'G1:检索后二次调用进入守门放行路径');
     assert.equal(r4.status,'ok','G1:当期来源支持的票价陈述放行');

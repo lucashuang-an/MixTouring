@@ -16,6 +16,7 @@ import {buildRouteComparison} from './route-comparison.mjs';
 import {draftQueryScope} from './draft-research.mjs';
 import {cleanMemory, extractMemoryCandidates, commitMemoryDecisions, decisionIndexForPrompt, validatePreferenceUpserts, sanitizeRecalledPreferences} from './trip-memory.mjs';
 import {buildContext,cleanSummaries, summarizeBacklog, appendSummary, summaryFingerprint} from './context-builder.mjs';
+import {buildNumericCatalog,validateNumericClaims} from './numeric-grounding.mjs';
 
 const guides = JSON.parse(readFileSync(new URL('../../pipeline/data/destination-guides.json', import.meta.url))).destinations;
 const str = (v, n = 1600) => typeof v === 'string' ? v.trim().slice(0, n) : '';
@@ -155,7 +156,12 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
   const cancelErr = () => Object.assign(Error('请求已取消或超时'), { name: 'AbortError' });
   const model = (opts) => {
     if(signal.aborted)return Promise.reject(cancelErr());
-    const built=buildContext({payload:JSON.parse(opts.user),coreRules:opts.schema_prompt,
+    const payload=JSON.parse(opts.user);
+    if(['conversation','conversation_review','conversation_scope','conversation_schedule'].includes(opts.kind)){
+      payload.numeric_fact_catalog=numericCatalog();
+      opts={...opts,schema_prompt:opts.schema_prompt+'\n数字只可复述用户明确条件，或引用numeric_fact_catalog中同字段、单位、对象与方向的记录。引用数字时写明两端和交通方式（非交通写完整对象），明确“资料记载／来源显示”及“仅供参考，本次日期仍待确认”；来源摘录不证明当前可售或保证可达。预算是用户条件，实际费用未知时可复述已确认的预算，并说明实际费用待查，不可把预算改成票价。用户日期未定时只说日期未定，不把当前日期当成出行日期。没有对应记录则删除数字承诺并说明待查。'};
+    }
+    const built=buildContext({payload,coreRules:opts.schema_prompt,
       rulesVersion:'v0.60.5',budgetChars:deps.contextBudgetChars});
     return (deps.model || composeJson)({...opts,user:JSON.stringify(built.value),signal});
   };
@@ -222,6 +228,8 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
       explanation:c.explanation, basis:c.basis })),
     destination_material: guides[destination] || null,
     sight_material: /伊宁|伊犁/.test(destination || '') ? sightCatalog() : null };
+  function numericCatalog(){return buildNumericCatalog({sources:[...context.search_results || [],...context.visible_search_results || []],
+    transport:context.transport_references || [],retrieval:context.retrieval || retrievalContext({travel:context.current.travel,now:deps.now || Date.now()}),now:deps.now || Date.now()});}
   /* M1：决策索引（当前条目供理由引用）与有效摘要注入；清单是派生物，只进 prompt 不进保存状态 */
   const validSummaries = workingSummaries.items.filter(s => s.condition_hash === fingerprint);
   context.decision_index = decisionIndexForPrompt(before.memory,userMessages);
@@ -360,32 +368,9 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
       if(official && !sources.some(s=>s.url===official.url))sources[sources.length-1]=official;
       raw = {...await invoke(),...understanding};
     }
-    /* G1（复审 P1）：数字在上下文出现不等于能支持该事实。价格/货币陈述必须来自「当期外部来源
-     * 材料」——用户预算只允许以预算语义复述，不得当作票价/费用依据；历史存档与背景目录不是
-     * 当期依据；美元等货币与耗时/距离同核对；用户原话中的时长/距离是用户条件，可复述。 */
-    const FACT_PATTERN = /\d+(?:\.\d+)?\s*(?:小时|分钟|公里|千米|km|元|块(?:钱)?|人民币|CNY|美元|美金|USD|\$|坚戈|欧元|EUR)/gi;
-    const PRICE_WORDS = /票价|价格|费用|花费|成本|报价|每人|机票价|车票价|房费/;
-    const BUDGET_WORDS = /预算|以内|不超过|上限|控制在|花销/;
-    const currentEvidenceText = JSON.stringify({
-      search: context.search_results || [], experiences: context.experience_results || [],
-      visible: context.visible_search_results || [], visibleExp: context.visible_experiences || [],
-      transport: context.transport_references || []
-    });
-    const userText = JSON.stringify({ text: context.text, messages: messages.filter(m => m.role === 'user') });
-    const userBudget = input.constraints?.budget_max_cny != null ? String(input.constraints.budget_max_cny) : null;
-    const unsupportedNumbers = value => {
-      const text = JSON.stringify({ reply: value?.reply, draft: value?.draft });
-      return (text.match(FACT_PATTERN) || []).filter(fact => {
-        const num = fact.replace(/[^\d.]/g, '');
-        const at = text.indexOf(fact);
-        const windowText = text.slice(Math.max(0, at - 14), at + fact.length + 14);
-        if (PRICE_WORDS.test(windowText)) return !currentEvidenceText.includes(num);   /* 价格语义：须当期来源，用户预算不算 */
-        if (/小时|分钟/.test(fact)) return !currentEvidenceText.includes(num) && !userText.includes(fact);   /* 耗时：当期来源或用户原话 */
-        if (/公里|千米|km/i.test(fact)) return !currentEvidenceText.includes(num) && !userText.includes(fact);
-        if (BUDGET_WORDS.test(windowText)) return !(userBudget === num || currentEvidenceText.includes(num)); /* 预算复述合法 */
-        return !currentEvidenceText.includes(num);                                     /* 其余货币：须当期来源 */
-      });
-    };
+    /* 每次按当前来源重建事实表；主回复及所有编辑阶段执行相同的逐项守门。 */
+    const checkNumbers=value=>validateNumericClaims(value,{catalog:numericCatalog(),constraints:context.current.constraints,text:context.text});
+    const unsupportedNumbers=value=>checkNumbers(value).rejected.map(f=>f.path+'['+f.occurrence+'] '+f.text+'：'+f.reason);
     if(unsupportedNumbers(raw).length){
       context.correction='上一版含无资料支持的数字事实：'+unsupportedNumbers(raw).join('、')+'。删除这些数字承诺，用有帮助的安排思路继续回应。保持本轮真实动作，用户已确认就不要再次求确认。';
       raw={...await invoke(),...understanding};
@@ -481,11 +466,17 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
     if(explicitChoice && draft){
       raw.reply='已按你选的 '+draft.route.join(' → ')+' 生成初稿，其他已确认条件保留。可以继续聊着调整。';
     }
+    const numericGrounding=checkNumbers({reply:raw.reply,draft});
+    if(numericGrounding.rejected.length)throw Error('最终回复仍有无依据数字，原安排保留');
+    const citedFacts=[...new Map(numericGrounding.grounded.filter(f=>f.source_url).map(f=>[f.source_url,f])).values()];
+    if(citedFacts.length>8)throw Error('本轮数字来源过多，请缩小讨论范围');
+    sources=citedFacts.map(f=>sources.find(s=>s.url===f.source_url) || {url:f.source_url,title:'数字参考资料',excerpt:f.evidence_quote,published_at:f.published_at,read_status:f.read_status,...classifyTravelSource(f.source_url)})
+      .concat(sources).filter((s,i,a)=>a.findIndex(x=>x.url===s.url)===i).slice(0,8);
     const preferenceWrite=await preferenceMemoryResult(raw);
     if(action==='chat' && raw.intent_action==='preview' && before.draft && draft && !changedDestination){
       /* M02：预览内的记忆增量随采纳一起提交、丢弃一起删除——候选挂 preview，此处不提交 */
       return {status:'ok',engine:'llm',reply:'先看看这份备选预览，当前安排还未改动。'+str(raw.reply),conversation:{...before,summaries:workingSummaries,preview:{draft,brief:next.brief,patch,requirements:next.requirements,base_revision:before.revision,base_signature:conditionSignature(input),selected_candidate_id:selected?.id || null,memory_candidates:memoryCandidates.accepted,memory_evidence_refs:[...new Set(memoryCandidates.accepted.flatMap(c=>c.evidence_refs))]}},
-        patch:cleanPatch(),sources,request_generation:false,selected_candidate_id:null,
+        patch:cleanPatch(),sources,numeric_grounding:numericGrounding.grounded,request_generation:false,selected_candidate_id:null,
         preference_memory_upserts:preferenceWrite.upserts,preference_memory_context:preferenceWrite.context,preference_memory_notice:preferenceWrite.notice};
     }
     if (action === 'generate' || (before.draft && draft && !changedDestination)) {
@@ -500,7 +491,9 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
     const discoveryReady=action==='chat' && !questionOnly && !next.draft && next.stage==='ready';
     next.memory=commitMemoryDecisions(before.memory,memoryCandidates.accepted,{baseRevision:next.revision,now:deps.now || Date.now()});
     /* M2：偏好候选白名单校验后交前端本机存储持久化（服务端不保存偏好）；未开启记忆全丢弃 */
-    return { status:'ok', engine:'llm', preference_memory_upserts:preferenceWrite.upserts,preference_memory_context:preferenceWrite.context,preference_memory_notice:preferenceWrite.notice, reply:requestGeneration || discoveryReady?'已保留你的旅行想法，接下来比较走法的体验与安排代价；选定后再展开具体安排。':next.stage==='discuss' && (raw.confirmed===true || raw.intent_action==='confirm') ? routeResult.question || '这份想法已经保留，先明确本次出发地和首个抵达城市。' : str(raw.reply), conversation:next, patch, sources,
+    const finalReply=requestGeneration || discoveryReady?'已保留你的旅行想法，接下来比较走法的体验与安排代价；选定后再展开具体安排。':next.stage==='discuss' && (raw.confirmed===true || raw.intent_action==='confirm') ? routeResult.question || '这份想法已经保留，先明确本次出发地和首个抵达城市。' : str(raw.reply);
+    const finalGrounding=checkNumbers({reply:finalReply,draft}).grounded;
+    return { status:'ok', engine:'llm', numeric_grounding:finalGrounding, preference_memory_upserts:preferenceWrite.upserts,preference_memory_context:preferenceWrite.context,preference_memory_notice:preferenceWrite.notice, reply:finalReply, conversation:next, patch, sources,
       selected_candidate_id: !questionOnly && next.draft && selected ? selected.id : null,
       clear_selection:!questionOnly && !!draft?.route.length && !selected && !!input.candidate_id && !workspace.matches(draft.route,(plan?.candidates || []).find(c=>c.id===input.candidate_id)),
       request_generation:requestGeneration };
