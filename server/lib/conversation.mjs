@@ -159,7 +159,7 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
     const payload=JSON.parse(opts.user);
     if(['conversation','conversation_review','conversation_scope','conversation_schedule'].includes(opts.kind)){
       payload.numeric_fact_catalog=numericCatalog();
-      opts={...opts,schema_prompt:opts.schema_prompt+'\n数字只可复述用户明确条件，或引用numeric_fact_catalog中同字段、单位、对象与方向的记录。引用数字时写明两端和交通方式（非交通写完整对象），明确“资料记载／来源显示”及“仅供参考，本次日期仍待确认”；来源摘录不证明当前可售或保证可达。预算是用户条件，实际费用未知时可复述已确认的预算，并说明实际费用待查，不可把预算改成票价。用户日期未定时只说日期未定，不把当前日期当成出行日期。没有对应记录则删除数字承诺并说明待查。'};
+      opts={...opts,schema_prompt:opts.schema_prompt+'\n数字只可复述用户明确条件，或引用numeric_fact_catalog中同字段、单位、对象与方向的记录，并完整保留meaning中的收费项目、单程／往返、人数与人均／总价、成人／儿童、含税及舱位口径；行李费不能改成票价，限定未明不能补成已知。引用数字时写明两端和交通方式（非交通写完整对象），明确“资料记载／来源显示”及“仅供参考，本次日期仍待确认”；来源摘录不证明当前可售或保证可达。预算是用户条件，实际费用未知时可复述已确认的预算，并说明实际费用待查，复述时明确是用户预算或目标，不可把预算改成当前／实际价格上限。用户日期未定时只说日期未定，不把当前日期当成出行日期。没有对应记录则删除数字承诺并说明待查。'};
     }
     const built=buildContext({payload,coreRules:opts.schema_prompt,
       rulesVersion:'v0.60.5',budgetChars:deps.contextBudgetChars});
