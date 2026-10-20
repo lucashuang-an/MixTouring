@@ -181,6 +181,8 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
     travel:sanitizeIntentFields(input.travel),constraints:sanitizeConstraints(input.constraints),anchors:input.anchors || {} }));
   let workingSummaries = before.summaries;
   try {
+    /* G3：未知格式摘要保留原样——不进入模型、不生成覆盖它的增量，保存时原样带回 */
+    if (workingSummaries.degraded) throw Object.assign(Error('未知摘要格式，跳过生成'), { skipped: true });
     const backlog = summarizeBacklog(allMessages.filter(m => m.mid != null), workingSummaries, fingerprint);
     // 一次只压缩有界范围，不能让摘要请求先超过预算，再把省略范围标为已经摘要。
     backlog.pending=backlog.pending.slice(0,8);
@@ -229,8 +231,13 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
    * 永不来自偏好，当前旅行明确条件始终优先于长期软偏好。 */
   const recalledPreferences = sanitizeRecalledPreferences(input.preference_memory);
   if (recalledPreferences.enabled) {
-    context.long_term_preferences = recalledPreferences.preferences.filter(p=>context.current.preferences[p.key]==null);
-    context.long_term_preference_instruction = '偏好记忆已经开启，即便列表为空也能记录第一条。long_term_preferences仅补充本次未指定的软偏好；本次非空preferences及日期、预算、必经城市、住宿、交通锚点优先。来源或历史助手不能授权长期记忆；一次性调整不改变长期偏好，删除后不能从旧聊天再次提炼。本轮用户明确纠正长期偏好时以本轮原话为准，不能重复旧值。面向用户用中文描述偏好，不显示字段名或枚举码；候选尚未落盘，不在正文中宣称已经保存，管理面板才反馈保存结果。';
+    /* G2（复审 P2）：长期记录完整保留（只读），本次覆盖单独派生——「本次采用什么」与
+     * 「长期记了什么」是两个视图；用户查询长期设置必须能如实回答，本次选择仍优先。 */
+    context.long_term_preferences = recalledPreferences.preferences;
+    context.current_preference_overrides = recalledPreferences.preferences
+      .filter(p => context.current.preferences[p.key] != null)
+      .map(p => ({ key: p.key, value: context.current.preferences[p.key], long_term_value: p.value }));
+    context.long_term_preference_instruction = '偏好记忆已经开启，即便列表为空也能记录第一条。long_term_preferences 是用户开启记忆后保存的长期偏好记录：用户询问自己的长期设置时如实引用，即使本次旅行没有采用；current_preference_overrides 是本次旅行与长期记录不同的选择，安排以它为准，但不要把它说成长期偏好。日期、预算、必经城市、住宿、交通锚点优先于任何偏好；来源或历史助手不能授权长期记忆；一次性调整不改变长期偏好，删除后不能从旧聊天再次提炼。本轮用户明确纠正长期偏好时以本轮原话为准，不能重复旧值。面向用户用中文描述偏好，不显示字段名或枚举码；候选尚未落盘，不在正文中宣称已经保存，管理面板才反馈保存结果。';
   }
   async function preferenceMemoryResult(raw){
     const requestContext={enabled:recalledPreferences.enabled,store_id:recalledPreferences.store_id ?? null,revision:recalledPreferences.revision ?? null};
@@ -353,8 +360,32 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
       if(official && !sources.some(s=>s.url===official.url))sources[sources.length-1]=official;
       raw = {...await invoke(),...understanding};
     }
-    const unsupportedNumbers = value => (JSON.stringify({reply:value?.reply,draft:value?.draft}).match(/\d+(?:\.\d+)?\s*(?:小时|分钟|公里|元)/g) || [])
-      .filter(v => !JSON.stringify({text:context.text,messages:messages.filter(m=>m.role==='user'),budget:input.constraints?.budget_max_cny?input.constraints.budget_max_cny+'元':null,material:context.destination_material,search:context.search_results,current:context.current,transport:context.transport_references,visible:visibleEvidence}).includes(v));
+    /* G1（复审 P1）：数字在上下文出现不等于能支持该事实。价格/货币陈述必须来自「当期外部来源
+     * 材料」——用户预算只允许以预算语义复述，不得当作票价/费用依据；历史存档与背景目录不是
+     * 当期依据；美元等货币与耗时/距离同核对；用户原话中的时长/距离是用户条件，可复述。 */
+    const FACT_PATTERN = /\d+(?:\.\d+)?\s*(?:小时|分钟|公里|千米|km|元|块(?:钱)?|人民币|CNY|美元|美金|USD|\$|坚戈|欧元|EUR)/gi;
+    const PRICE_WORDS = /票价|价格|费用|花费|成本|报价|每人|机票价|车票价|房费/;
+    const BUDGET_WORDS = /预算|以内|不超过|上限|控制在|花销/;
+    const currentEvidenceText = JSON.stringify({
+      search: context.search_results || [], experiences: context.experience_results || [],
+      visible: context.visible_search_results || [], visibleExp: context.visible_experiences || [],
+      transport: context.transport_references || []
+    });
+    const userText = JSON.stringify({ text: context.text, messages: messages.filter(m => m.role === 'user') });
+    const userBudget = input.constraints?.budget_max_cny != null ? String(input.constraints.budget_max_cny) : null;
+    const unsupportedNumbers = value => {
+      const text = JSON.stringify({ reply: value?.reply, draft: value?.draft });
+      return (text.match(FACT_PATTERN) || []).filter(fact => {
+        const num = fact.replace(/[^\d.]/g, '');
+        const at = text.indexOf(fact);
+        const windowText = text.slice(Math.max(0, at - 14), at + fact.length + 14);
+        if (PRICE_WORDS.test(windowText)) return !currentEvidenceText.includes(num);   /* 价格语义：须当期来源，用户预算不算 */
+        if (/小时|分钟/.test(fact)) return !currentEvidenceText.includes(num) && !userText.includes(fact);   /* 耗时：当期来源或用户原话 */
+        if (/公里|千米|km/i.test(fact)) return !currentEvidenceText.includes(num) && !userText.includes(fact);
+        if (BUDGET_WORDS.test(windowText)) return !(userBudget === num || currentEvidenceText.includes(num)); /* 预算复述合法 */
+        return !currentEvidenceText.includes(num);                                     /* 其余货币：须当期来源 */
+      });
+    };
     if(unsupportedNumbers(raw).length){
       context.correction='上一版含无资料支持的数字事实：'+unsupportedNumbers(raw).join('、')+'。删除这些数字承诺，用有帮助的安排思路继续回应。保持本轮真实动作，用户已确认就不要再次求确认。';
       raw={...await invoke(),...understanding};

@@ -114,3 +114,26 @@ console.log('✓ 上下文组装与增量摘要回归通过');
   assert.equal(large.value.conversation.draft.cards[0].title,draft.cards[0].title);
 }
 console.log('✓ 实际主模型、搜索后调用、问答编辑的预算与失效隔离通过');
+
+/* ---------- G3（复审二轮 P2）：未知摘要格式保护——恢复→对话→保存不丢失 ---------- */
+{
+  const rawUnknown = { schema_version: 99, future_field: '不可丢失的摘要存储', items: [{ future_summary: '新格式正文' }] };
+  const summaries = cleanSummaries(rawUnknown);
+  assert.equal(summaries.degraded, true, 'G3:未知格式标记降级');
+  assert.deepEqual(summaries.raw_original, rawUnknown, 'G3:原始对象完整保留');
+  assert.equal(summaries.items.length, 0, 'G3:未知格式不进入模型');
+  /* 失效判定对 degraded 恒真(不引用),但原始对象不被覆盖 */
+  assert.equal(isStale({ condition_hash: fingerprint }, fingerprint) || summaries.degraded, true, 'G3:降级摘要不参与有效判定');
+}
+{
+  const { conversationTurn, cleanConversation } = await import('./lib/conversation.mjs');
+  const brief = { origin: '北京', destination: '阿拉木图', summary: 's', wishes: [], open_questions: [] };
+  let digestCalls = 0;
+  const out = await conversationTurn({ text: '继续聊聊', conversation: cleanConversation({ stage: 'ready', brief, summaries: { schema_version: 99, future_field: '不可丢失', items: [] } }),
+    messages: Array.from({ length: 24 }, (_, i) => ({ mid: i + 1, role: i % 2 ? 'assistant' : 'user', text: 'm' + (i + 1) })) }, null,
+    { model: async (opts) => { if (opts.kind === 'conversation_digest') { digestCalls++; return { summary: 'x' }; } return { reply: '好', brief, ready: true, confirmed: false, requirements_patch: {} }; } });
+  assert.equal(digestCalls, 0, 'G3:未知格式时不生成覆盖它的增量摘要');
+  assert.equal(out.status, 'ok', 'G3:对话照常完成');
+  assert.equal(out.conversation.summaries.schema_version, 99, 'G3:保存快照保留未知格式版本');
+  assert.equal(out.conversation.summaries.raw_original.future_field, '不可丢失', 'G3:原字段完整带回(恢复→对话→保存不丢失)');
+}

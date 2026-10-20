@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';import vm from 'node:vm';
 import {conversationTurn,cleanConversation} from './lib/conversation.mjs';
 import {sanitizeRecalledPreferences,validatePreferenceUpserts} from './lib/trip-memory.mjs';
+const messages4 = () => Array.from({ length: 4 }, (_, i) => ({ mid: i + 1, role: i % 2 ? 'assistant' : 'user', text: 'm' + (i + 1) }));
 const source=fs.readFileSync(new URL('../mixtouring-hifi/assets/preference-store.js',import.meta.url),'utf8');
 const backing=()=>({raw:null,failRead:false,failWrite:false,writes:0});
 let lockQueue=Promise.resolve();const locks={request(_name,fn){const p=lockQueue.then(fn);lockQueue=p.catch(()=>{});return p;}};
@@ -100,3 +101,34 @@ hold=true;const pending=sandbox.sendConversation('以后旅行我都优先火车
 await store.remove(store.list()[0].id);release();await pending;assert.equal(store.list().length,0,'实际前端在途回复不复活已删偏好');
 assert.match(sandbox.prefMemoryFeedback,/旧回复/);
 console.log('✓ M2空库首条、纠正、跨标签在途失效、原子拒写、坏格式保护及真实前端编排通过');
+
+/* ---------- G2（复审二轮 P2）：本次覆盖不隐藏长期记录——两个视图分开 ---------- */
+{
+  const brief = { origin: '北京', destination: '阿拉木图', summary: 's', wishes: [], open_questions: [] };
+  const seen = [];
+  /* 长期 preferred_mode=rail;本次 preferences.plane → 长期记录仍完整可见,覆盖单独标注 */
+  const out = await conversationTurn({ text: '我的长期交通偏好是什么?',
+    conversation: cleanConversation({ stage: 'ready', brief }),
+    messages: Array.from({ length: 4 }, (_, i) => ({ mid: i + 1, role: i % 2 ? 'assistant' : 'user', text: 'm' + (i + 1) })),
+    preferences: { preferred_mode: 'plane' },
+    preference_memory: { enabled: true, preferences: [{ key: 'preferred_mode', value: 'rail' }] } }, null,
+    { model: async (opts) => { seen.push(JSON.parse(opts.user)); return { reply: '你的长期交通偏好是铁路。', brief, ready: true, confirmed: false, requirements_patch: {} }; } });
+  assert.equal(out.status, 'ok', 'G2:正常完成');
+  const ctx = seen[0];
+  assert.deepEqual(ctx.long_term_preferences, [{ key: 'preferred_mode', value: 'rail' }],
+    'G2:长期记录完整保留在模型输入(不被本次选择移出,真实模型可如实回答)');
+  assert.deepEqual(ctx.current_preference_overrides, [{ key: 'preferred_mode', value: 'plane', long_term_value: 'rail' }],
+    'G2:本次覆盖单独派生(本次飞机优先,长期铁路可查询)');
+  assert.ok(ctx.long_term_preference_instruction.includes('如实引用'), 'G2:指令要求长期查询如实回答');
+}
+
+/* ---------- G2 补:无本次覆盖时 overrides 为空,长期照常注入 ---------- */
+{
+  const brief = { origin: '北京', destination: '阿拉木图', summary: 's', wishes: [], open_questions: [] };
+  const seen = [];
+  await conversationTurn({ text: '继续', conversation: cleanConversation({ stage: 'ready', brief }), messages: messages4(),
+    preference_memory: { enabled: true, preferences: [{ key: 'road', value: 'exclude' }] } }, null,
+    { model: async (opts) => { seen.push(JSON.parse(opts.user)); return { reply: '好', brief, ready: true, confirmed: false, requirements_patch: {} }; } });
+  assert.deepEqual(seen[0].long_term_preferences, [{ key: 'road', value: 'exclude' }], 'G2:无覆盖时长期照常注入');
+  assert.equal(seen[0].current_preference_overrides.length, 0, 'G2:无覆盖时 overrides 为空');
+}

@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { conversationTurn } from './lib/conversation.mjs';
+import { conversationTurn, cleanConversation } from './lib/conversation.mjs';
 import {planAnywhere} from './lib/anywhere.mjs';
 const brief={origin:'北京',destination:'阿拉木图',summary:'慢游，城区与自然搭配',wishes:['不想每天赶路','只住同一家住宿'],open_questions:[]};
 const result=(over={})=>({reply:'先把城区和山景搭配起来。',brief,ready:true,confirmed:false,preferences:{experience:'balanced'},travel:{},constraints:{},...over});
@@ -107,6 +107,44 @@ assert.equal(JSON.stringify(restored),JSON.stringify(snapshot),'意图、方案�
 await conversationTurn({...restored,text:'按刚才的偏好继续'},null,{model:async opts=>{
   const ctx=JSON.parse(opts.user);assert.equal(ctx.conversation.revision,2);assert.equal(ctx.current.constraints.no_self_drive,true);return result();
 }});
+/* ---------- G1（复审 P1）：数字事实守门——预算≠票价、货币覆盖、合法复述不误拦 ---------- */
+{
+  const brief={origin:'北京',destination:'阿拉木图',summary:'s',wishes:[],open_questions:[]};
+  const draft={title:'t',overview:'o',route:['北京','阿拉木图'],cards:[{id:'card-a1',place:'阿拉木图',label:'第1天',title:'城区',content:'先看城区。'}],sections:[],pending:[]};
+  const base={action:'chat',text:'预算8000元去阿拉木图',conversation:cleanConversation({stage:'draft',brief,draft}),messages:messages4()};
+  const constraints={budget_max_cny:8000};
+  /* 反例1:预算同数被当作票价(无任何来源) */
+  let seenCorrections=0;
+  const r1=await conversationTurn({...base,constraints},null,{model:async(opts)=>{
+    if(opts.correction||seenCorrections){seenCorrections++;return okShaped('预算8000元以内安排,具体票价待查。');}
+    seenCorrections++;
+    const out=okShaped('该航班当前票价是8000元。');
+    return out;
+  }});
+  assert.equal(seenCorrections>=2,true,'G1:票价冒用预算数字触发纠正重调');
+  assert.ok(!r1.reply.includes('票价是8000元'),'G1:纠正后回复不再含无依据票价');
+  /* 反例2:无来源的美元表达 */
+  const r2=await conversationTurn({...base,constraints},null,{model:async()=>okShaped('该航班当前票价是2000美元。')});
+  assert.equal(r2.status,'unavailable','G1:无来源美元价格未通过守门(纠正后仍无依据如实不可用)');
+  /* 合法复述:预算语义不误拦 */
+  const r3=await conversationTurn({...base,constraints},null,{model:async()=>okShaped('预算8000元以内,我会控制花销安排。')});
+  assert.equal(r3.status,'ok','G1:预算语义复述不误拦');
+  assert.ok(r3.reply.includes('预算8000元'),'G1:合法预算表述保留');
+  /* 合法来源:当期来源(经真实检索链路进入上下文)含票价数字则放行 */
+  let r4calls=0;
+  const r4=await conversationTurn({...base,constraints},null,{model:async(opts)=>{
+    r4calls++;
+    const u=JSON.parse(opts.user);
+    if(!(u.search_results||[]).length)return {...okShaped('我查一下当前票价。'),search_query:'阿拉木图 机票 价格'};
+    assert.ok(u.search_results.some(s=>String(s.content||s.excerpt||'').includes('8000')),'G1:检索后来源含票价数字');
+    return okShaped('来源显示票价8000元,可作参考。');
+  },search:async()=>[{title:'阿拉木图航班',link:'https://example.com/fare',content:'北京到阿拉木图航班当前票价8000元',date:'2026-10-01'}]});
+  assert.ok(r4calls>=2,'G1:检索后二次调用进入守门放行路径');
+    assert.equal(r4.status,'ok','G1:当期来源支持的票价陈述放行');
+}
+function messages4(){return Array.from({length:4},(_,i)=>({mid:i+1,role:i%2?'assistant':'user',text:'m'+(i+1)}));}
+function okShaped(reply){return {reply,brief:{origin:'北京',destination:'阿拉木图',summary:'s',wishes:[],open_questions:[]},ready:true,confirmed:false,requirements_patch:{}};}
+
 console.log('✓ AI 对话确认、多轮上下文、改口、失败恢复、来源检索及私人保存合同通过');
 
 /* ---------- #32：请求级取消与总时限（无密钥桩） ---------- */

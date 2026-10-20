@@ -13,6 +13,14 @@ const str = (v, n) => typeof v === 'string' ? v.trim().slice(0, n) : '';
 /** 增量摘要条目：绑定源消息范围（mid）与旅行 revision+条件指纹；不匹配即失效（stale），
  *  失效摘要不进入 prompt 也不删除（M05：撤销/旧版本后旧摘要不复活）。 */
 export function cleanSummaries(raw = {}) {
+  /* G3(复审 P2):区分缺失、损坏与未知版本——未知格式保留原始对象,不进入模型、
+   * 不生成覆盖它的增量,保存时原样带回;缺失/损坏按空继续(与决策记忆同策略)。 */
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { schema_version: 1, items: [] };
+  if (raw.schema_version == null) return { schema_version: 1, items: [] };
+  if (raw.schema_version !== 1) {
+    if (raw.degraded && raw.raw_original) return raw;   /* 已是降级包装:原样透传,避免每轮嵌套 */
+    return { schema_version: raw.schema_version, degraded: true, raw_original: raw, items: [] };
+  }
   const items = Array.isArray(raw?.items) ? raw.items : [];
   return {
     schema_version: 1,
@@ -49,6 +57,7 @@ export function summarizeBacklog(messages, summaries, fingerprint, window = RECE
 
 /** 合并新摘要（同批一段）。失败由调用方处理：不写入则原范围下次重试。 */
 export function appendSummary(summaries, { fromMid, toMid, text }, fingerprint, revision) {
+  if (summaries?.degraded) return summaries;   /* 未知格式：不生成覆盖它的增量 */
   const next = cleanSummaries(summaries);
   next.items.push({ id: nextSummaryId(next), from_mid: fromMid, to_mid: toMid,
     revision, condition_hash: fingerprint, text: str(text, 2000) });
