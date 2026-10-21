@@ -82,7 +82,9 @@ export async function collectTravelSources({destination='',query='',internationa
      * collect 层不做域硬过滤,避免把测试/真实来源挡在计划域外。kinds 过滤保持既有语义。 */
     const inPlanDomain=raw=>{try{return planDomains.some(d=>hostIs(new URL(raw.link).hostname.toLowerCase(),d));}catch{return false;}};
     const domainHits=results.filter(inPlanDomain);
-    const valid=cleaned.filter(r=>r && (plan.kinds || ['experience']).includes(r.kind));
+    /* R1-A:计划 kinds 仅作计划元数据——official/guide/experience 的实际分流交由用途字段与上层校验,
+     * collect 层不再按 kind 白名单窄化(否则官方页/攻略页会被社区计划挡外) */
+    const valid=cleaned.filter(r=>r);
     const OFF_TOPIC = /越南|泰国|日本|韩国|马来西亚|新加坡|尼泊尔|土耳其|伊朗/;   //R1-A:任务相关性(可审计,仅 experience 用途)——他国主题剔除,应用推广不冒充经验;guide/官方用途不受影响(M09)
     const taskFiltered = purpose !== 'experience' ? valid : valid.filter(r => {
       if (r.kind !== 'experience') return true;   //guide/官方用途不受应用推广剔除影响
