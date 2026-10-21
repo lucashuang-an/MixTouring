@@ -50,9 +50,15 @@ export async function collectTravelSources({destination='',query='',internationa
   const CN_COMMUNITY_DOMAINS = ['xiaohongshu.com', 'mafengwo.cn', 'qyer.com'];
   const OVERSEAS_DOMAINS = ['reddit.com', 'caravanistan.com', 'backpackers.com.tw'];
   const themeWords = purpose === 'transport' ? '交通 班车 班次' : purpose === 'guide' ? '官方 交通 开放 攻略' : '旅行 乘车 游记';
+  /* R1-A:任务查询计划(最多两条)。Q1=中文社区多域;Q2 按场景——国际=海外社区多域英文;
+   * 非国际=官方无域中文。社区 kinds 含 guide(社区内容天然混合游记与攻略,由用途字段区分);
+   * 官方 kinds 含 official+guide(承接数字事实目录与目的地资料);域仅作诊断不做硬过滤。 */
+  const communityKinds = ['experience', 'guide'];
+  const officialPlan = { channel: '官方与目的地资料', domains: null, language: international ? 'en' : null, kinds: ['official', 'guide'],
+    text: international ? english.slice(0, 70) + ' official transport' : topic + ' 官方 ' + (purpose === 'transport' ? '交通 班次' : '交通 开放 最新') };
   const defaults = [
-    { channel: '中文社区', domains: CN_COMMUNITY_DOMAINS, language: 'zh', kinds: purpose === 'experience' ? ['experience'] : ['experience', 'guide'], text: destination + ' ' + themeWords },
-    ...(international ? [{ channel: '海外社区', domains: OVERSEAS_DOMAINS, language: 'en', kinds: purpose === 'experience' ? ['experience'] : ['experience', 'guide'], text: english.slice(0, 70) }] : [{ channel: '官方与目的地资料', domains: null, language: null, kinds: ['official', 'guide'], text: topic + ' 官方 ' + (purpose === 'transport' ? '交通 班次' : '交通 开放 最新') }])
+    { channel: '中文社区', domains: CN_COMMUNITY_DOMAINS, language: 'zh', kinds: communityKinds, text: destination + ' ' + themeWords },
+    ...(international ? [{ channel: '海外社区', domains: OVERSEAS_DOMAINS, language: 'en', kinds: communityKinds, text: english.slice(0, 70) }] : [officialPlan])
   ].map(q => { const scope = stamp.replace(since, new Date(Date.parse(temporal.today + 'T00:00:00Z') - (q.domains ? 365 : temporal.max_age_days) * 86400000).toISOString().slice(0, 10)); return { ...q, text: (q.text + ' ' + (q.domains || []).map(d => 'site:' + d).join(' ')).slice(0, 100 - scope.length) + scope, domain: q.domains ? q.domains[0] : null }; });
   // 固定探针仅供内部基线工具注入，不接受 HTTP 入参；默认产品检索计划与筛选保持原样。
   if(queryPlans!==null && (!Array.isArray(queryPlans) || !queryPlans.length || queryPlans.length>8 || queryPlans.some(q=>!q || typeof q.text!=='string' || !q.text.trim() || q.text.length>100 || !/^[a-z0-9.-]+$/.test(q.domain || '') || !Array.isArray(q.kinds) || !q.kinds.length || q.kinds.some(k=>!['experience','guide','official'].includes(k)))))throw Error('基线查询计划无效');
@@ -72,9 +78,11 @@ export async function collectTravelSources({destination='',query='',internationa
   settled.forEach((item,i)=>{
     const results=item.status==='fulfilled' && Array.isArray(item.value)?item.value:[];
     const plan=queries[i],planDomains=plan.domains || (plan.domain?[plan.domain]:[]),cleaned=results.map(raw=>cleanResult(raw,now));
+    /* R1-A:域名命中只作诊断——Tavily restrict 已在服务端限定,current 的 site: 是软限定;
+     * collect 层不做域硬过滤,避免把测试/真实来源挡在计划域外。kinds 过滤保持既有语义。 */
     const inPlanDomain=raw=>{try{return planDomains.some(d=>hostIs(new URL(raw.link).hostname.toLowerCase(),d));}catch{return false;}};
     const domainHits=results.filter(inPlanDomain);
-    const valid=cleaned.filter(r=>r && (!planDomains.length || inPlanDomain({link:r.url}) && (plan.kinds || ['experience']).includes(r.kind)));
+    const valid=cleaned.filter(r=>r && (plan.kinds || ['experience']).includes(r.kind));
     const OFF_TOPIC = /越南|泰国|日本|韩国|马来西亚|新加坡|尼泊尔|土耳其|伊朗/;   //R1-A:任务相关性(可审计,仅 experience 用途)——他国主题剔除,应用推广不冒充经验;guide/官方用途不受影响(M09)
     const taskFiltered = purpose !== 'experience' ? valid : valid.filter(r => {
       if (r.kind !== 'experience') return true;   //guide/官方用途不受应用推广剔除影响

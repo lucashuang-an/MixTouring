@@ -169,3 +169,13 @@ assert.ok(calls.filter(q=>q.includes('site:')).every(q=>(q.match(/site:/g)||[]).
     { useCache: false, now, readPage: async () => { readCalls++; return { read_status: 'page_excerpt', excerpt: 'x' }; } });
   assert.equal(readCalls <= 2, true, 'R1-A:普通补充原文读取不超过两次');
 }
+
+/* R1-A 补:非国际计划的官方无域通道承接合成/guide 来源(数字事实目录依赖此通道) */
+{
+  const official = await collectTravelSources({ destination: '北京 阿拉木图', international: false, purpose: 'experience' },
+    async () => [{ title: '合成航班资料', link: 'https://example.com/fare', content: '北京到阿拉木图航班票价8000元', date: '2026-10-01' }],
+    { useCache: false, now, readPage: null });
+  assert.equal(official.sources.length, 1, 'R1-A:非国际 experience 计划的官方无域查询承接域外 guide 来源');
+  assert.equal(official.channels.length, 2, 'R1-A:非国际计划=中文社区+官方两条');
+  assert.equal(official.channels[1].channel, '官方与目的地资料', 'R1-A:官方通道渠道名保留');
+}
