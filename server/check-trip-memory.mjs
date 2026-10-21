@@ -35,14 +35,14 @@ const deps={model:async()=>payload({memory_patch:{decisions:[candidate]}}),searc
 }
 const draft={title:'十天探索',overview:'交通仍待核实',route:['北京','伊宁','阿拉木图'],cards:[{id:'card-a',place:'阿拉木图',label:'第1—10天',title:'阶段预留',content:'待核实交通后安排。'}],sections:[],pending:['班次待查']};
 {
-  const url='https://example.com/experience';
+  const url='https://www.xiaohongshu.com/explore/alm1';   //R1-A:证据引用须落在检索计划域名内
   const generate=async source=>{
     const model=async opts=>{
       if(opts.kind==='conversation_intent')return {intent_action:'preview',requirements_patch:{trip_days:7}};
       if(opts.kind==='conversation_review')return {reply:'压缩为七天的备选。',draft:{...draft,cards:[{...draft.cards[0],label:'第1—7天'}]}};
       return payload({intent_action:'preview',requirements_patch:{trip_days:7},draft:{...draft,cards:[{...draft.cards[0],label:'第1—7天'}]},search_query:source?'阿拉木图旅行':null,memory_patch:{decisions:[{...candidate,summary:'比较七天安排',evidence_refs:source?[url]:[]}]}});
     };
-    return conversationTurn({...input,text:'如果只有七天呢',current_message:{...user,text:'如果只有七天呢'},conversation:{...base,stage:'draft',draft,requirements:{trip_days:10,required_stops:['伊宁']}}},null,{model,search:async q=>source && !q.includes('site:')?[{title:'阿拉木图旅行参考',link:url,content:'当地文化和自然的旅行体验。',date:'2026-10-18'}]:[],now:Date.parse('2026-10-19T04:00:00Z')});
+    return conversationTurn({...input,text:'如果只有七天呢',current_message:{...user,text:'如果只有七天呢'},conversation:{...base,stage:'draft',draft,requirements:{trip_days:10,required_stops:['伊宁']}}},null,{model,search:async q=>source?[{title:'阿拉木图旅行参考',link:url,content:'当地文化和自然的旅行体验。',date:'2026-10-18'}]:[],now:Date.parse('2026-10-19T04:00:00Z')});
   };
   for(const source of [false,true]){
     const preview=await generate(source);assert.equal(preview.status,'ok');

@@ -14,9 +14,10 @@ const search=async q=>{
   return [{title:'目的地资料',link:'https://www.kazakhstan.travel/en/regions/almaty',content:'城市与景观资料',date:'2026-10-01'}];
 };
 const r=await collectTravelSources({destination:'阿拉木图',international:true,foreignQuery:'Almaty without car trip report'},search,{useCache:false,now});
-assert.equal(calls.length,7);assert.ok(calls.every(q=>q.length<=100));assert.ok(calls.some(q=>q.includes('Almaty')));
-assert.equal(r.sources.length,3);assert.equal(r.sources[0].platform,'小红书');assert.equal(r.sources[0].kind,'experience');
-assert.equal(r.sources[1].platform,'Reddit');assert.equal(r.sources[2].kind,'official');
+assert.equal(calls.length,2,'R1-A:查询计划收敛到最多两次搜索(原7条固定展开)');assert.ok(calls.every(q=>q.length<=100));assert.ok(calls.some(q=>q.includes('Almaty')));
+assert.equal(r.sources.length,2,'R1-A:experience 计划=中文社区+海外社区两条查询');assert.equal(r.sources[0].platform,'小红书');assert.equal(r.sources[0].kind,'experience');
+assert.equal(r.sources[1].platform,'Reddit');
+assert.ok(r.query_diagnostics.length===2 && r.query_diagnostics.every(q=>q.raw_count>0),'R1-A:每条查询记录相关性筛选诊断');
 assert.equal(r.sources[0].url,'https://www.xiaohongshu.com/explore/abc123');
 assert.ok(r.results.some(s=>s.source_kind==='experience'));
 assert.equal(classifyTravelSource('https://xiaohongshu.com.evil.test/explore/1').kind,'guide');
@@ -30,16 +31,16 @@ assert.equal(classifyTravelSource('https://www.tripadvisor.com/AttractionProduct
 assert.equal(classifyTravelSource('https://gs.ctrip.com/html5/you/travels/21387/4169744.html').kind,'experience','携程移动游记仍按内容路径识别为经验');
 assert.equal(classifyTravelSource('https://you.ctrip.com/travels/YiningCity2058/4134192.html').kind,'experience');
 assert.equal(classifyTravelSource('https://gs.ctrip.com/html5/you/travels/').kind,'guide','索引页不是游记原文');
-const failed=await collectTravelSources({destination:'昆明',international:false},async q=>{
+const failed=await collectTravelSources({destination:'昆明',international:false,purpose:'guide'},async q=>{
   if(q.includes('site:xiaohongshu.com'))throw Error('索引不可用');
   return [{title:'实际公开资料',link:'https://example.org/kunming',date:'2026-10-01'}];
 },{useCache:false,now});
-assert.equal(failed.channels.length,4);assert.equal(failed.sources.length,1);assert.equal(failed.sources[0].kind,'guide');
+assert.equal(failed.channels.length,2,'R1-A:非国际 guide 计划=中文社区+官方两条');assert.equal(failed.sources.length,1);assert.equal(failed.sources[0].kind,'guide');
 assert.equal(failed.channels[0].status,'unavailable','未命中平台不伪造 UGC');
 console.log('✓ 中文与海外经验检索、来源类型、真实平台、去重及失败兼容通过');
 
-assert.ok(r.channels.find(c=>c.channel==='马蜂窝').status==='empty','别站结果不能冒充平台命中');
-assert.ok(calls.filter(q=>q.includes('site:')).every(q=>(q.match(/site:/g)||[]).length===1),'每个平台独立检索');
+assert.ok(r.channels.find(c=>c.channel==='中文社区').status==='found','R1-A:合并社区渠道按命中表达');
+assert.ok(calls.filter(q=>q.includes('site:')).every(q=>(q.match(/site:/g)||[]).length<=3),'R1-A:合并社区查询的 site: 限定不超过计划域名数');
 
 /* #30：网页跳转后的身份、日期与渠道归属——确定性回归（注入读取桩，不访问外站）。 */
 {
@@ -99,7 +100,7 @@ assert.ok(calls.filter(q=>q.includes('site:')).every(q=>(q.match(/site:/g)||[]).
   const controller = new AbortController();
   let partialCalls = 0;
   const partial = await collectTravelSources({ destination: '阿拉木图', international: false },
-    async () => { if (++partialCalls >= 2) controller.abort(); return [{ title: '小红书帖', link: 'https://www.xiaohongshu.com/explore/p1', content: 'c', date: '2026-10-01' }]; },
+    async () => { if (++partialCalls >= 1) controller.abort(); return [{ title: '小红书帖', link: 'https://www.xiaohongshu.com/explore/p1', content: 'c', date: '2026-10-01' }]; },
     { useCache: true, now, readPage: null, signal: controller.signal });
   assert.equal(partial.cancelled, true, '#32 部分成功后取消：本轮不产出可用结果');
   assert.equal(partial.status, 'unavailable', '#32 部分成功后取消：不返回 partial 可用态');
@@ -130,4 +131,41 @@ assert.ok(calls.filter(q=>q.includes('site:')).every(q=>(q.match(/site:/g)||[]).
     { useCache: true, now, readPage: async () => { readController.abort(); return { read_status: 'page_excerpt', excerpt: '正文' }; }, signal: readController.signal });
   assert.equal(readCancelled.cancelled, true, '#32 读取阶段取消：本轮不产出可用结果');
   assert.equal(readCancelled.sources.length, 0, '#32 读取阶段取消：不登记来源');
+}
+
+/* ---------- R1-A:任务查询计划、多域传递、预算与任务相关性反例 ---------- */
+{
+  /* 多域 include 传递:国际 experience 计划两条查询分别带中文社区与海外社区域名 */
+  const seenDomains = [];
+  await collectTravelSources({ destination: '阿拉木图', international: true, foreignQuery: 'Almaty trip' },
+    async (q, opts) => { seenDomains.push((opts && opts.domains) || null); return []; },
+    { useCache: false, now, readPage: null });
+  assert.deepEqual(seenDomains[0], ['xiaohongshu.com', 'mafengwo.cn', 'qyer.com'], 'R1-A:中文社区多域名显式传递');
+  assert.deepEqual(seenDomains[1], ['reddit.com', 'caravanistan.com', 'backpackers.com.tw'], 'R1-A:海外社区多域名显式传递');
+
+  /* 任务相关性:越南主题游记剔除;伊宁真实游记保留;应用推广不冒充经验(官方/guide 不受影响) */
+  const yili = await collectTravelSources({ destination: '伊宁', international: false },
+    async () => [
+      { title: '伊宁公共交通游记', link: 'https://www.xiaohongshu.com/explore/yili1', content: '伊宁市区公交与打车体验分享', date: '2026-10-01' },
+      { title: '越南下龙湾自由行攻略', link: 'https://www.xiaohongshu.com/explore/vn1', content: '越南签证与下龙湾玩法', date: '2026-10-01' },
+      { title: '旅行App下载推荐排行', link: 'https://www.xiaohongshu.com/explore/app1', content: '五个旅行App下载安装推荐', date: '2026-10-01' }
+    ], { useCache: false, now, readPage: null, purpose: 'experience' });
+  const urls = yili.sources.map((s) => s.url);
+  assert.ok(urls.some((u) => u.includes('yili1')), 'R1-A:伊宁真实游记保留');
+  assert.ok(!urls.some((u) => u.includes('vn1')), 'R1-A:越南主题游记被任务相关性剔除');
+  assert.ok(!urls.some((u) => u.includes('app1')), 'R1-A:应用推广不冒充旅行者经验');
+  assert.ok((yili.query_diagnostics || []).some((q) => (q.task_filtered || []).length >= 2), 'R1-A:剔除原因可审计(off_topic/app_promotion)');
+
+  /* guide 用途不受应用推广剔除影响(单纯应用询问不误删软件介绍) */
+  const guideUse = await collectTravelSources({ destination: '伊宁', international: false, purpose: 'guide' },
+    async () => [{ title: '旅行App推荐与下载', link: 'https://www.xiaohongshu.com/explore/app2', content: '常用旅行应用介绍', date: '2026-10-01' }],
+    { useCache: false, now, readPage: null });
+  assert.equal(guideUse.sources.length >= 1, true, 'R1-A:guide 用途保留应用类介绍(不误删)');
+
+  /* 原文读取预算:普通资料补充最多两次读取 */
+  let readCalls = 0;
+  await collectTravelSources({ destination: '阿勒泰', international: false },
+    async () => Array.from({ length: 5 }, (_, i) => ({ title: '帖' + i, link: 'https://www.xiaohongshu.com/explore/r' + i, content: 'c', date: '2026-10-01' })),
+    { useCache: false, now, readPage: async () => { readCalls++; return { read_status: 'page_excerpt', excerpt: 'x' }; } });
+  assert.equal(readCalls <= 2, true, 'R1-A:普通补充原文读取不超过两次');
 }

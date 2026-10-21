@@ -37,13 +37,13 @@ assert.ok(queries.every(q=>q.includes('2027-10-01') && q.includes('2027-10-07'))
 assert.equal(got.sources.length,0,'原文较旧时不能沿用索引宣称的新日期');assert.equal(got.archive.length,2);assert.equal(got.reader.available,1);
 assert.equal((await collectTravelSources({destination:'空样本'},async()=>[],{useCache:false,now})).status,'available','确实无匹配与通道失败分别记录');
 assert.equal((await collectTravelSources({destination:'失败样本'},async()=>null,{useCache:false,now})).status,'unavailable');
-const live=await searchTransportSources({from:'伊宁',to:'阿拉木图',window:context.target_window},async()=>[{title:'伊宁到阿拉木图国际客运班车',link:'https://example.com/line',content:body,date:'2026-10-01'}],{now,useCache:false,readPage:async()=>({read_status:'page_excerpt',published_at:'2026-10-01',excerpt:body})});
+const live=await searchTransportSources({from:'伊宁',to:'阿拉木图',window:context.target_window},async()=>[{title:'伊宁到阿拉木图国际客运班车',link:'https://www.mafengwo.cn/gonglue/line',content:body,date:'2026-10-01'}],{now,useCache:false,readPage:async()=>({read_status:'page_excerpt',published_at:'2026-10-01',excerpt:body})});
 assert.equal(live.sources.length,1);assert.equal(live.sources[0].temporal.date_scope,'unverified');
 assert.equal(transportSearchEvidence([live.retrieval_id],{route:['伊宁','阿拉木图'],window:context.target_window,now}).length,1);
 assert.equal(transportSearchEvidence([live.retrieval_id],{route:['伊宁','阿拉木图'],window:'2026-10-20 ~ 2026-10-20',now}).length,0,'改日期不复用旧查询');
 assert.equal(transportSearchEvidence([live.retrieval_id],{route:['阿拉木图','伊宁'],window:context.target_window,now}).length,0,'不反转查询结果');
 /* #29：有效项筛选先于限额——12 条旧方向/过期记录夹着的有效 ID 不得被输入上限挤掉 */
-const staleSource=async()=>[{title:'乌鲁木齐到伊宁客运班车',link:'https://example.com/stale',content:body,date:'2026-10-01'}];
+const staleSource=async()=>[{title:'乌鲁木齐到伊宁客运班车',link:'https://www.mafengwo.cn/gonglue/stale',content:body,date:'2026-10-01'}];
 const staleIds=[];
 for(let i=0;i<12;i++){
   const stale=await searchTransportSources({from:'乌鲁木齐',to:'伊宁',window:context.target_window},staleSource,{now,useCache:false,readPage:async()=>({read_status:'page_excerpt',published_at:'2026-10-01',excerpt:body})});
