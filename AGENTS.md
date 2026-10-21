@@ -26,6 +26,7 @@
 | 检索时效测试 | `node server/check-source-time.mjs` | 时间窗、旧文隔离、原文日期与公共读取边界，v0.55.0 起 |
 | 来源基线回归 | `node server/check-source-baseline.mjs` | 请求归因、回退／冷却、任务分层与未知费用，v0.60.10 起；手动真实采集用 baseline-sources.mjs --live |
 | 搜索适配与读取回归 | `node server/check-search-adapters.mjs` | 服务选择、计费点／估计日期、HTTP阶段诊断和同任务对照，v0.60.11 起 |
+| 任务来源核对回归 | `node server/check-source-tasks.mjs` | 换题缓存、官方入口、语义核对、读取后重评及探针计数，v0.60.15 起 |
 | CI | push 自动触发 | GitHub Actions 跑 verify + check-pages + check-geo + check-trip + check-anywhere + calibrate-routes + check-drafts；collect 定时任务需配 Secrets 并设 `LLM_COLLECT=1` |
 
 **提交前必跑（全绿才提交）**：`check-pages` + `check-geo` + `verify` + `check-trip` + `check-anywhere` + `calibrate-routes` + `check-drafts`。
@@ -144,6 +145,8 @@ MIXTOURING/
 - 布局：柔和投影 + 大圆角卡片 + 8pt 网格；触控目标 ≥44pt；次级文字对比度 ≥4.5:1；≥768px 走侧边栏（`desktop.css`，选择器加 body 前缀提特异性）。
 
 ## 8. 经验教训
+
+- **任务身份、真实正文和探针口径要一起验证**（v0.60.15）：任务query须进入实际查询与缓存，不能只改缓存键；国际交通／官方用途保留开放入口。标题国家词不能替代相关性核对，真实推广常在导航之后；主对话读取后用同一模型包装批量判断，ID与原句由程序检查，缺项／空返回／伪造降为待定并明确提示，失败不缓存。纯搜索桩不隐式增模型调用，真实模型资料回放显式sourceReview=true。指定探针仍严格域名／kind，accepted+rejected=raw，去重另列，测量口径需版本化。相关修改运行check-source-tasks和来源／时效／对话回归，真实回放用replay-source-tasks；语义通过不代表交通事实已核实。
 
 - **先区分服务估计、读取状态与真实对照**（v0.60.11）：Tavily可选，默认current；TAVILY_API_KEY与TRAVEL_SEARCH_PROVIDER=tavily独立配置，失败不暗中跨服务，429与额度分别记录。官方published_date可能是更新时间估计，保留estimated_date但不作近期准入；api_credits不换算成已知金额。对照要求同数据集、参考日、查询／范围／语言和完整轮次，未配置不能当零命中，同run只是重算。公开读取保留DNS固定与登录／验证边界，HTTP202／403不能冒充正文；诊断保留阶段／状态码，不输出原始错误／响应头。控制页和目标来源分别计分母，不续期旧报告；修改运行check-search-adapters及来源／时效回归。
 

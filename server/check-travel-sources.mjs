@@ -1,16 +1,17 @@
 /* 检索合同：平台由 URL 确认，体验与事实分开；局部失败不影响其他来源。 */
 import assert from 'node:assert/strict';
+import {sourceId} from './lib/source-relevance.mjs';
 import {collectTravelSources,classifyTravelSource} from './lib/travel-sources.mjs';
 const now=Date.parse('2026-10-15T02:00:00Z');
 const calls=[];
-const search=async q=>{
+const search=async(q,opts)=>{
   calls.push(q);
-  if(q.includes('site:xiaohongshu.com'))return [
+  if(opts.domains?.includes('xiaohongshu.com'))return [
     {title:'小红书游记',link:'https://www.xiaohongshu.com/explore/abc123?utm_source=test',content:'旅行者分享湖区住宿感受',date:'2026-10-01'},
     {title:'同一笔记',link:'https://www.xiaohongshu.com/explore/abc123',content:'相同内容'},
     {title:'平台首页',link:'https://www.xiaohongshu.com/'},
     {title:'假链接',link:'javascript:alert(1)'}];
-  if(q.includes('site:reddit.com'))return [{title:'无车旅行讨论',link:'https://www.reddit.com/r/travel/comments/example',content:'公共交通经验',date:'2026-10-01'}];
+  if(opts.domains?.includes('reddit.com'))return [{title:'无车旅行讨论',link:'https://www.reddit.com/r/travel/comments/example',content:'公共交通经验',date:'2026-10-01'}];
   return [{title:'目的地资料',link:'https://www.kazakhstan.travel/en/regions/almaty',content:'城市与景观资料',date:'2026-10-01'}];
 };
 const r=await collectTravelSources({destination:'阿拉木图',international:true,foreignQuery:'Almaty without car trip report'},search,{useCache:false,now});
@@ -31,8 +32,8 @@ assert.equal(classifyTravelSource('https://www.tripadvisor.com/AttractionProduct
 assert.equal(classifyTravelSource('https://gs.ctrip.com/html5/you/travels/21387/4169744.html').kind,'experience','携程移动游记仍按内容路径识别为经验');
 assert.equal(classifyTravelSource('https://you.ctrip.com/travels/YiningCity2058/4134192.html').kind,'experience');
 assert.equal(classifyTravelSource('https://gs.ctrip.com/html5/you/travels/').kind,'guide','索引页不是游记原文');
-const failed=await collectTravelSources({destination:'昆明',international:false,purpose:'guide'},async q=>{
-  if(q.includes('site:xiaohongshu.com'))throw Error('索引不可用');
+const failed=await collectTravelSources({destination:'昆明',international:false,purpose:'guide'},async(q,opts)=>{
+  if(opts.domains?.includes('xiaohongshu.com'))throw Error('索引不可用');
   return [{title:'实际公开资料',link:'https://example.org/kunming',date:'2026-10-01'}];
 },{useCache:false,now});
 assert.equal(failed.channels.length,2,'R1-A:非国际 guide 计划=中文社区+官方两条');assert.equal(failed.sources.length,1);assert.equal(failed.sources[0].kind,'guide');
@@ -44,7 +45,7 @@ assert.ok(calls.filter(q=>q.includes('site:')).every(q=>(q.match(/site:/g)||[]).
 
 /* #30：网页跳转后的身份、日期与渠道归属——确定性回归（注入读取桩，不访问外站）。 */
 {
-  const mkSearch = link => async q => q.includes('site:xiaohongshu.com')
+  const mkSearch = link => async(q,opts) => opts.domains?.includes('xiaohongshu.com')
     ? [{ title: '小红书原帖', link, content: '原始摘要内容', date: '2026-10-01' }] : [];
   const base = { read_status: 'page_excerpt', title: '读取到的标题', excerpt: '读取正文' };
   const run = async (page) => (await collectTravelSources(
@@ -77,7 +78,7 @@ assert.ok(calls.filter(q=>q.includes('site:')).every(q=>(q.match(/site:/g)||[]).
 
   /* 多入口汇入同一篇：各自保留索引身份，均不合并 */
   const multi = await collectTravelSources({ destination: '阿拉木图', international: false },
-    async q => q.includes('site:xiaohongshu.com') ? [
+    async(q,opts) => opts.domains?.includes('xiaohongshu.com') ? [
       { title: '入口一', link: 'https://www.xiaohongshu.com/explore/a1', content: 's1', date: '2026-10-01' },
       { title: '入口二', link: 'https://www.xiaohongshu.com/explore/a2', content: 's2', date: '2026-10-01' }] : [],
     { useCache: false, now, readPage: async () => ({ ...base, url: 'https://example.org/same-post', published_at: null }) });
@@ -149,7 +150,7 @@ assert.ok(calls.filter(q=>q.includes('site:')).every(q=>(q.match(/site:/g)||[]).
       { title: '伊宁公共交通游记', link: 'https://www.xiaohongshu.com/explore/yili1', content: '伊宁市区公交与打车体验分享', date: '2026-10-01' },
       { title: '越南下龙湾自由行攻略', link: 'https://www.xiaohongshu.com/explore/vn1', content: '越南签证与下龙湾玩法', date: '2026-10-01' },
       { title: '旅行App下载推荐排行', link: 'https://www.xiaohongshu.com/explore/app1', content: '五个旅行App下载安装推荐', date: '2026-10-01' }
-    ], { useCache: false, now, readPage: null, purpose: 'experience' });
+    ], { useCache: false, now, readPage: null, assessSources:async(task,sources)=>({status:'completed',items:sources.map(s=>({id:sourceId(s),decision:s.title.includes('越南')?'reject':'keep',reason:'按资料与伊宁任务的实际内容判断'}))}) });
   const urls = yili.sources.map((s) => s.url);
   assert.ok(urls.some((u) => u.includes('yili1')), 'R1-A:伊宁真实游记保留');
   assert.ok(!urls.some((u) => u.includes('vn1')), 'R1-A:越南主题游记被任务相关性剔除');

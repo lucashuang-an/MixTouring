@@ -71,7 +71,7 @@ const question=await conversationTurn({text:'明年国庆出发怎么样，先�
 assert.equal(question.status,'ok');assert.deepEqual(question.patch.travel,{});assert.ok(futureQuestions.length && futureQuestions.every(q=>q.includes('2027-10-01')),'咨询窗口可改变，已确认旅行日期不被改写');
 console.log('✓ 日期、未来出行、旧文隔离、原文日期、公开读取边界和查询复用回归通过');
 
-const community=await searchTransportSources({from:'伊宁',to:'阿拉木图'},async q=>q.includes('site:reddit.com')?[{title:'Yining to Almaty bus trip',link:'https://www.reddit.com/r/travel/comments/example',content:'Yining bus journey to Almaty: border queue experience',date:'2026-05-01'}]:[],{now,useCache:false,readPage:null});
+const community=await searchTransportSources({from:'伊宁',to:'阿拉木图'},async(q,opts)=>opts.domains?[{title:'Yining to Almaty bus trip',link:'https://www.reddit.com/r/travel/comments/example',content:'Yining bus journey to Almaty: border queue experience',date:'2026-05-01'}]:[],{now,useCache:false,readPage:null});
 assert.equal(community.sources.length,0,'半年前经验不进入近期运营资料');
 assert.equal(community.experiences.length,1,'乘车经验独立按体验用途评估，不因超过九十天删除');
 assert.equal(transportSearchEvidence([community.retrieval_id],{route:['伊宁','阿拉木图'],now,purpose:'experience'}).length,1);

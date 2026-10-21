@@ -11,6 +11,7 @@ export function compareSourceBaselines(left,right){
     if(report.records.some(r=>r.searches.some(s=>s.status==='unconfigured')))throw Error('未配置服务不构成真实效果对照');
   }
   if(left.dataset_sha256!==right.dataset_sha256 || day(left.frozen_at)!==day(right.frozen_at) || left.repeat!==right.repeat)throw Error('数据集、参考日期或重复次数不同，不能直接对照');
+  if((left.measurement_profile || 'legacy')!==(right.measurement_profile || 'legacy'))throw Error('来源筛选或读取预算口径不同，不能直接对照');
   const pairs=left.records.map(a=>{
     const b=right.records.find(r=>recordKey(a)===recordKey(r));
     if(!b || ['query','window','language','target_domain','group'].some(key=>a[key]!==b[key]))throw Error('任务查询或范围不同，不能直接对照');

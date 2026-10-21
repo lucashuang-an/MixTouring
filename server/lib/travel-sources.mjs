@@ -1,5 +1,6 @@
 /* 旅行经验与目的地资料并行检索；平台归属依据真实 URL，不由模型指定。 */
-import {retrievalContext,partitionTimedSources,sourceDay} from './source-time.mjs';
+import {retrievalContext,partitionTimedSources,sourceDay,assessSourceTime} from './source-time.mjs';
+import {RELEVANCE_VERSION,sourceId,sourceRule} from './source-relevance.mjs';
 const cache=new Map();
 const hostIs=(host,domain)=>host===domain || host.endsWith('.'+domain);
 export const articleIdentity=url=>{try{const x=new URL(url);x.hash='';for(const k of [...x.searchParams.keys()])if(/^utm_|^(spm|share_source|share_from)$/i.test(k))x.searchParams.delete(k);return x.host.replace(/^www\./,'')+x.pathname.replace(/\/$/,'')+x.search;}catch{return url;}};
@@ -38,34 +39,36 @@ function cleanResult(raw,now=Date.now()){
     ...(raw.date_basis==='provider_estimate'?{estimated_date:String(raw.estimated_date || '').slice(0,100),estimated_date_basis:'provider_estimate'}:{}),
     published_at:sourceDay(published),published_raw:published || null,date_basis:published?'search_index':'unknown',read_status:'search_excerpt',checked_at:new Date(now).toISOString()};
 }
-export async function collectTravelSources({destination='',query='',international=false,foreignQuery='',travel={},window=null,purpose='experience'},search,{useCache=true,readPage=null,now=Date.now(),signal=null,queryPlans=null,diagnostics=false}={}){
+export async function collectTravelSources({destination='',query='',question='',international=false,foreignQuery='',travel={},window=null,purpose='experience'},search,{useCache=true,readPage=null,now=Date.now(),signal=null,queryPlans=null,diagnostics=false,assessSources=null}={}){
   const temporal=retrievalContext({travel,window,purpose,now});
   const since=new Date(Date.parse(temporal.today+'T00:00:00Z')-temporal.max_age_days*86400000).toISOString().slice(0,10);
   const stamp=' after:'+since+(temporal.target_window?' '+temporal.target_window.replaceAll(' ',''):' before:'+temporal.today);
-  const topic=String(query || destination+' 旅行').slice(0,36);
+  const task={destination:String(destination).trim(),query:String(query).trim(),question:String(question).trim().slice(0,2000),foreignQuery:String(foreignQuery).trim(),purpose,international:!!international};
+  const topic=task.query || destination+' 旅行';
   const aliases={'北京':'Beijing','乌鲁木齐':'Urumqi','伊宁':'Yining','阿拉木图':'Almaty','霍尔果斯':'Khorgos'};
-  const english=String(foreignQuery || destination+' travel report').replace(/北京|乌鲁木齐|伊宁|阿拉木图|霍尔果斯/g,x=>aliases[x]);
+  const english=String(foreignQuery || topic).replace(/北京|乌鲁木齐|伊宁|阿拉木图|霍尔果斯/g,x=>aliases[x]);
   /* R1-A：任务查询计划——替代固定四/七平台展开，普通资料补充收敛到最多两次搜索；
    * 多域名合并到单条查询（Tavily include_domains restrict），语言与用途显式。 */
   const CN_COMMUNITY_DOMAINS = ['xiaohongshu.com', 'mafengwo.cn', 'qyer.com'];
   const OVERSEAS_DOMAINS = ['reddit.com', 'caravanistan.com', 'backpackers.com.tw'];
   const themeWords = purpose === 'transport' ? '交通 班车 班次' : purpose === 'guide' ? '官方 交通 开放 攻略' : '旅行 乘车 游记';
-  /* R1-A:任务查询计划(最多两条)。Q1=中文社区多域;Q2 按场景——国际=海外社区多域英文;
-   * 非国际=官方无域中文。社区 kinds 含 guide(社区内容天然混合游记与攻略,由用途字段区分);
-   * 官方 kinds 含 official+guide(承接数字事实目录与目的地资料);域仅作诊断不做硬过滤。 */
+  // 国际体验可查海外社区；交通／官方资料始终保留开放查询，不让域限制排除运营方。
   const communityKinds = ['experience', 'guide'];
-  const officialPlan = { channel: '官方与目的地资料', domains: null, language: international ? 'en' : null, kinds: ['official', 'guide'],
-    text: international ? english.slice(0, 70) + ' official transport' : topic + ' 官方 ' + (purpose === 'transport' ? '交通 班次' : '交通 开放 最新') };
+  const language=text=>/[\u3400-\u9fff]/.test(text)?'zh':'en';
+  const officialTopic=international?english:topic;
+  const officialPlan = { channel: '官方与目的地资料', domains: null, language:language(officialTopic), kinds: ['official', 'guide'],
+    text: officialTopic+' '+(language(officialTopic)==='zh'?'官方 '+(purpose==='transport'?'交通 班次':'开放 最新'):'official '+(purpose==='transport'?'transport schedule':'visitor information')) };
+  const fit=(text,limit)=>text.length<=limit?text:text.slice(0,Math.ceil((limit-1)/2))+' '+text.slice(-Math.floor((limit-1)/2));
   const defaults = [
-    { channel: '中文社区', domains: CN_COMMUNITY_DOMAINS, language: 'zh', kinds: communityKinds, text: destination + ' ' + themeWords },
-    ...(international ? [{ channel: '海外社区', domains: OVERSEAS_DOMAINS, language: 'en', kinds: communityKinds, text: english.slice(0, 70) }] : [officialPlan])
-  ].map(q => { const scope = stamp.replace(since, new Date(Date.parse(temporal.today + 'T00:00:00Z') - (q.domains ? 365 : temporal.max_age_days) * 86400000).toISOString().slice(0, 10)); return { ...q, text: (q.text + ' ' + (q.domains || []).map(d => 'site:' + d).join(' ')).slice(0, 100 - scope.length) + scope, domain: q.domains ? q.domains[0] : null }; });
+    { channel: '中文社区', domains: CN_COMMUNITY_DOMAINS, language:language(topic), kinds: communityKinds, text: task.query || destination+' '+themeWords },
+    ...(international && purpose==='experience' ? [{ channel: '海外社区', domains: OVERSEAS_DOMAINS, language:language(english), kinds: communityKinds, text: english }] : [officialPlan])
+  ].map(q => { const scope = stamp.replace(since, new Date(Date.parse(temporal.today + 'T00:00:00Z') - (q.domains ? 365 : temporal.max_age_days) * 86400000).toISOString().slice(0, 10)); return { ...q, text:fit(q.text,100-scope.length)+scope, domain: q.domains ? q.domains[0] : null }; });
   // 固定探针仅供内部基线工具注入，不接受 HTTP 入参；默认产品检索计划与筛选保持原样。
   if(queryPlans!==null && (!Array.isArray(queryPlans) || !queryPlans.length || queryPlans.length>8 || queryPlans.some(q=>!q || typeof q.text!=='string' || !q.text.trim() || q.text.length>100 || !/^[a-z0-9.-]+$/.test(q.domain || '') || !Array.isArray(q.kinds) || !q.kinds.length || q.kinds.some(k=>!['experience','guide','official'].includes(k)))))throw Error('基线查询计划无效');
   const queries=queryPlans || defaults;
   if(diagnostics || queryPlans)useCache=false;
   /* R1-A:服务敏感缓存——不同检索服务的来源集合不可互串 */
-  const key=JSON.stringify([process.env.TRAVEL_SEARCH_PROVIDER || 'current',queries,temporal]);
+  const key=JSON.stringify([RELEVANCE_VERSION,process.env.TRAVEL_SEARCH_PROVIDER || 'current',task,queries,temporal,!!readPage,assessSources?'model':'rules']);
   /* #32（复审二轮）：取消检查统一三处——缓存命中前、搜索阶段后、原文读取阶段后；
    * 取消轮一律返回 cancelled（不产出来源、不登记、缓存命中也不放行），重试重新全量检索。 */
   const cancelledResult=()=>({sources:[],archive:[],experiences:[],channels:[],temporal,status:'unavailable',reader:{attempted:0,available:0},excluded_count:0,cache_hit:false,retrieved_at:new Date(now).toISOString(),results:[],cancelled:true});
@@ -74,29 +77,25 @@ export async function collectTravelSources({destination='',query='',internationa
   const settled=signal?.aborted?[]:await Promise.allSettled(queries.map(q=>search(q.text,{limit:5,timeoutMs:12000,signal,domains:q.domains || (q.domain?[q.domain]:null),language:q.language || null})));
   /* #32（复审 P2）：部分查询先成功、其余被取消时，本轮不产出可用结果、不登记来源、不写缓存 */
   if(signal?.aborted)return cancelledResult();
-  const pool=[],seen=new Set(),channels=[],queryDiagnostics=[],taskReasons=[];
+  let pool=[];
+  const seen=new Map(),channels=[],queryDiagnostics=[],queryEntries=[];
   settled.forEach((item,i)=>{
     const results=item.status==='fulfilled' && Array.isArray(item.value)?item.value:[];
     const plan=queries[i],planDomains=plan.domains || (plan.domain?[plan.domain]:[]),cleaned=results.map(raw=>cleanResult(raw,now));
-    /* R1-A:域名命中只作诊断——Tavily restrict 已在服务端限定,current 的 site: 是软限定;
-     * collect 层不做域硬过滤,避免把测试/真实来源挡在计划域外。kinds 过滤保持既有语义。 */
     const inPlanDomain=raw=>{try{return planDomains.some(d=>hostIs(new URL(raw.link).hostname.toLowerCase(),d));}catch{return false;}};
     const domainHits=results.filter(inPlanDomain);
-    /* R1-A:计划 kinds 仅作计划元数据——official/guide/experience 的实际分流交由用途字段与上层校验,
-     * collect 层不再按 kind 白名单窄化(否则官方页/攻略页会被社区计划挡外) */
-    const valid=cleaned.filter(r=>r);
-    const OFF_TOPIC = /越南|泰国|日本|韩国|马来西亚|新加坡|尼泊尔|土耳其|伊朗/;   //R1-A:任务相关性(可审计,仅 experience 用途)——他国主题剔除,应用推广不冒充经验;guide/官方用途不受影响(M09)
-    const taskFiltered = purpose !== 'experience' ? valid : valid.filter(r => {
-      if (r.kind !== 'experience') return true;   //guide/官方用途不受应用推广剔除影响
-      const destCities = destination.split(/s+/).filter(Boolean);
-      const titleText = String(r.title || '');
-      if (OFF_TOPIC.test(titleText) && !destCities.some(c => titleText.includes(c))) { taskReasons.push({ url: r.url, reason: 'off_topic_destination' }); return false; }
-      if (/(?:App|APP|应用|软件).{0,6}(?:下载|安装|推荐|排行)|下载.{0,8}(?:App|APP)/i.test(titleText + ' ' + String(r.excerpt || '').slice(0, 80))) { taskReasons.push({ url: r.url, reason: 'app_promotion_not_experience' }); return false; }
-      return true;
+    const entries=cleaned.map(source=>{
+      if(!source)return {reason:'invalid_source'};
+      // 产品通用计划允许站外补充；显式探针仍严格核对实际域名与类型。
+      if(queryPlans && !planDomains.some(d=>hostIs(source.host,d)))return {source,reason:'domain_mismatch'};
+      if(queryPlans && !plan.kinds.includes(source.kind))return {source,reason:'kind_mismatch'};
+      if(!queryPlans){const rule=sourceRule(task,source);if(rule?.kind){source.kind=rule.kind;source.allowed_use=rule.reason;}if(rule?.decision==='reject')return {source,...rule};}
+      const existing=seen.get(source.url);if(existing)return {source:existing,duplicate:true};
+      seen.set(source.url,source);pool.push(source);return {source};
     });
-    queryDiagnostics.push({query:plan.text,raw_count:results.length,domain_hit_count:domainHits.length,accepted_count:taskFiltered.length,rejected_count:results.length-valid.length-(valid.length-taskFiltered.length),task_filtered:taskReasons.splice(0).map(x=>({...x}))});
-    for(const result of taskFiltered){if(seen.has(result.url))continue;seen.add(result.url);pool.push(result);}
-    channels.push({channel:queries[i].channel,status:valid.length?'found':item.status==='fulfilled' && Array.isArray(item.value)?'empty':'unavailable',query:queries[i].text});
+    queryEntries.push(entries);
+    queryDiagnostics.push({query:plan.text,raw_count:results.length,domain_hit_count:domainHits.length});
+    channels.push({channel:plan.channel,status:item.status==='fulfilled' && Array.isArray(item.value)?'empty':'unavailable',query:plan.text});
   });
   const candidates=partitionTimedSources(pool,temporal);
   // 少量读取日期不明或近期结果的原文，不触碰登录态，不把验证页当正文。
@@ -127,15 +126,44 @@ export async function collectTravelSources({destination='',query='',internationa
       if(page.published_at){source.published_at=sourceDay(page.published_at);source.date_basis='page_metadata';}
     }else if(readPage){source.read_status='search_excerpt';source.read_note='原文未能读取，仅有搜索摘要';}
   });
+  // 原文合并后再审查，避免搜索摘要的导航噪声或截断掩盖推广／跑题内容。
+  const decisions=new Map(),relevance={version:RELEVANCE_VERSION,status:'rules_only',reviewed:0,kept:0,rejected:0,uncertain:0};
+  if(!queryPlans){
+    for(const source of pool){const rule=sourceRule(task,source);if(rule?.kind){source.kind=rule.kind;source.allowed_use=rule.reason;}if(rule?.decision==='reject')decisions.set(source.url,rule);}
+    const experienceScope=retrievalContext({travel,window,purpose:'experience',now});
+    const eligible=pool.filter(s=>!decisions.has(s.url) && ['recent','window_reference','undated'].includes(assessSourceTime(s,s.kind==='experience'?experienceScope:temporal).state));
+    if(assessSources && eligible.length){
+      let assessed;try{assessed=await assessSources(task,eligible,{signal});}catch{}
+      if(signal?.aborted)return cancelledResult();
+      relevance.status=assessed?.status || 'unavailable';
+      relevance.reason_code=assessed?.status==='completed'?null:assessed?.reason_code || 'model_unavailable';
+      for(const source of eligible){const item=assessed?.items?.find(x=>x.id===sourceId(source));
+        const decision=item && ['keep','reject','uncertain'].includes(item.decision)?item:{decision:'uncertain',reason:'来源相关性未完成'};
+        decisions.set(source.url,{...decision,stage:'model'});relevance.reviewed++;
+      }
+    }
+  }
+  for(const source of pool){const decision=decisions.get(source.url);if(decision)source.relevance=decision;}
+  const accepted=source=>!decisions.has(source.url) || decisions.get(source.url).decision==='keep';
+  queryEntries.forEach((entries,i)=>{
+    const usable=entries.filter(e=>!e.reason && accepted(e.source));
+    Object.assign(queryDiagnostics[i],{accepted_count:usable.length,rejected_count:entries.length-usable.length,duplicate_count:usable.filter(e=>e.duplicate).length,
+      task_filtered:entries.filter(e=>e.reason || !accepted(e.source)).map(e=>({...(e.source?{url:e.source.url}:{}),reason:e.reason || decisions.get(e.source.url)?.reason || 'unassessed',stage:e.stage || decisions.get(e.source?.url)?.stage || 'source'}))});
+    if(channels[i].status!=='unavailable')channels[i].status=usable.length?'found':'empty';
+  });
+  relevance.rejected=queryDiagnostics.reduce((sum,q)=>sum+q.rejected_count,0);
+  relevance.uncertain=[...decisions.values()].filter(d=>d.decision==='uncertain').length;
+  if(assessSources && relevance.uncertain && relevance.status==='completed'){relevance.status='partial';relevance.reason_code='incomplete_assessment';}
+  pool=pool.filter(accepted);relevance.kept=pool.length;
   const partition=partitionTimedSources(pool,temporal);
   const diverse=list=>{const counts=new Map();return list.filter(s=>{const count=counts.get(s.platform)||0;if(count>=2)return false;counts.set(s.platform,count+1);return true;});};
   const experienceContext=retrievalContext({travel,window,purpose:'experience',now});
   const experiences=diverse(partitionTimedSources(pool.filter(s=>s.kind==='experience'),experienceContext).current).slice(0,8).map(s=>({...s,allowed_use:'travel_experience'}));
   const sources=diverse(partition.current).slice(0,8),archive=diverse(partition.archive).slice(0,8);
   const available=channels.filter(c=>c.status!=='unavailable').length;
-  const value={sources,archive,experiences,channels,temporal,query_diagnostics:queryDiagnostics,status:available===0?'unavailable':available<channels.length?'partial':'available',reader:{attempted:reads.length,available:readCount},excluded_count:partition.excluded.length,cache_hit:false,retrieved_at:new Date(now).toISOString(),
+  const value={sources,archive,experiences,channels,temporal,relevance,query_diagnostics:queryDiagnostics,status:available===0?'unavailable':available<channels.length?'partial':'available',reader:{attempted:reads.length,available:readCount},excluded_count:partition.excluded.length,cache_hit:false,retrieved_at:new Date(now).toISOString(),
     results:sources.map(s=>({title:s.title,link:s.url,content:s.excerpt,date:s.published_at,date_basis:s.date_basis,source_kind:s.kind,platform:s.platform,read_status:s.read_status,temporal:s.temporal}))};
   if(diagnostics)value.diagnostics={queries:queryDiagnostics,all_sources:[...partition.current,...partition.archive,...partition.excluded]};
-  if(useCache && available && !signal?.aborted){cache.set(key,{value:structuredClone(value),until:now+300000});if(cache.size>80)cache.delete(cache.keys().next().value);}
+  if(useCache && available && !['unavailable','partial'].includes(relevance.status) && !signal?.aborted){cache.set(key,{value:structuredClone(value),until:now+300000});if(cache.size>80)cache.delete(cache.keys().next().value);}
   return value;
 }

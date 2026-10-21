@@ -87,6 +87,7 @@ const duplicate=structuredClone(right);duplicate.records[0]=duplicate.records[1]
 const unconfigured=structuredClone(right);unconfigured.records[0].searches[0].status='unconfigured';assert.throws(()=>compareSourceBaselines(fixture,unconfigured));
 const wrongRound=structuredClone(right);wrongRound.records[0].repeat=3;assert.throws(()=>compareSourceBaselines(fixture,wrongRound));
 assert.throws(()=>compareSourceBaselines(fixture,{...right,frozen_at:'2026-10-21T02:00Z'}));assert.throws(()=>compareSourceBaselines(fixture,{...right,dataset_sha256:'a'.repeat(64)}));
+assert.throws(()=>compareSourceBaselines(fixture,{...right,measurement_profile:'other-reader-budget'}));
 const readFixture={schema_version:1,run_id:'原始运行',records:[{task_id:'固定任务',repeat:1,reads:[{url:'https://example.org/article'}]}]};
 const diagnosed=await diagnoseBaselineReads(readFixture,{readPage:async()=>({url:'https://example.org/other',read_status:'page_excerpt',diagnostics:{http_status:200}})});assert.equal(diagnosed.summary.read_success,0);assert.equal(diagnosed.summary.by_reason.identity_mismatch,1);assert.equal(readFixture.records[0].reads[0].status,undefined,'诊断不续写旧来源与原始报告');
 console.log('✓ 同数据集／日期／查询及完整性对照、读取诊断身份和原始记录保护通过');

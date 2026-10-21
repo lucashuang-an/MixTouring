@@ -53,7 +53,7 @@ export function summarizeBaseline(records,planned){
 }
 export async function runSourceBaseline(dataset,{search,readPage,repeat=2,now=Date.now(),concurrency=2,onRecord=()=>{},signal,provider='current'}={}){
   if(!['current','tavily'].includes(provider))throw Error('不支持的搜索服务');
-  const plan=baselinePlan(dataset,{repeat,now}),report={schema_version:1,harness_version:'0.60.11',provider,cache:'应用层关闭，上游缓存不可判定',search_timeout_ms:12000,run_id:randomUUID(),profile:dataset.profile,dataset_sha256:createHash('sha256').update(JSON.stringify(dataset)).digest('hex'),
+  const plan=baselinePlan(dataset,{repeat,now}),report={schema_version:1,harness_version:'0.60.15',measurement_profile:'single-query-strict-scope-read2-v1',provider,cache:'应用层关闭，上游缓存不可判定',search_timeout_ms:12000,run_id:randomUUID(),profile:dataset.profile,dataset_sha256:createHash('sha256').update(JSON.stringify(dataset)).digest('hex'),
     frozen_at:new Date(now).toISOString(),started_at:new Date().toISOString(),repeat,concurrency,planned:plan.length,records:[],summary:null};
   if(!Number.isInteger(concurrency) || concurrency<1 || concurrency>2 || typeof search!=='function' || typeof readPage!=='function')throw Error('基线依赖或并发参数无效');
   let next=0;
