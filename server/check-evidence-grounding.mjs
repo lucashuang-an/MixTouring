@@ -1,55 +1,69 @@
-/* check-evidence-grounding.mjs · v0.60.1 R1-B：结论与证据关联——提问帖不是答案、背景介绍
- * 不证明航线、反向/旧资料不支持当期正向；合法探索与有出处经验仍可输出。
- * 无网络、无密钥、注入模型桩。运行：node server/check-evidence-grounding.mjs */
+/* R1-B 底座复审回归：原始反例、合法放行、真实目录形状及核对失败边界。 */
 import assert from 'node:assert/strict';
-import { conversationTurn, cleanConversation } from './lib/conversation.mjs';
-import { buildEvidenceCatalog, validateEvidenceClaims, isQuestionSource, textDirection } from './lib/evidence-grounding.mjs';
-
-const brief = { origin: '北京', destination: '阿拉木图', summary: 's', wishes: [], open_questions: [] };
-const routing = { origin: '北京', destination: '阿拉木图' };
-const messages = n => Array.from({ length: 4 }, (_, i) => ({ mid: i + 1, role: i % 2 ? 'assistant' : 'user', text: 'm' + (i + 1) }));
-const payload = over => ({ reply: '继续保留条件。', brief, ready: true, confirmed: false, requirements_patch: {}, ...over });
-
-/* 纯函数层:问句判定/方向判定 */
-assert.equal(isQuestionSource({ title: '有人问伊宁到阿拉木图怎么坐车吗', excerpt: '求攻略' }), true, '问句帖判定');
-assert.equal(isQuestionSource({ title: '伊宁到阿拉木图国际客运班车恢复运行', excerpt: '班车恢复运行' }), false, '肯定运营陈述不判为问句');
-assert.equal(textDirection('伊宁出发，抵达阿拉木图', '伊宁', '阿拉木图'), 'AB', '正向方向判定');
-assert.equal(textDirection('阿拉木图出发，抵达伊宁', '伊宁', '阿拉木图'), 'BA', '反向方向判定');
-assert.equal(textDirection('无关内容', '伊宁', '阿拉木图'), null, '无两端不判方向');
-
-/* R1-B 合法放行(纯函数层):近期非问句正向来源+合法标注 → grounded,不进纠正 */
-{
-  const cat = buildEvidenceCatalog({ sources: [{ title: '伊宁到阿拉木图国际客运班车恢复运行', url: 'https://www.xiaohongshu.com/explore/ok1', content: '伊宁到阿拉木图国际客运班车恢复运行，具体班次待确认', date: '2026-10-15', kind: 'experience', platform: '小红书', read_status: 'page_excerpt' }], routing, now: Date.parse('2026-10-20T00:00:00Z') });
-  const v = validateEvidenceClaims('来源显示伊宁到阿拉木图国际客运班车恢复运行 [ev_1]，班次仍需按日期确认。', cat, { routing, text: '伊宁到阿拉木图现在有班车吗' });
-  assert.equal(v.rejected.length, 0, 'R1-B:合法标注零拒绝');
-  assert.equal(v.grounded.length, 1, 'R1-B:合法标注进入 grounded');
-  const undated = buildEvidenceCatalog({ sources: [{ title: '伊宁到阿拉木图班车', url: 'https://www.xiaohongshu.com/explore/u1', content: '伊宁到阿拉木图班车', kind: 'experience', platform: '小红书', read_status: 'search_excerpt' }], routing, now: Date.parse('2026-10-20T00:00:00Z') });
-  assert.equal(undated.entries[0].temporal_state, 'undated', 'R1-B:无日期来源标记 undated');
+import {buildEvidenceCatalog,validateEvidenceClaims,isQuestionSource,textDirection,assessEvidenceClaims} from './lib/evidence-grounding.mjs';
+import {buildContext} from './lib/context-builder.mjs';
+import {sourceId} from './lib/source-relevance.mjs';
+const now=Date.parse('2026-10-22T00:00:00Z'),routing={origin:'北京',destination:'阿拉木图'};
+const row=(excerpt,over={})=>({url:'https://example.gov.cn/article',title:'交通资料',excerpt,published_at:'2026-10-20',kind:'official',read_status:'page_excerpt',...over});
+const make=(sources,extra={})=>buildEvidenceCatalog({sources,routing,now,retrieval:{purpose:'transport'},...extra});
+const reply='来源记载北京到阿拉木图开通直飞，本次日期仍待确认。',quote='北京到阿拉木图开通直飞。',cat=make([row(quote)]);
+const claim=(catalog=cat,text=reply,q=catalog.entries[0].excerpt)=>({text,allowed_use:'source_reference',supports:[{source_id:catalog.entries[0].id,quote:q}]});
+const supported=async({user})=>({items:JSON.parse(user).claims.map(c=>({id:c.id,decision:'supported',reason:'原句支持限定后的资料参考'}))});
+const check=async(catalog,text=reply,claims=[claim(catalog,text)],model=supported)=>validateEvidenceClaims(text,catalog,{claims,assessment:await assessEvidenceClaims(text,catalog,claims,model)});
+assert.equal(cat.entries[0].id,sourceId(row(quote)));
+assert.equal((await check(cat)).grounded.length,1);
+assert.equal(validateEvidenceClaims(reply,cat,{claims:[claim()]}).grounded.length,0,'引用及原句存在不等于语义已核对');
+for(const source of [row('阿拉木图国际机场位于哈萨克斯坦。',{title:'阿拉木图国际机场介绍'}),row('北京到阿拉木图尚未开通直飞。'),row('请问有人知道吗？',{title:'北京到阿拉木图有直飞吗？'}),row('Does Beijing have direct flights to Almaty?'),row(quote,{kind:'experience'}),row(quote,{allowed_use:'software_reference'}),row(quote,{relevance:{decision:'uncertain'}})]){
+  const c=make([source]);let called=0;
+  const r=await check(c,reply,[claim(c)],async p=>{called++;return supported(p);});
+  assert.ok(r.rejected.length);assert.equal(r.grounded.length,0);assert.equal(called,0,'确定性不合格资料不花费模型调用');
 }
+const question={title:'北京到阿拉木图有直飞吗',excerpt:'请问怎么查'};
+assert.equal(isQuestionSource(question),true);
+assert.equal(isQuestionSource({...question,excerpt:'答：北京到阿拉木图开通直飞。'}),false);
+assert.equal((await check(make([row(quote,{title:question.title})]))).grounded.length,1,'问答混合须核对具体回答');
+const reverse=make([row('阿拉木图到北京开通直飞。')]);
+const denied=await check(reverse,reply,[claim(reverse)],async({user})=>({items:JSON.parse(user).claims.map(c=>({id:c.id,decision:'unsupported',reason:'反向航线不能支持正向'}))}));
+assert.equal(denied.grounded.length,0,'方向由语义核对，不靠城市首现顺序证明方向');
+assert.equal(textDirection('阿拉木图出发到北京','北京','阿拉木图'),'BA');assert.equal(textDirection('机场介绍','北京','阿拉木图'),null);
+assert.equal((await check(cat,'北京到阿拉木图现在有直飞。',[claim(cat,'北京到阿拉木图现在有直飞。')])).grounded.length,0);
+const badQuote=claim();badQuote.supports[0].quote='北京到阿拉木图每天直飞';assert.equal((await check(cat,reply,[badQuote])).grounded.length,0);
+assert.equal((await check(cat,reply,[claim(),claim()])).grounded.length,0);
+assert.equal((await check(cat,reply,[{...claim(),supports:[...claim().supports,...claim().supports]}])).grounded.length,0);
+const wrongRef=reply.replace('。',' [ev_1]。');assert.equal((await check(cat,wrongRef,[claim(cat,wrongRef)])).grounded.length,0);
+console.log('✓ 背景、提问、否定、用途、方向语义、伪造原句及合法参考通过');
 
-/* 纯函数层:validateEvidenceClaims 直接断言四类拒绝原因 */
-{
-  const mk = (url, title, excerpt, date, state) => ({ id: 'ev_1', url, title, kind: 'guide', question_like: isQuestionSource({ title, excerpt }), direction: null, temporal_state: state || 'recent', date_scope: 'unverified', read_status: 'page_excerpt', allowed_use: 'source_reference', excerpt });
-  const cat = entries => ({ entries });
-  const v1 = validateEvidenceClaims('有人问过怎么坐车，班车是有的 [ev_1]。', cat([mk('u', '有人问怎么坐车', '求攻略')]), { routing, text: 'x' });
-  assert.ok(v1.rejected.some((r) => r.reason === '提问帖不是已获答案'), 'R1-B:提问帖不能支持运营结论');
-  const v2 = validateEvidenceClaims('北京到阿拉木图有直飞航班。', cat([mk('u', '阿拉木图国际机场介绍', '阿拉木图国际机场是哈萨克斯坦最大机场')]), { routing, text: 'x' });
-  assert.ok(v2.rejected.some((r) => r.reason === '反向资料不支持该方向结论' || r.reason === '提问帖不是已获答案' || r.reason === '来源时效不足以支持当期运营结论' || r.reason.includes('来源')), 'R1-B:背景/方向不符的机场介绍不支持航线结论');
-  const v3 = validateEvidenceClaims('伊宁到阿拉木图有班车 [ev_1]。', cat([mk('u', '阿拉木图到伊宁班车', '阿拉木图发车抵达伊宁')]), { routing, text: 'x' });
-  assert.ok(v3.rejected.some((r) => r.reason === '反向资料不支持该方向结论'), 'R1-B:反向资料不支持正向结论');
-  const v4 = validateEvidenceClaims('伊宁到阿拉木图目前有班车 [ev_1]。', cat([mk('u', '旧帖', '伊宁到阿拉木图班车', '2023-01-01', 'historical')]), { routing, text: 'x' });
-  assert.ok(v4.rejected.some((r) => r.reason === '来源时效不足以支持当期运营结论'), 'R1-B:旧资料不支持当期结论');
-  const v0 = validateEvidenceClaims('伊宁到阿拉木图有班车。', cat([]), { routing, text: 'x' });
-  assert.ok(v0.rejected.some((r) => r.reason === '运营结论缺少来源标注'), 'R1-B:未标注的运营断言拒绝');
-}
+const old=make([row(quote,{published_at:'2026-05-01'})]);assert.equal(old.entries[0].temporal_state,'historical');assert.equal((await check(old)).grounded.length,0);
+const experienceWindow=make([row(quote,{published_at:'2026-05-01'})],{retrieval:{purpose:'experience'}});
+assert.equal(experienceWindow.entries[0].temporal_state,'recent');assert.equal((await check(experienceWindow)).grounded.length,0);
+const history=make([row(quote)],{retrieval:{purpose:'transport',target_window:'2026-10-01 ~ 2026-10-08'}});
+assert.equal(history.entries[0].temporal_state,'after_trip');assert.equal((await check(history)).grounded.length,0);
+for(const over of [{published_at:null},{date_basis:'provider_estimate'},{temporal:{state:'historical'}},{valid_until:'2026-10-01'}])assert.equal((await check(make([row(quote,over)]))).grounded.length,0);
+const future=make([row(quote,{valid_from:'2026-10-01',valid_until:'2026-10-31',validity_basis:'schedule'})],{retrieval:{purpose:'transport',target_window:'2026-11-01 ~ 2026-11-08'}});assert.equal(future.entries[0].temporal_state,'outside_window');
+console.log('✓ 交通复核期、历史窗、估计日期和原状态不可升级通过');
 
-/* 一般讨论不误拦 */
-{
-  const r = await conversationTurn({ text: '伊宁有什么好玩的', action: 'chat',
-    conversation: cleanConversation({ stage: 'draft', brief, routing, draft: { title: 't', overview: 'o', route: ['北京', '阿拉木图'], cards: [{ id: 'card-x', place: '阿拉木图', label: '第1天', title: '城区', content: 'x' }], sections: [], pending: [] } }), messages: messages(4) }, null,
-    { now: Date.parse('2026-10-20T00:00:00Z'), search: async () => [], model: async () => payload({ reply: '喀赞其和六星街适合慢逛，草原建议单独安排一天。' }) });
-  assert.equal(r.status, 'ok', 'R1-B:一般讨论正常完成');
-  assert.ok(r.reply.includes('喀赞其'), 'R1-B:玩法建议保留');
-}
+for(const text of ['目前无法确认是否有直飞，班车也仍待核实。','没有直飞，班车尚未恢复运行。','如果开通直飞，可以再比较。','Are there direct flights?','Direct flights are unconfirmed.','可以先探索市区，再确认交通。'])assert.equal(validateEvidenceClaims(text,{entries:[]}).rejected.length,0,text);
+for(const text of ['无法确认票价，但北京到阿拉木图有直飞。','是否有直飞？北京到阿拉木图每天发车。'])assert.ok(validateEvidenceClaims(text,{entries:[]}).rejected.length);
+const experience=make([row('我在大阪散步很愉快。',{kind:'experience'})],{retrieval:{purpose:'experience'}}),experienceText='该旅行者记录了在大阪散步的愉快体验。';
+assert.equal((await check(experience,experienceText,[{...claim(experience,experienceText),allowed_use:'travel_experience'}])).grounded.length,1);
+console.log('✓ 否定、疑问、假设、转折和有出处经验正常表达通过');
 
-console.log('✓ 结论与证据关联回归通过');
+for(const model of [async()=>null,async()=>({items:[]}),async()=>{throw Error('不记录原始故障');},async({user})=>({items:[{id:JSON.parse(user).claims[0].id,decision:'supported',reason:''}]}),async({user})=>{const r={id:JSON.parse(user).claims[0].id,decision:'supported',reason:'重复'};return {items:[r,r]};}])assert.equal((await check(cat,reply,[claim()],model)).grounded.length,0);
+const assessment=await assessEvidenceClaims(reply,cat,[claim()],supported),changed=structuredClone(cat);changed.entries[0].excerpt='北京到阿拉木图尚未开通直飞。';
+assert.equal(validateEvidenceClaims(reply,changed,{claims:[claim()],assessment}).grounded.length,0);
+const changedReply='来源记载北京到阿拉木图每天直飞，本次日期仍待确认。';assert.equal(validateEvidenceClaims(changedReply,cat,{claims:[claim(cat,changedReply)],assessment}).grounded.length,0);
+const changedScope=structuredClone(cat);changedScope.retrieval.target_window='2026-11-01 ~ 2026-11-08';assert.equal(validateEvidenceClaims(reply,changedScope,{claims:[claim()],assessment}).grounded.length,0);
+assert.equal(validateEvidenceClaims('可以考虑直飞方案，再核实交通。',{entries:[]}).rejected.length,0);
+const ctrl=new AbortController();const cancelled=await assessEvidenceClaims(reply,cat,[claim()],async p=>{ctrl.abort();return supported(p);},{signal:ctrl.signal});assert.equal(cancelled.reason,'cancelled');
+let calls=0;await assessEvidenceClaims(reply,cat,[claim()],async()=>{calls++;},{signal:ctrl.signal});assert.equal(calls,0);
+assert.equal((await assessEvidenceClaims(reply,cat,[claim()],supported,{budgetChars:50})).status,'unavailable');
+console.log('✓ 缺项、重复、模型故障、修改后失效、取消和预算保护通过');
+
+const large=make(Array.from({length:12},(_,i)=>row('旅行参考资料。'.repeat(70),{url:'https://example.gov.cn/article/'+i}))),before=JSON.stringify(large);
+const built=buildContext({payload:{text:'保留本轮条件',evidence_catalog:large},budgetChars:4000});
+assert.ok(built.manifest.omitted_ids.includes('evidence_catalog'));assert.equal(built.value.text,'保留本轮条件');assert.equal(JSON.stringify(large),before);
+assert.ok(built.value.evidence_catalog.entries.length<12);assert.ok(built.value.evidence_catalog.entries.every(e=>e.id===sourceId(e)));
+const removed=large.entries.find(e=>!built.value.evidence_catalog.entries.some(v=>v.id===e.id));
+assert.equal((await check(built.value.evidence_catalog,reply,[{text:reply,allowed_use:'source_reference',supports:[{source_id:removed.id,quote:removed.excerpt}]}])).grounded.length,0);
+assert.equal(buildContext({payload:{search_results:[row(quote)],evidence_catalog:cat}}).value.evidence_catalog.entries[0].excerpt,quote);
+console.log('✓ 真实目录形状裁剪、稳定身份、原对象保护和可见引用一致性通过');

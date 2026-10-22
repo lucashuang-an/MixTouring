@@ -58,6 +58,7 @@ jobs:
           node server/check-source-baseline.mjs
           node server/check-search-adapters.mjs
           node server/check-source-tasks.mjs
+          node server/check-evidence-grounding.mjs
           node server/check-journey.mjs
           node server/check-progressive.mjs
           node server/check-inspirations.mjs

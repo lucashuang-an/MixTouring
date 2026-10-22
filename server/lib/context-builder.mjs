@@ -167,7 +167,7 @@ function buildPayloadContext(payload,{coreRules,rulesVersion,budgetChars}){
   // 优先移走最旧原文与重复／补充资料，再缩减决策索引；权威条件与完整草案始终保留。
   const arrays=['messages','user_messages','search_results','experience_results','visible_search_results','visible_experiences','transport_references','numeric_fact_catalog','evidence_catalog'];
   for(const key of arrays){
-    const a=value[key];
+    const a=key==='evidence_catalog'?value[key]?.entries:value[key];
     while(size()>target && Array.isArray(a) && a.length){a.shift();omit(key);}
   }
   for(const key of ['destination_material','sight_material']){
