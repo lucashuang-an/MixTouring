@@ -364,6 +364,8 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
         purpose:['transport','experience','guide'].includes(raw.search_purpose)?raw.search_purpose:/交通|班车|巴士|航班|口岸|开放|票价/.test(str(raw?.search_query)+context.text)?'transport':'experience'},search,{useCache:!deps.search,now:deps.now || Date.now(),readPage:deps.readPage || (!deps.search?readPublicPage:null),signal,
           // 纯搜索桩不隐式增加真实模型调用；回放可显式启用，生产路径共用模型预算与取消。
           assessSources:!deps.search || deps.sourceReview===true?relevanceReviewer(model):null});
+      try{deps.onSourceCollection?.({status:collected.status,channels:collected.channels.map(c=>({channel:c.channel,status:c.status})),
+        relevance:collected.relevance,source_count:collected.sources.length,archive_count:collected.archive.length,experience_count:collected.experiences.length,reader:collected.reader});}catch{}
       const results=collected.results;
       if(evidenceReview && (collected.relevance?.status==='unavailable' || collected.status==='unavailable'))
         return {status:'unavailable',engine:'unavailable',reply:'检索或候选资料核对尚未完成，当前不能据此判断是否有匹配资料。原输入和安排已保留，请重试。',conversation:before,sources:[],source_relevance:collected.relevance};

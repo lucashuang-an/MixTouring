@@ -26,15 +26,16 @@ async function worker(){
     const brief={origin,destination,summary:'讨论'+destination+'的公开旅行资料'},route=[origin,destination];
     const conversation={stage:'draft',brief,routing:{origin,destination},draft:{title:'已有旅行想法',overview:'具体交通待核实。',route,cards:[{id:'place',place:destination,label:'目的地阶段',title:'当地活动',content:'安排待讨论。'}],sections:[],pending:['交通班期待核实。']}};
     const text='请核对公开资料，讨论'+query.replace(/\bsite:\S+\s*/g,'')+'，说明有依据的取舍和待查项。先不要改行程。';
-    const searches=[],modelUsage=[],modelAttempts=[],rawStages=[],started=Date.now();let result;
+    const searches=[],modelUsage=[],modelAttempts=[],rawStages=[],collections=[],started=Date.now();let result;
     try{result=await conversationTurn({text,conversation},null,{now:frozen,budgetMs:110000,sourceReview:true,evidenceReview:true,readPage:readPublicPage,signal:controller.signal,
       search:async(q,opts)=>{const r=await searchWebDetailed(q,{...opts,provider:'tavily'});searches.push({status:r.status,attempts:r.attempts.map(a=>({provider:a.provider,status:a.status,elapsed_ms:a.elapsed_ms,network_request:a.network_request,usage:a.usage,reason_code:a.reason_code})),elapsed_ms:r.elapsed_ms,result_count:r.results?.length ?? 0});return r.results;},
-      model:async opts=>{modelAttempts.push({kind:opts.kind});const output=await composeJson(opts);if(process.env.R1B_CAPTURE_MODEL)rawStages.push({kind:opts.kind,output});return output;},
-      onModelUsage:u=>modelUsage.push(u)});}catch{result={status:'unavailable',reply:'运行中断或失败'};}
+      model:async opts=>{let catalog_count=null;try{catalog_count=JSON.parse(opts.user).evidence_catalog?.entries?.length ?? null;}catch{}
+        modelAttempts.push({kind:opts.kind,catalog_count});const output=await composeJson(opts);if(process.env.R1B_CAPTURE_MODEL)rawStages.push({kind:opts.kind,output});return output;},
+      onModelUsage:u=>modelUsage.push(u),onSourceCollection:s=>collections.push(s)});}catch{result={status:'unavailable',reply:'运行中断或失败'};}
     const record={task_id:task.id,group:task.group,repeat,query,window,status:result.status,reply:result.reply || '',source_relevance:result.source_relevance?.status || null,
       claims:(result.evidence_claims || []).map(c=>({sentence:c.sentence,allowed_use:c.allowed_use,supports:c.supports})),
       sources:(result.sources || []).map(s=>({url:s.url,title:s.title,kind:s.kind,published_at:s.published_at,read_status:s.read_status})),
-      searches,model_attempts:modelAttempts,model_usage:modelUsage,...(process.env.R1B_CAPTURE_MODEL?{raw_stages:rawStages}:{}),elapsed_ms:Date.now()-started};
+      searches,source_collections:collections,model_attempts:modelAttempts,model_usage:modelUsage,...(process.env.R1B_CAPTURE_MODEL?{raw_stages:rawStages}:{}),elapsed_ms:Date.now()-started};
     report.records.push(record);report.records.sort((a,b)=>a.repeat-b.repeat || a.task_id.localeCompare(b.task_id));save();
     console.log(`${report.records.length}/${jobs.length} ${task.id} 第${repeat}轮：${record.status}；引用${record.sources.length}；结论${record.claims.length}；检索${searches.length}`);
   }

@@ -10,7 +10,7 @@ const brief={origin:'北京',destination:'阿拉木图',summary:'北京到阿拉
 const base={intent_action:'question',reply:statement,brief,ready:true,confirmed:false,requirements_patch:{},preferences:{},travel:{},constraints:{},sights:{},search_query:'北京到阿拉木图航班',search_purpose:'transport',destination_country:'KZ'};
 const start={text:'北京到阿拉木图交通资料怎样？',conversation:{stage:'discuss',brief,routing:{origin:'北京',destination:'阿拉木图'}}};
 const execute=async({page=source,answer=statement,assessment='supported',extract=null,draft=null,action='chat',reviewFailure=false,searchFailure=false,omitSearchQuery=false,repairReply=null,text='北京到阿拉木图交通资料怎样？'}={})=>{
-  const calls=[],queries=[];const model=async opts=>{
+  const calls=[],queries=[],collections=[];const model=async opts=>{
     calls.push(opts.kind);
     if(opts.kind==='conversation')return {...base,reply:answer,intent_action:draft?'revise':'question',draft,search_query:omitSearchQuery?'':'北京到阿拉木图航班'};
     if(opts.kind==='conversation_review')return {reply:answer,draft,changes:[]};
@@ -25,13 +25,14 @@ const execute=async({page=source,answer=statement,assessment='supported',extract
     return {};
   };
   const input=action==='generate'?{action:'generate',conversation:{stage:'ready',brief,routing:{origin:'北京',destination:'阿拉木图'}}}:{...start,text};
-  const result=await conversationTurn(input,null,{now,evidenceReview:true,sourceReview:reviewFailure,search:async query=>{queries.push(query);return searchFailure?null:page?[page]:[];},model});
-  return {result,calls,queries};
+  const result=await conversationTurn(input,null,{now,evidenceReview:true,sourceReview:reviewFailure,search:async query=>{queries.push(query);return searchFailure?null:page?[page]:[];},model,onSourceCollection:s=>collections.push(s)});
+  return {result,calls,queries,collections};
 };
 const good=await execute();
 assert.equal(good.result.status,'ok');assert.equal(good.result.sources.length,1);assert.equal(good.result.evidence_claims.length,1);
 assert.ok(good.calls.includes('conversation_evidence_extract') && good.calls.includes('conversation_evidence_support'));
 assert.equal(good.result.evidence_claims[0].supports[0].source_id,good.result.sources[0].id);
+assert.equal(good.collections[0].source_count,1);assert.ok(!JSON.stringify(good.collections[0]).includes(source.link),'诊断只传计数和状态，不传网页身份或正文');
 const unsupported=await execute({assessment:'unsupported'});
 assert.equal(unsupported.result.status,'ok');assert.match(unsupported.result.reply,/待核实/);assert.equal(unsupported.result.sources.length,0);assert.equal(unsupported.result.evidence_claims.length,0);
 const repaired=await execute({assessment:'unsupported',repairReply:'可以先比较航班和铁路的查询入口，再分别核实日期与衔接；你更看重少换乘还是沿途体验？'});
