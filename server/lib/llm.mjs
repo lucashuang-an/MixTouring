@@ -215,6 +215,7 @@ export async function composeJson(opts) {
     if (!res.ok) throw new Error('VOLC compose HTTP ' + res.status);
     const body = await res.json();
     logUsage(opts.kind, body.usage, model);
+    try{opts.onUsage?.({kind:opts.kind,model,prompt_tokens:body.usage?.prompt_tokens ?? null,completion_tokens:body.usage?.completion_tokens ?? null,total_tokens:body.usage?.total_tokens ?? null});}catch{}
     const raw = body.choices?.[0]?.message?.content;
     if (!raw) return null;
     const m = raw.match(/\{[\s\S]*\}/);
@@ -262,6 +263,7 @@ export async function callJson(opts) {
     if (!res.ok) throw new Error('LLM HTTP ' + res.status);
     const resBody = await res.json();
     logUsage(opts.kind, resBody.usage, body.model);
+    try{opts.onUsage?.({kind:opts.kind,model:body.model,prompt_tokens:resBody.usage?.prompt_tokens ?? null,completion_tokens:resBody.usage?.completion_tokens ?? null,total_tokens:resBody.usage?.total_tokens ?? null});}catch{}
     const raw = resBody.choices?.[0]?.message?.content;
     if (!raw) return null;
     // 兼容模型可能在代码块里包 JSON

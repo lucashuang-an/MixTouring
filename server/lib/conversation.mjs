@@ -18,6 +18,8 @@ import {cleanMemory, extractMemoryCandidates, commitMemoryDecisions, decisionInd
 import {buildContext,cleanSummaries, summarizeBacklog, appendSummary, summaryFingerprint} from './context-builder.mjs';
 import {buildNumericCatalog,validateNumericClaims} from './numeric-grounding.mjs';
 import {relevanceReviewer} from './source-relevance.mjs';
+import {buildEvidenceCatalog} from './evidence-grounding.mjs';
+import {groundConversationOutput} from './conversation-evidence.mjs';
 
 const guides = JSON.parse(readFileSync(new URL('../../pipeline/data/destination-guides.json', import.meta.url))).destinations;
 const str = (v, n = 1600) => typeof v === 'string' ? v.trim().slice(0, n) : '';
@@ -164,8 +166,10 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
     }
     const built=buildContext({payload,coreRules:opts.schema_prompt,
       rulesVersion:'v0.60.5',budgetChars:deps.contextBudgetChars});
-    return (deps.model || composeJson)({...opts,user:JSON.stringify(built.value),signal});
+    return (deps.model || composeJson)({...opts,user:JSON.stringify(built.value),signal,onUsage:deps.onModelUsage});
   };
+  // 注入模型的旧确定性回归不额外触发付费调用；真实编排默认执行，回放可显式开启。
+  const evidenceReview=!deps.model || deps.evidenceReview===true;
   const search = (q, opts) => signal.aborted ? Promise.reject(cancelErr()) : (deps.search || searchWeb)(q, {...opts, signal});
   const action = ['generate','prepare'].includes(input.action) ? input.action : 'chat';
   /* M1：全量消息（带 mid）用于摘要与决策出处；近期窗口原文进 prompt，更早由增量摘要承载。
@@ -348,16 +352,21 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
     const transportSources=context.transport_references.flatMap(s=>s.options.flatMap(r=>[r.source,...r.supplementary_sources || []])).map(s=>({...s,...classifyTravelSource(s.url),kind:s.kind || classifyTravelSource(s.url)?.kind,published_at:s.published_at,checked_at:s.sampled_at}));
     const scopedSources=partitionTimedSources(sources.concat(transportSources),context.retrieval);
     sources=partitionTimedSources(visibleEvidence.concat(scopedSources.current),context.retrieval).current.slice(0,6);
+    context.evidence_catalog=buildEvidenceCatalog({sources,routing:routeResult.routing,retrieval:context.retrieval,travel:retrievalTravel,now:deps.now || Date.now()});
     context.background_only='既有目的地目录仅用于地理与体验灵感，发布日期不明，不证明现时开放、交通或价格。';
     const needsMaterial = resolvedDestination && !context.destination_material && !context.sight_material;
-    if (str(raw?.search_query, 100) || needsMaterial || (action==='generate' && resolvedDestination) || approvedSearchWindow || Object.keys(calendarCandidate.travel).some(k=>k.endsWith('_window'))) {
+    const explicitResearch=action==='chat' && /请.{0,12}(?:查|核对)|(?:查找|搜索|查询)(?:一下|资料|攻略|原帖)|有(?:没有|哪些).{0,5}(?:资料|来源)/.test(context.text);
+    const searchQuery=str(raw?.search_query,100) || (explicitResearch?str(context.text,100):'');
+    if (searchQuery || needsMaterial || (action==='generate' && resolvedDestination) || approvedSearchWindow || Object.keys(calendarCandidate.travel).some(k=>k.endsWith('_window'))) {
       const country=resolvePlace(resolvedDestination)?.country || countryScope(resolvedDestination)?.code || raw?.destination_country;
-      const collected=await collectTravelSources({destination:resolvedDestination,query:str(raw?.search_query,100),question:context.text,
+      const collected=await collectTravelSources({destination:resolvedDestination,query:searchQuery,question:context.text,
         international:country?country!=='CN':!!raw?.search_query_en,foreignQuery:str(raw?.search_query_en,100),travel:retrievalTravel,window:approvedSearchWindow,
         purpose:['transport','experience','guide'].includes(raw.search_purpose)?raw.search_purpose:/交通|班车|巴士|航班|口岸|开放|票价/.test(str(raw?.search_query)+context.text)?'transport':'experience'},search,{useCache:!deps.search,now:deps.now || Date.now(),readPage:deps.readPage || (!deps.search?readPublicPage:null),signal,
           // 纯搜索桩不隐式增加真实模型调用；回放可显式启用，生产路径共用模型预算与取消。
           assessSources:!deps.search || deps.sourceReview===true?relevanceReviewer(model):null});
       const results=collected.results;
+      if(evidenceReview && (collected.relevance?.status==='unavailable' || collected.status==='unavailable'))
+        return {status:'unavailable',engine:'unavailable',reply:'检索或候选资料核对尚未完成，当前不能据此判断是否有匹配资料。原输入和安排已保留，请重试。',conversation:before,sources:[],source_relevance:collected.relevance};
       context.destination_material = curated || null;
       context.search_results = (results || []).concat(visibleEvidence.map(s=>({title:s.title,link:s.url,content:s.excerpt,date:s.published_at,temporal:s.temporal})));
       context.experience_results=collected.experiences;
@@ -370,6 +379,10 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
       sources=collected.experiences.concat(context.visible_experiences,uniqueSources).filter((s,i,all)=>all.findIndex(x=>x.url===s.url)===i).slice(0,8);
       const official=uniqueSources.find(s=>s.kind==='official');
       if(official && !sources.some(s=>s.url===official.url))sources[sources.length-1]=official;
+      const chosen=new Set(sources.map(s=>s.url));
+      context.search_results=context.search_results.filter(s=>chosen.has(s.link));
+      context.experience_results=context.experience_results.filter(s=>chosen.has(s.url));
+      context.evidence_catalog=buildEvidenceCatalog({sources,routing:routeResult.routing,retrieval:context.retrieval,travel:retrievalTravel,now:deps.now || Date.now()});
       raw = {...await invoke(),...understanding};
     }
     /* 每次按当前来源重建事实表；主回复及所有编辑阶段执行相同的逐项守门。 */
@@ -476,11 +489,26 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
     if(citedFacts.length>8)throw Error('本轮数字来源过多，请缩小讨论范围');
     sources=citedFacts.map(f=>sources.find(s=>s.url===f.source_url) || {url:f.source_url,title:'数字参考资料',excerpt:f.evidence_quote,published_at:f.published_at,read_status:f.read_status,...classifyTravelSource(f.source_url)})
       .concat(sources).filter((s,i,a)=>a.findIndex(x=>x.url===s.url)===i).slice(0,8);
+    let evidenceResult=null;
+    if(evidenceReview){
+      if(citedFacts.length)context.evidence_catalog=buildEvidenceCatalog({sources,routing:next.routing,retrieval:context.retrieval,travel:retrievalTravel,now:deps.now || Date.now()});
+      if(context.source_relevance?.status==='partial' || context.source_channels?.some(c=>c.status==='unavailable')){
+        raw.reply=raw.reply.replace(/[^。！？!?\n]*?(?:没有(?:查到|找到|检索到|匹配到)|查无|未搜到|暂无(?:匹配|资料|攻略))[^。！？!?\n]*[。！？!?]?/g,'部分候选尚未核对，不能据此判断资料是否存在。');
+      }
+      evidenceResult=await groundConversationOutput({reply:raw.reply,draft,catalog:context.evidence_catalog,model,signal,budgetChars:deps.contextBudgetChars,
+        conditions:{text:context.text,current:context.current,route:draft?.route || [next.routing.origin,next.routing.destination]}});
+      if(evidenceResult.status==='unavailable')throw Error('结论证据核对未完成');
+      raw.reply=evidenceResult.reply;
+      draft=evidenceResult.draft;
+      sources=evidenceResult.sources.concat(citedFacts.map(f=>sources.find(s=>s.url===f.source_url)).filter(Boolean))
+        .filter((s,i,a)=>a.findIndex(x=>x.url===s.url)===i).slice(0,8);
+      if(checkNumbers({reply:raw.reply,draft}).rejected.length)throw Error('证据核对后出现无依据数字');
+    }
     const preferenceWrite=await preferenceMemoryResult(raw);
     if(action==='chat' && raw.intent_action==='preview' && before.draft && draft && !changedDestination){
       /* M02：预览内的记忆增量随采纳一起提交、丢弃一起删除——候选挂 preview，此处不提交 */
       return {status:'ok',engine:'llm',reply:'先看看这份备选预览，当前安排还未改动。'+str(raw.reply),conversation:{...before,summaries:workingSummaries,preview:{draft,brief:next.brief,patch,requirements:next.requirements,base_revision:before.revision,base_signature:conditionSignature(input),selected_candidate_id:selected?.id || null,memory_candidates:memoryCandidates.accepted,memory_evidence_refs:[...new Set(memoryCandidates.accepted.flatMap(c=>c.evidence_refs))]}},
-        patch:cleanPatch(),sources,numeric_grounding:numericGrounding.grounded,request_generation:false,selected_candidate_id:null,
+        patch:cleanPatch(),sources,evidence_claims:evidenceResult?.claims || [],evidence_inferences:evidenceResult?.inferences || [],numeric_grounding:numericGrounding.grounded,request_generation:false,selected_candidate_id:null,
         preference_memory_upserts:preferenceWrite.upserts,preference_memory_context:preferenceWrite.context,preference_memory_notice:preferenceWrite.notice};
     }
     if (action === 'generate' || (before.draft && draft && !changedDestination)) {
@@ -499,7 +527,7 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
     const sourceNotice=['unavailable','partial'].includes(context.source_relevance?.status)?'部分候选资料尚未完成相关性核对，暂未作为答复依据，可重试核对。':'';
     const finalReply=sourceNotice?sourceNotice+'\n\n'+baseReply:baseReply;
     const finalGrounding=checkNumbers({reply:finalReply,draft}).grounded;
-    return { status:'ok', engine:'llm', source_relevance:context.source_relevance || null, numeric_grounding:finalGrounding, preference_memory_upserts:preferenceWrite.upserts,preference_memory_context:preferenceWrite.context,preference_memory_notice:preferenceWrite.notice, reply:finalReply, conversation:next, patch, sources,
+    return { status:'ok', engine:'llm', source_relevance:context.source_relevance || null, evidence_claims:baseReply===str(raw.reply)?evidenceResult?.claims || []:[], evidence_inferences:baseReply===str(raw.reply)?evidenceResult?.inferences || []:[], numeric_grounding:finalGrounding, preference_memory_upserts:preferenceWrite.upserts,preference_memory_context:preferenceWrite.context,preference_memory_notice:preferenceWrite.notice, reply:finalReply, conversation:next, patch, sources:!evidenceReview || baseReply===str(raw.reply)?sources:[],
       selected_candidate_id: !questionOnly && next.draft && selected ? selected.id : null,
       clear_selection:!questionOnly && !!draft?.route.length && !selected && !!input.candidate_id && !workspace.matches(draft.route,(plan?.candidates || []).find(c=>c.id===input.candidate_id)),
       request_generation:requestGeneration };

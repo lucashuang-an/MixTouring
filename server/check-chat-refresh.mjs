@@ -6,6 +6,8 @@ import vm from 'node:vm';
 
 const html = readFileSync(new URL('../mixtouring-hifi/pages/trip.html', import.meta.url), 'utf8');
 const start = html.indexOf('function renderConversation()');
+const claimStart=html.indexOf('function claimEvidence(message)');
+const historyStart=html.indexOf('function historicalMessages(messages)');
 if (start < 0) { console.error('✗ trip.html 中找不到 renderConversation'); process.exit(1); }
 let depth = 0, end = -1;
 for (let i = html.indexOf('{', start); i < html.length; i++) {
@@ -77,7 +79,7 @@ function makeEnv(messages, opts = {}) {
   };
   const input = { value: opts.inputValue || '', placeholder: '', focus() { input.focused = true; } };
   const sandbox = {
-    console, JSON, Object, Array, Date, String, Math, setTimeout,
+    console, JSON, Object, Array, Date, String, Math, URL, setTimeout,
     document: { getElementById: (id) => id === 'guideArea' ? area : id === 'nlInput' ? input : { hidden: false } },
     composer: { contains: () => false, remove() {} },
     input, area,
@@ -97,6 +99,18 @@ function makeEnv(messages, opts = {}) {
   sandbox.currentExperiences=opts.currentExperiences || [];
   sandbox.globalThis = sandbox;
   vm.createContext(sandbox);
+  if(claimStart<0)throw Error('缺少结论引用渲染函数');
+  let claimDepth=0,claimEnd=-1;
+  for(let i=html.indexOf('{',claimStart);i<html.length;i++){
+    if(html[i]==='{')claimDepth++;else if(html[i]==='}' && --claimDepth===0){claimEnd=i+1;break;}
+  }
+  sandbox.claimEvidence=vm.runInContext('(' + html.slice(claimStart,claimEnd) + ')',sandbox);
+  if(historyStart<0)throw Error('缺少历史引用降级函数');
+  let historyDepth=0,historyEnd=-1;
+  for(let i=html.indexOf('{',historyStart);i<html.length;i++){
+    if(html[i]==='{')historyDepth++;else if(html[i]==='}' && --historyDepth===0){historyEnd=i+1;break;}
+  }
+  sandbox.historicalMessages=vm.runInContext('(' + html.slice(historyStart,historyEnd) + ')',sandbox);
   sandbox.renderConversation = vm.runInContext('(' + html.slice(start, end) + ')', sandbox);
   return { sandbox, box, input };
 }
@@ -231,6 +245,22 @@ const msgs = () => [
   sandbox.currentExperiences=[{url:'https://example.org/new-experience'}];
   sandbox.renderConversation();await new Promise(r=>setTimeout(r,10));
   ok(box.rows[1].getBoundingClientRect().top===top,'#31 新增经验区域后仍保持同一消息的可视位置');
+}
+
+/* 结论引用与原句使用同一来源身份；未通过核对的资料不混进结论卡。 */
+{
+  const {sandbox}=makeEnv(msgs());
+  sandbox.MT.esc=value=>String(value).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  const markup=sandbox.claimEvidence({sources:[{id:'src_abc',url:'https://example.gov.cn/report',title:'运营方资料'}],
+    evidence_claims:[{sentence:'资料记载这条路线可作参考。',allowed_use:'source_reference',supports:[{source_id:'src_abc',quote:'原文称可查询班车 <script>'}]}],
+    evidence_inferences:['建议先比较两种路线。']});
+  ok(markup.includes('原文称可查询班车 &lt;script&gt;') && !markup.includes('<script>') && markup.includes('https://example.gov.cn/report'),
+    '结论卡显示同源原句与链接并转义网页文字');
+  ok(markup.includes('探索判断') && !markup.includes('javascript:'),'无来源推断明确分级，不制造链接');
+  const previous={role:'assistant',text:'此前资料',sources:[{id:'src_abc',url:'https://example.gov.cn/report'}],evidence_claims:[{sentence:'此前结论',supports:[{source_id:'src_abc',quote:'原句'}]}]};
+  const restored=sandbox.historicalMessages([previous])[0];
+  ok(restored.evidence_historical===true && previous.evidence_historical!==true && sandbox.claimEvidence(restored).includes('时效需重查'),
+    '保存恢复把旧引用降为历史，原消息对象不被改写');
 }
 
 console.log(fail === 0 ? `\n✓ 聊天刷新阅读位置回归全部通过（${total} 项断言）` : `\n✗ 失败 ${fail} 项（共 ${total} 项断言）`);

@@ -12,6 +12,8 @@ const supported=async({user})=>({items:JSON.parse(user).claims.map(c=>({id:c.id,
 const check=async(catalog,text=reply,claims=[claim(catalog,text)],model=supported)=>validateEvidenceClaims(text,catalog,{claims,assessment:await assessEvidenceClaims(text,catalog,claims,model)});
 assert.equal(cat.entries[0].id,sourceId(row(quote)));
 assert.equal((await check(cat)).grounded.length,1);
+const overcount='这两份资料记载北京到阿拉木图开通直飞，本次日期仍待确认。';
+assert.equal((await check(cat,overcount,[claim(cat,overcount)])).grounded.length,0,'一份来源不能写成两份资料');
 assert.equal(validateEvidenceClaims(reply,cat,{claims:[claim()]}).grounded.length,0,'引用及原句存在不等于语义已核对');
 for(const source of [row('阿拉木图国际机场位于哈萨克斯坦。',{title:'阿拉木图国际机场介绍'}),row('北京到阿拉木图尚未开通直飞。'),row('请问有人知道吗？',{title:'北京到阿拉木图有直飞吗？'}),row('Does Beijing have direct flights to Almaty?'),row(quote,{kind:'experience'}),row(quote,{allowed_use:'software_reference'}),row(quote,{relevance:{decision:'uncertain'}})]){
   const c=make([source]);let called=0;

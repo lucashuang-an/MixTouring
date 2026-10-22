@@ -689,14 +689,34 @@
       document.getElementById('btnParse').disabled=conversationBusy || planning || routeResearch.isPending(true) || !input.value.trim();
       input.style.height='auto';input.style.height=Math.min(input.scrollHeight,160)+'px';
     }
-    function sourceCards(sources) {
+    function sourceCards(sources,historical) {
       var items=(sources || []).filter(function(s,i,all){return all.findIndex(function(x){return x.url===s.url;})===i;}).map(function(s){
         var url;try{url=new URL(s.url);}catch(e){return '';}
         if(!/^https?:$/.test(url.protocol))return '';
         var platform=s.platform || url.hostname.replace(/^www\./,''),kind={experience:'旅行体验',guide:'旅行资料',official:'官方资料'}[s.kind] || '旅行资料';
-        return '<a class="source-card" href="'+MT.esc(url.href)+'" target="_blank" rel="noopener noreferrer"><span class="source-meta">'+MT.esc(platform)+'<span aria-hidden="true"> · </span>'+kind+'</span><span class="source-title">'+MT.esc(s.title || platform)+'</span><span class="source-meta">'+MT.esc(s.temporal?'检索时：'+s.temporal.label+' · '+(s.temporal.published_at || '发布日期未明')+(s.date_basis==='search_index'?'（索引日期）':''):'历史会话引用，时效未复核')+' · '+MT.esc(s.read_status==='page_excerpt'?'网页摘录':'搜索摘要／目录资料')+'</span><span class="source-arrow" aria-hidden="true">↗</span></a>';
+        return '<a class="source-card" href="'+MT.esc(url.href)+'" target="_blank" rel="noopener noreferrer"><span class="source-meta">'+MT.esc(platform)+'<span aria-hidden="true"> · </span>'+kind+'</span><span class="source-title">'+MT.esc(s.title || platform)+'</span><span class="source-meta">'+MT.esc(historical?'此前回答的出处，当前时效未复核':s.temporal?'检索时：'+s.temporal.label+' · '+(s.temporal.published_at || '发布日期未明')+(s.date_basis==='search_index'?'（索引日期）':''):'历史会话引用，时效未复核')+' · '+MT.esc(s.read_status==='page_excerpt'?'网页摘录':'搜索摘要／目录资料')+'</span><span class="source-arrow" aria-hidden="true">↗</span></a>';
       }).filter(Boolean);
       return items.length?'<details class="source-details"><summary>参考资料<span class="source-count">'+items.length+'</span></summary><div class="source-list">'+items.join('')+'</div></details>':'';
+    }
+    function historicalMessages(messages) {
+      return (messages || []).map(function(m){return m.role==='assistant' && ((m.sources || []).length || (m.evidence_claims || []).length)?Object.assign({},m,{evidence_historical:true}):m;});
+    }
+    function claimEvidence(message) {
+      var claims=Array.isArray(message.evidence_claims)?message.evidence_claims:[],sources=message.sources || [];
+      var entries=claims.map(function(claim){
+        var supports=(claim.supports || []).map(function(support){
+          var source=sources.find(function(item){return item.id===support.source_id;});if(!source)return '';
+          var url;try{url=new URL(source.url);}catch(e){return '';}
+          if(url.protocol!=='https:')return '';
+          return '<p class="claim-quote">“'+MT.esc(support.quote)+'” <a href="'+MT.esc(url.href)+'" target="_blank" rel="noopener noreferrer">'+MT.esc(source.title || url.hostname)+' ↗</a></p>';
+        }).filter(Boolean);
+        if(!supports.length)return '';
+        return '<div class="claim-item"><p>'+MT.esc({source_reference:'资料记载',travel_experience:'旅行者经验',conflict:'资料说法不一',inference:'探索判断'}[claim.allowed_use] || '资料依据')+' · '+MT.esc(claim.sentence)+'</p>'+supports.join('')+'</div>';
+      }).filter(Boolean);
+      var used=new Set(claims.flatMap(function(c){return (c.supports || []).map(function(s){return s.source_id;});}));
+      var inferences=(message.evidence_inferences || []).map(function(value){return '<p class="claim-inference">探索判断 · '+MT.esc(value)+'</p>';}).join('');
+      return (entries.length?'<details class="source-details claim-details"><summary>'+(message.evidence_historical?'此前回答的出处 · 时效需重查':'结论与出处')+'<span class="source-count">'+entries.length+'</span></summary>'+entries.join('')+'</details>':'')+inferences+
+        sourceCards(sources.filter(function(s){return !s.id || !used.has(s.id);}),message.evidence_historical);
     }
     function versionSnapshot(version) {
       return guideUndo.slice().reverse().find(function(s){return s.conversation && s.conversation.revision===version.revision && JSON.stringify(s.conversation.draft)===JSON.stringify(version.draft);});
@@ -744,7 +764,7 @@
       document.getElementById('entryCard').hidden=true;
       document.getElementById('entryLabel').hidden=true;
       var experienceRoute=conversation?.draft?.route || [],currentExperiences=experienceRoute.slice(1).flatMap(function(to,i){var r=transportSearchCache.get(liveTransportKey(experienceRoute[i],to));return r && Date.now()-Date.parse(r.retrieved_at)<900000?r.experiences || []:[];});
-      area.innerHTML='<div class="conversation-heading"><span class="assistant-mark" aria-hidden="true">✳</span><div><h2>一起规划这趟旅行</h2><p>聊想法，也聊每一步的取舍</p></div></div><div class="guide-messages" aria-live="polite">'+(currentExperiences.length?'<div class="message-row message-assistant experience-row"><span class="message-author">本次查到的旅行者经验</span>'+sourceCards(currentExperiences)+'</div>':'')+guideMessages.slice(-12).map(function(m,i){return '<div class="message-row '+(m.role==='user'?'message-user':'message-assistant')+'" data-mid="'+m.mid+'"><span class="message-author">'+(m.role==='user'?'你':'MixTouring')+'</span><p style="white-space:pre-wrap" class="guide-message '+(m.role==='user'?'guide-user':'')+'">'+MT.esc(m.text)+'</p>'+versionCard(m,Math.max(0,guideMessages.length-12)+i)+sourceCards(m.sources)+'</div>';}).join('')+'</div>'+
+      area.innerHTML='<div class="conversation-heading"><span class="assistant-mark" aria-hidden="true">✳</span><div><h2>一起规划这趟旅行</h2><p>聊想法，也聊每一步的取舍</p></div></div><div class="guide-messages" aria-live="polite">'+(currentExperiences.length?'<div class="message-row message-assistant experience-row"><span class="message-author">本次查到的旅行者经验</span>'+sourceCards(currentExperiences)+'</div>':'')+guideMessages.slice(-12).map(function(m,i){return '<div class="message-row '+(m.role==='user'?'message-user':'message-assistant')+'" data-mid="'+m.mid+'"><span class="message-author">'+(m.role==='user'?'你':'MixTouring')+'</span><p style="white-space:pre-wrap" class="guide-message '+(m.role==='user'?'guide-user':'')+'">'+MT.esc(m.text)+'</p>'+versionCard(m,Math.max(0,guideMessages.length-12)+i)+claimEvidence(m)+'</div>';}).join('')+'</div>'+
         (conversationBusy || typeof routeResearch!=='undefined' && routeResearch.isPending()?'<p class="conversation-status" role="status"><span class="thinking-dot" aria-hidden="true"></span>'+(actionLabel())+'</p>':'')+
         (conversationError?'<p class="conversation-status" role="status">'+MT.esc(conversationError.message)+'</p>':'');
       area.appendChild(composer);input.placeholder='继续聊聊你的想法…';
@@ -857,7 +877,7 @@
         if(data.research_update){researchScope=data.research_update.scope;pruneTransportResults(researchScope);}
         var newDraft=conversation.preview?.draft || conversation.draft;
         var hasNewVersion=newDraft && (JSON.stringify(conversation.preview)!==JSON.stringify(previous.conversation?.preview || null) || conversation.revision!==previous.conversation?.revision);
-        guideMessages.push({role:'assistant',text:data.reply,sources:data.sources || [],version:hasNewVersion?{revision:conversation.revision,preview:!!conversation.preview,draft:newDraft,changes:MTRouteWorkspace.changes(previous.conversation?.draft,newDraft)}:null});
+        guideMessages.push({role:'assistant',text:data.reply,sources:data.sources || [],evidence_claims:data.evidence_claims || [],evidence_inferences:data.evidence_inferences || [],version:hasNewVersion?{revision:conversation.revision,preview:!!conversation.preview,draft:newDraft,changes:MTRouteWorkspace.changes(previous.conversation?.draft,newDraft)}:null});
         var routing=conversation.routing || {};
         var oldOrigin=previous.conversation && previous.conversation.routing && previous.conversation.routing.origin || previous.request.origin;
         var oldDestination=previous.conversation && previous.conversation.routing && previous.conversation.routing.destination || previous.request.destination;
@@ -973,7 +993,7 @@
       lastRequest = JSON.parse(JSON.stringify(saved.request));
       conversation = saved.conversation || null;
       researchScope=saved.research_scope || null;researchTasks=saved.research_tasks?Object.assign({},saved.research_tasks,{scope_key:null}):null;researchHydrationKey=null;
-      guideState = MTGuide.clean(saved.preferences); guideMessages = saved.messages || []; guideProposal = null;
+      guideState = MTGuide.clean(saved.preferences); guideMessages = historicalMessages(saved.messages); guideProposal = null;
       if (Array.isArray(saved.history)) guideUndo = saved.history.slice(-20);
       fillTravel(saved.travel); restoreConstraintSnapshot(saved.constraints);
       MTSights.restore(saved.sights);
@@ -1218,7 +1238,7 @@
         conversation = saved.conversation || null;
         researchScope=saved.research_scope || null;researchTasks=saved.research_tasks?Object.assign({},saved.research_tasks,{scope_key:null}):null;researchHydrationKey=null;
         guideState = MTGuide.clean(saved.preferences);
-        guideMessages = saved.messages || [{ role: 'user', text: text || (from + '去' + to) }];
+        guideMessages = historicalMessages(saved.messages || [{ role: 'user', text: text || (from + '去' + to) }]);
         guideUndo = Array.isArray(saved.history) ? saved.history.slice(-20) : [];
         if (saved.travel && saved.travel.arrival_window) arrivalWindow = saved.travel.arrival_window;
         if (saved.candidate && saved.candidate.route_key) pendingRestore.candidate_key = saved.candidate.route_key;
@@ -1550,7 +1570,7 @@
       MTSights.restore(rev.sights);
       lastRequest = JSON.parse(JSON.stringify(rev.request));
       conversation = rev.conversation || null;
-      guideState = MTGuide.clean(rev.preferences); guideMessages = rev.messages || [];
+      guideState = MTGuide.clean(rev.preferences); guideMessages = historicalMessages(rev.messages);
       arrivalWindow = rev.travel.arrival_window || null;
       confirmedPlaces = Object.assign({}, rev.confirmed);
       document.getElementById('fromInput').value = rev.request.origin || '';

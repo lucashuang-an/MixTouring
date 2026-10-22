@@ -31,6 +31,11 @@
 .trip-page .source-details[open] summary::before { transform:rotate(90deg); }
 .trip-page .source-count { color:#686D75;font-size:11px; }
 .trip-page .source-list { display:grid;gap:8px; }
+.trip-page .claim-item { padding:12px 14px;margin:0 0 8px;border:1px solid var(--mixtouring-border);border-radius:var(--mixtouring-radius-md,16px);background:var(--mixtouring-card);overflow-wrap:anywhere; }
+.trip-page .claim-item p { margin:0 0 6px; }
+.trip-page .claim-quote { color:#68514B;font-size:12px; }
+.trip-page .claim-quote a { color:#82503F; }
+.trip-page .claim-inference { margin:4px 0 14px;padding:8px 12px;border-left:2px solid var(--mixtouring-ring);color:#68514B;font-size:12px; }
 .trip-page #guideArea .source-card { position:relative;display:flex;flex-direction:column;gap:5px;min-height:64px;box-sizing:border-box;padding:12px 36px 12px 14px;border:1px solid var(--mixtouring-border);border-radius:var(--mixtouring-radius-md,16px);background:var(--mixtouring-card);color:var(--mixtouring-foreground);text-decoration:none;transition:border-color .15s,background .15s; }
 .trip-page #guideArea .source-card:visited { color:var(--mixtouring-foreground); }
 .trip-page #guideArea .source-card:hover { border-color:var(--mixtouring-ring);background:#FCF6F2; }
