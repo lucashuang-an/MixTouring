@@ -1,6 +1,6 @@
 /* R1-B 底座复审回归：原始反例、合法放行、真实目录形状及核对失败边界。 */
 import assert from 'node:assert/strict';
-import {buildEvidenceCatalog,validateEvidenceClaims,isQuestionSource,textDirection,assessEvidenceClaims} from './lib/evidence-grounding.mjs';
+import {buildEvidenceCatalog,validateEvidenceClaims,isQuestionSource,textDirection,assessEvidenceClaims,operationalAssertions} from './lib/evidence-grounding.mjs';
 import {buildContext} from './lib/context-builder.mjs';
 import {sourceId} from './lib/source-relevance.mjs';
 const now=Date.parse('2026-10-22T00:00:00Z'),routing={origin:'北京',destination:'阿拉木图'};
@@ -44,6 +44,17 @@ console.log('✓ 交通复核期、历史窗、估计日期和原状态不可升
 
 for(const text of ['目前无法确认是否有直飞，班车也仍待核实。','没有直飞，班车尚未恢复运行。','如果开通直飞，可以再比较。','Are there direct flights?','Direct flights are unconfirmed.','可以先探索市区，再确认交通。'])assert.equal(validateEvidenceClaims(text,{entries:[]}).rejected.length,0,text);
 for(const text of ['无法确认票价，但北京到阿拉木图有直飞。','是否有直飞？北京到阿拉木图每天发车。'])assert.ok(validateEvidenceClaims(text,{entries:[]}).rejected.length);
+for(const text of ['北京到阿拉木图有航班。','北京到阿拉木图每天都有航班。','北京到阿拉木图有直达列车。','北京到阿拉木图有直飞但班车未确认。','北京到阿拉木图有航班但是列车待查。','北京到阿拉木图未开通直飞但有航班。']){
+  assert.equal(operationalAssertions(text).length,1,text);
+  assert.ok(validateEvidenceClaims(text,{entries:[]}).rejected.length,'未交结构化支持也必须拦截：'+text);
+}
+for(const text of ['北京到阿拉木图未开通直飞。','北京到阿拉木图未恢复航班。','北京到阿拉木图无直飞。','北京到阿拉木图未开通直飞但班车也待查。']){
+  assert.equal(operationalAssertions(text).length,0,text);
+  assert.equal(validateEvidenceClaims(text,{entries:[]}).rejected.length,0,'诚实否定无需证据支持：'+text);
+}
+const trainQuote='北京到阿拉木图有直达列车。',trainCatalog=make([row(trainQuote)]);
+const trainReply='来源记载北京到阿拉木图有直达列车，本次日期仍待确认。';
+assert.equal((await check(trainCatalog,trainReply,[claim(trainCatalog,trainReply)])).grounded.length,1,'新识别的合法参考仍能通过');
 const experience=make([row('我在大阪散步很愉快。',{kind:'experience'})],{retrieval:{purpose:'experience'}}),experienceText='该旅行者记录了在大阪散步的愉快体验。';
 assert.equal((await check(experience,experienceText,[{...claim(experience,experienceText),allowed_use:'travel_experience'}])).grounded.length,1);
 console.log('✓ 否定、疑问、假设、转折和有出处经验正常表达通过');
