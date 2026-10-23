@@ -24,6 +24,35 @@ const page=extractPublicPage('<html><head><meta property="article:published_time
 assert.equal(page.published_at,'2023-08-03');assert.equal(page.updated_at,'2026-10-15');assert.ok(!page.excerpt.includes('2026-10-15'));
 assert.equal(extractPublicPage('<body><article>'+body+'</article><footer>2026-10-15</footer></body>').published_at,null,'页脚年份不是发布日期');
 assert.equal(extractPublicPage('<script type="application/ld+json">{"@type":"BlogPosting","datePublished":"2026-09-30"}</script><article>'+body+'</article>').published_at,'2026-09-30');
+const newsTime='<main><header class="page-title"><span class="category">NEWS</span><time class="date" datetime="2026-10-16">2026.10.16</time><h1>铁路服务调整</h1></header><section>'+body+'</section></main>';
+assert.equal(extractPublicPage(newsTime).published_at,'2026-10-16','文章标题前的官方NEWS时间可作发布日期');
+assert.equal(extractPublicPage('<main><div class="content-display--time"><time class="posted-date" datetime="2026/10/16">2026/10/16</time></div><h1>服务公告</h1><p>'+body+'</p></main>').published_at,'2026-10-16','posted-date的斜杠日期也可确认为发布日期');
+assert.equal(extractPublicPage('<main><h1>景区活动</h1><p>'+body+'</p><time datetime="2026-10-16">活动日期</time></main>').published_at,null,'正文活动日期不能冒充发布日期');
+assert.equal(extractPublicPage('<main><header><span>NEWS</span><time datetime="2026-10-16">更新</time><h1>新闻列表</h1></header><p>'+body+'</p></main><footer><time datetime="2026-10-22">页脚</time></footer>').published_at,'2026-10-16');
+const noticeUrl='https://line-shinkansen.jr-central.co.jp/topics/info_00021.html';
+const estimateOnly={title:'官方铁路价格改定公告',link:noticeUrl,content:'铁路公告讨论未来价格调整与适用日期。'.repeat(4),date:null,date_basis:'provider_estimate',estimated_date:'2026-10-22'};
+const noticeNow=Date.parse('2026-10-23T02:00:00Z');
+const datedNotice=await collectTravelSources({destination:'大阪',purpose:'guide'},async()=>[estimateOnly],{now:noticeNow,useCache:false,
+  readPage:async url=>({...extractPublicPage(newsTime),url})});
+assert.equal(datedNotice.sources.length,1);assert.equal(datedNotice.sources[0].published_at,'2026-10-16');
+assert.equal(datedNotice.sources[0].date_basis,'page_metadata','原文NEWS日期与服务估计日期必须分开');
+assert.equal(datedNotice.sources[0].temporal.date_scope,'unverified','近期发布不代表具体行程日期已被覆盖');
+const unverifiedNotice=await collectTravelSources({destination:'大阪',purpose:'guide'},async()=>[estimateOnly],{now:noticeNow,useCache:false,readPage:async()=>({read_status:'unavailable'})});
+assert.equal(unverifiedNotice.sources.length,0);assert.equal(unverifiedNotice.archive.length,1,'未读到原文时服务估计日期不能续期');
+let directReads=0;
+const directNotice=await collectTravelSources({destination:'大阪',question:'请核对这个公开原文 '+noticeUrl,purpose:'guide'},async()=>[],{now:noticeNow,useCache:false,
+  readPage:async url=>{directReads++;return {...extractPublicPage(newsTime),url};}});
+assert.equal(directReads,1,'用户指定网页占用普通读取预算，不重复读取');
+assert.equal(directNotice.sources.length,1);assert.equal(directNotice.sources[0].published_at,'2026-10-16');
+assert.equal(directNotice.channels.at(-1).status,'found');
+assert.equal(directNotice.query_diagnostics.at(-1).accepted_count,1);
+const redirected=await collectTravelSources({destination:'大阪',question:'请核对 '+noticeUrl,purpose:'guide'},async()=>[],{now:noticeNow,useCache:false,
+  readPage:async()=>({...extractPublicPage(newsTime),url:'https://example.com/other-article'})});
+assert.equal(redirected.sources.length,0);assert.equal(redirected.query_diagnostics.at(-1).rejected_count,1,'跳到另一文章不能冒充用户指定原文');
+let unsafeReads=0;
+const unsafeDirect=await collectTravelSources({destination:'大阪',question:'请打开 http://127.0.0.1/private',purpose:'guide'},async()=>[],{now:noticeNow,useCache:false,
+  readPage:async()=>{unsafeReads++;return {read_status:'page_excerpt',excerpt:body};}});
+assert.equal(unsafeReads,0);assert.equal(unsafeDirect.sources.length,0,'非公开地址不会进入读取器');
 assert.throws(()=>extractPublicPage('<title>Just a moment...</title><form id="challenge-form">验证</form>'));
 assert.throws(()=>extractPublicPage('<title>Sign in</title><input type="password"><article>'+body+'</article>'));
 for(const value of ['http://localhost/','http://127.0.0.1/','http://user:pass@example.com/','file:///server/.env','https://example.com:3000/'])assert.throws(()=>publicUrl(value));

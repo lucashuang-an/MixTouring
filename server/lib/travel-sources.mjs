@@ -1,6 +1,7 @@
 /* 旅行经验与目的地资料并行检索；平台归属依据真实 URL，不由模型指定。 */
 import {retrievalContext,partitionTimedSources,sourceDay,assessSourceTime} from './source-time.mjs';
 import {RELEVANCE_VERSION,sourceId,sourceRule} from './source-relevance.mjs';
+import {publicUrl} from './public-reader.mjs';
 const cache=new Map();
 const hostIs=(host,domain)=>host===domain || host.endsWith('.'+domain);
 export const articleIdentity=url=>{try{const x=new URL(url);x.hash='';for(const k of [...x.searchParams.keys()])if(/^utm_|^(spm|share_source|share_from)$/i.test(k))x.searchParams.delete(k);return x.host.replace(/^www\./,'')+x.pathname.replace(/\/$/,'')+x.search;}catch{return url;}};
@@ -44,6 +45,8 @@ export async function collectTravelSources({destination='',query='',question='',
   const since=new Date(Date.parse(temporal.today+'T00:00:00Z')-temporal.max_age_days*86400000).toISOString().slice(0,10);
   const stamp=' after:'+since+(temporal.target_window?' '+temporal.target_window.replaceAll(' ',''):' before:'+temporal.today);
   const task={destination:String(destination).trim(),query:String(query).trim(),question:String(question).trim().slice(0,2000),foreignQuery:String(foreignQuery).trim(),purpose,international:!!international};
+  const directUrls=[...task.question.matchAll(/https?:\/\/[^\s<>"'（）()]+/gi)].map(m=>m[0].replace(/[.,，。!?！？;；]+$/,''))
+    .map(value=>{try{return publicUrl(value).href;}catch{return null;}}).filter(Boolean).filter((value,i,all)=>all.indexOf(value)===i).slice(0,2);
   const topic=task.query || destination+' 旅行';
   const aliases={'北京':'Beijing','乌鲁木齐':'Urumqi','伊宁':'Yining','阿拉木图':'Almaty','霍尔果斯':'Khorgos'};
   const english=String(foreignQuery || topic).replace(/北京|乌鲁木齐|伊宁|阿拉木图|霍尔果斯/g,x=>aliases[x]);
@@ -54,10 +57,10 @@ export async function collectTravelSources({destination='',query='',question='',
   const themeWords = purpose === 'transport' ? '交通 班车 班次' : purpose === 'guide' ? '官方 交通 开放 攻略' : '旅行 乘车 游记';
   // 国际体验可查海外社区；交通／官方资料始终保留开放查询，不让域限制排除运营方。
   const communityKinds = ['experience', 'guide'];
-  const language=text=>/[\u3400-\u9fff]/.test(text)?'zh':'en';
+  const language=text=>/[\u3040-\u30ff]/.test(text) || /[\u3400-\u9fff]/.test(text) && /\bsite:[^\s]+\.jp(?:\s|$)/i.test(text)?'ja':/[\u3400-\u9fff]/.test(text)?'zh':'en';
   const officialTopic=international?english:topic;
   const officialPlan = { channel: '官方与目的地资料', domains: null, language:language(officialTopic), kinds: ['official', 'guide'],
-    base:officialTopic,suffix:language(officialTopic)==='zh'?'官方 '+(purpose==='transport'?'交通 班次':'开放 最新'):'official '+(purpose==='transport'?'transport schedule':'visitor information') };
+    base:officialTopic,suffix:language(officialTopic)==='ja'?'公式 '+(purpose==='transport'?'時刻表':'案内'):language(officialTopic)==='zh'?'官方 '+(purpose==='transport'?'交通 班次':'开放 最新'):'official '+(purpose==='transport'?'transport schedule':'visitor information') };
   const fit=(value,limit)=>{const text=String(value || '').trim();if(text.length<=limit)return text;
     const headSize=Math.ceil((limit-1)/2),tailSize=Math.floor((limit-1)/2),left=text.slice(0,headSize),right=text.slice(-tailSize);
     // 英文不在词中间截断；无空格的中文长题仍保留头尾与本轮关键尾词。
@@ -106,11 +109,18 @@ export async function collectTravelSources({destination='',query='',question='',
     queryDiagnostics.push({query:plan.text,raw_count:results.length,domain_hit_count:domainHits.length});
     channels.push({channel:plan.channel,status:item.status==='fulfilled' && Array.isArray(item.value)?'empty':'unavailable',query:plan.text});
   });
+  if(directUrls.length){
+    const entries=directUrls.map(url=>{const existing=seen.get(url);if(existing){existing.direct_input=true;return {source:existing,duplicate:true};}
+      const source=cleanResult({link:url,title:new URL(url).hostname,content:''},now);if(!source)return {reason:'invalid_source'};
+      source.direct_input=true;seen.set(source.url,source);pool.unshift(source);return {source};});
+    queryEntries.push(entries);queryDiagnostics.push({query:'用户指定公开网页',raw_count:entries.length,domain_hit_count:entries.length});
+    channels.push({channel:'用户指定公开网页',status:'empty',query:'用户明确提供的公开地址'});
+  }
   const candidates=partitionTimedSources(pool,temporal);
   // 少量读取日期不明或近期结果的原文，不触碰登录态，不把验证页当正文。
   const experienceCandidates=partitionTimedSources(pool.filter(s=>s.kind==='experience'),retrievalContext({travel,window,purpose:'experience',now})).current;
   const readable=candidates.current.concat(experienceCandidates,candidates.archive.filter(s=>s.temporal.state==='undated'));
-  const targets=[readable.find(s=>s.kind==='official'),...readable.filter(s=>s.kind==='experience').slice(0,2),...readable].filter((s,i,all)=>s && all.findIndex(x=>x?.url===s.url)===i).slice(0,2);
+  const targets=[...readable.filter(s=>s.direct_input),readable.find(s=>s.kind==='official'),...readable.filter(s=>s.kind==='experience').slice(0,2),...readable].filter((s,i,all)=>s && all.findIndex(x=>x?.url===s.url)===i).slice(0,2);
   /* #32：取消后不再启动原文读取；已取消的读取按失败处理，不写入缓存 */
   const reads=!readPage?[]:await Promise.allSettled(targets.map(s=>signal?.aborted?Promise.reject(Object.assign(Error('已取消'),{name:'AbortError'})):readPage(s.url,{timeoutMs:5500,signal})));
   /* 复审二轮：读取阶段被取消（部分读取已成功）同样不产出可用结果 */
@@ -138,6 +148,7 @@ export async function collectTravelSources({destination='',query='',question='',
   // 原文合并后再审查，避免搜索摘要的导航噪声或截断掩盖推广／跑题内容。
   const decisions=new Map(),relevance={version:RELEVANCE_VERSION,status:'rules_only',reviewed:0,kept:0,rejected:0,uncertain:0};
   if(!queryPlans){
+    for(const source of pool)if(source.direct_input && source.read_status!=='page_excerpt')decisions.set(source.url,{decision:'reject',reason:'direct_read_failed',stage:'reader'});
     for(const source of pool){const rule=sourceRule(task,source);if(rule?.kind){source.kind=rule.kind;source.allowed_use=rule.reason;}if(rule?.decision==='reject')decisions.set(source.url,rule);}
     const experienceScope=retrievalContext({travel,window,purpose:'experience',now});
     const eligible=pool.filter(s=>!decisions.has(s.url) && ['recent','window_reference','undated'].includes(assessSourceTime(s,s.kind==='experience'?experienceScope:temporal).state));

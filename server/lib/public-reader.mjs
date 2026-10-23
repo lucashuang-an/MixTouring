@@ -31,6 +31,16 @@ export function extractPublicPage(html){
     try{const walk=(v,depth=0)=>{if(depth>8 || !v || typeof v!=='object')return;if(['NewsArticle','Article','BlogPosting'].includes(v['@type'])){published ||=sourceDay(v.datePublished);updated ||=sourceDay(v.dateModified);}for(const item of Object.values(v))if(item && typeof item==='object')Array.isArray(item)?item.forEach(x=>walk(x,depth+1)):walk(item,depth+1);};walk(JSON.parse(block[1]));}catch{}
   }
   const body=html.match(/<(?:article|main)\b[^>]*>([\s\S]*?)<\/(?:article|main)>/i)?.[1] || html.match(/<body\b[^>]*>([\s\S]*?)<\/body>/i)?.[1] || html;
+  // 部分官方公告把发布日期放在文章标题前的 <time datetime>，而非 meta。
+  // 只接受正文前部、NEWS 类文章页眉且紧邻标题的时间，避免活动日/车次日被当成发布日期。
+  if(!published)for(const match of body.slice(0,4000).matchAll(/<time\b[^>]*>/gi)){
+    const attr=Object.fromEntries([...match[0].matchAll(/([\w:-]+)\s*=\s*["']([^"']*)["']/g)].map(m=>[m[1].toLowerCase(),m[2]]));
+    const date=sourceDay(attr.datetime),explicit=/\b(?:posted|publish(?:ed)?|pub)[-_]?date\b/i.test(attr.class || '') || /datepublished/i.test(attr.itemprop || '');
+    const before=body.slice(Math.max(0,match.index-400),match.index),after=body.slice(match.index+match[0].length,match.index+match[0].length+500);
+    if(date && (explicit || /<header\b/i.test(before) && /(?:NEWS|ニュース|記事|公開|掲載|投稿日|Published)/i.test(before) && /<h1\b/i.test(after))){
+      published=date;break;
+    }
+  }
   const content=plain(body);if(content.length<60)throw Error('未取得可读正文');
   published ||=sourceDay(content.slice(0,1200).match(/(?:发布时间|发布日期|发布于|Published on)[：:\s]*(\d{4}[-年/]\d{1,2}[-月/]\d{1,2}(?:日)?)/i)?.[1]);
   return {title:plain(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || '').slice(0,160),excerpt:content.slice(0,6000),published_at:published,updated_at:updated,read_status:'page_excerpt',truncated:content.length>6000};

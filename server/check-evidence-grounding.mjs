@@ -50,6 +50,7 @@ for(const text of ['北京到阿拉木图有航班。','北京到阿拉木图每
   assert.equal(operationalAssertions(text).length,1,text);
   assert.ok(validateEvidenceClaims(text,{entries:[]}).rejected.length,'未交结构化支持也必须拦截：'+text);
 }
+assert.equal(validateEvidenceClaims('方向上可优先按成都东—昆明南直达高铁去查。',{entries:[]}).rejected.length,1,'未标注的直达高铁方向不能伪装成确定连接');
 for(const text of ['北京到阿拉木图未开通直飞。','北京到阿拉木图未恢复航班。','北京到阿拉木图无直飞。','北京到阿拉木图未开通直飞但班车也待查。']){
   assert.equal(operationalAssertions(text).length,0,text);
   assert.equal(validateEvidenceClaims(text,{entries:[]}).rejected.length,0,'诚实否定无需证据支持：'+text);

@@ -20,6 +20,8 @@ calls=[];await collectTravelSources({...task,query:'前置共同条件'.repeat(1
 calls=[];await collectTravelSources({...task,purpose:'transport',query:'Almaty Shymbulak public transport access'},search,opts);
 assert.equal(calls.length,2);assert.ok(calls.some(c=>c.domains===null && c.q.includes('public transport access')),'官方查询不得截断用户主题词');
 assert.ok(calls.every(c=>!c.q.includes('transpor cess')),'英文查询不把单词拼接成无效词');
+calls=[];await collectTravelSources({destination:'大阪',international:true,purpose:'guide',query:'site:line-shinkansen.jr-central.co.jp エクスプレス予約 価格改定'},search,opts);
+assert.ok(calls.some(c=>c.domains===null && c.language==='ja' && c.q.includes('公式')),'日文官网查询保留日语词与语言偏好');
 const model=async({user})=>{const {candidates}=JSON.parse(user);return {items:candidates.map(c=>({id:c.id,decision:/越南|露营/.test(c.title)?'reject':'keep',reason:'依据任务和正文内容判断',quote:c.title}))};};
 const assessSources=relevanceReviewer(model),good=row('osaka','日本关西独旅攻略','大阪地铁与无车旅行体验'),other=row('vietnam','越南独旅行程'),camp=row('camp','北京周边露营攻略');
 const related=await collectTravelSources({destination:'大阪',query:'大阪无车体验'},async()=>[good,other,camp],{...opts,assessSources});
