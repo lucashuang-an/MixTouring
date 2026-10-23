@@ -166,6 +166,8 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
     }
     const built=buildContext({payload,coreRules:opts.schema_prompt,
       rulesVersion:'v0.60.5',budgetChars:deps.contextBudgetChars});
+    if(evidenceReview && ['conversation','conversation_review','conversation_scope','conversation_schedule'].includes(opts.kind) && built.value.evidence_catalog)
+      context.evidence_catalog=structuredClone(built.value.evidence_catalog);
     return (deps.model || composeJson)({...opts,user:JSON.stringify(built.value),signal,onUsage:deps.onModelUsage});
   };
   // 注入模型的旧确定性回归不额外触发付费调用；真实编排默认执行，回放可显式开启。
@@ -233,8 +235,12 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
       explanation:c.explanation, basis:c.basis })),
     destination_material: guides[destination] || null,
     sight_material: /伊宁|伊犁/.test(destination || '') ? sightCatalog() : null };
-  function numericCatalog(){return buildNumericCatalog({sources:[...context.search_results || [],...context.visible_search_results || []],
-    transport:context.transport_references || [],retrieval:context.retrieval || retrievalContext({travel:context.current.travel,now:deps.now || Date.now()}),now:deps.now || Date.now()});}
+  function numericCatalog(){
+    const catalog=buildNumericCatalog({sources:[...context.search_results || [],...context.visible_search_results || []],
+      transport:context.transport_references || [],retrieval:context.retrieval || retrievalContext({travel:context.current.travel,now:deps.now || Date.now()}),now:deps.now || Date.now()});
+    return !evidenceReview || !context.evidence_catalog?catalog:catalog.filter(f=>context.evidence_catalog.entries.some(e=>
+      e.url===f.source_url && [e.title,e.excerpt].some(t=>t?.includes(f.evidence_quote))));
+  }
   /* M1：决策索引（当前条目供理由引用）与有效摘要注入；清单是派生物，只进 prompt 不进保存状态 */
   const validSummaries = workingSummaries.items.filter(s => s.condition_hash === fingerprint);
   context.decision_index = decisionIndexForPrompt(before.memory,userMessages);
@@ -499,7 +505,6 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
       .concat(sources).filter((s,i,a)=>a.findIndex(x=>x.url===s.url)===i).slice(0,8);
     let evidenceResult=null;
     if(evidenceReview){
-      if(citedFacts.length)context.evidence_catalog=buildEvidenceCatalog({sources,routing:next.routing,retrieval:context.retrieval,travel:retrievalTravel,now:deps.now || Date.now()});
       if(context.source_relevance?.status==='partial' || context.source_channels?.some(c=>c.status==='unavailable')){
         raw.reply=raw.reply.replace(/[^。！？!?\n]*?(?:没有(?:查到|找到|检索到|匹配到)|查无|未搜到|暂无(?:匹配|资料|攻略))[^。！？!?\n]*[。！？!?]?/g,'部分候选尚未核对，不能据此判断资料是否存在。');
       }
@@ -508,15 +513,16 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
       if(evidenceResult.status==='unavailable')throw Error('结论证据核对未完成');
       raw.reply=evidenceResult.reply;
       draft=evidenceResult.draft;
-      sources=evidenceResult.sources.concat(citedFacts.map(f=>sources.find(s=>s.url===f.source_url)).filter(Boolean))
+      const checkedNumbers=checkNumbers({reply:raw.reply,draft});
+      if(checkedNumbers.rejected.length)throw Error('证据核对后出现无依据数字');
+      sources=evidenceResult.sources.concat(checkedNumbers.grounded.map(f=>sources.find(s=>s.url===f.source_url)).filter(Boolean))
         .filter((s,i,a)=>a.findIndex(x=>x.url===s.url)===i).slice(0,8);
-      if(checkNumbers({reply:raw.reply,draft}).rejected.length)throw Error('证据核对后出现无依据数字');
     }
     const preferenceWrite=await preferenceMemoryResult(raw);
     if(action==='chat' && raw.intent_action==='preview' && before.draft && draft && !changedDestination){
       /* M02：预览内的记忆增量随采纳一起提交、丢弃一起删除——候选挂 preview，此处不提交 */
       return {status:'ok',engine:'llm',reply:'先看看这份备选预览，当前安排还未改动。'+str(raw.reply),conversation:{...before,summaries:workingSummaries,preview:{draft,brief:next.brief,patch,requirements:next.requirements,base_revision:before.revision,base_signature:conditionSignature(input),selected_candidate_id:selected?.id || null,memory_candidates:memoryCandidates.accepted,memory_evidence_refs:[...new Set(memoryCandidates.accepted.flatMap(c=>c.evidence_refs))]}},
-        patch:cleanPatch(),sources,historical_sources:historicalSources,evidence_claims:evidenceResult?.claims || [],evidence_inferences:evidenceResult?.inferences || [],numeric_grounding:numericGrounding.grounded,request_generation:false,selected_candidate_id:null,
+        patch:cleanPatch(),sources,historical_sources:historicalSources,evidence_claims:evidenceResult?.claims || [],evidence_inferences:evidenceResult?.inferences || [],numeric_grounding:checkNumbers({reply:raw.reply,draft}).grounded,request_generation:false,selected_candidate_id:null,
         preference_memory_upserts:preferenceWrite.upserts,preference_memory_context:preferenceWrite.context,preference_memory_notice:preferenceWrite.notice};
     }
     if (action === 'generate' || (before.draft && draft && !changedDestination)) {

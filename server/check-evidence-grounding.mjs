@@ -88,6 +88,9 @@ const trainReply='来源记载北京到阿拉木图有直达列车，本次日�
 assert.equal((await check(trainCatalog,trainReply,[claim(trainCatalog,trainReply)])).grounded.length,1,'新识别的合法参考仍能通过');
 const experience=make([row('我在大阪散步很愉快。',{kind:'experience'})],{retrieval:{purpose:'experience'}}),experienceText='该旅行者记录了在大阪散步的愉快体验。';
 assert.equal((await check(experience,experienceText,[{...claim(experience,experienceText),allowed_use:'travel_experience'}])).grounded.length,1);
+assert.equal((await check(experience,experienceText,[claim(experience,experienceText)])).grounded.length,0,'不能把个人记录标成普通资料事实');
+const unAttributed='大阪散步很愉快。';
+assert.equal((await check(experience,unAttributed,[{...claim(experience,unAttributed),allowed_use:'travel_experience'}])).grounded.length,0,'个人感受缺少旅行者归因时不作为普遍结论发布');
 console.log('✓ 否定、疑问、假设、转折和有出处经验正常表达通过');
 
 for(const model of [async()=>null,async()=>({items:[]}),async()=>{throw Error('不记录原始故障');},async({user})=>({items:[{id:JSON.parse(user).claims[0].id,decision:'supported',reason:''}]}),async({user})=>{const r={id:JSON.parse(user).claims[0].id,decision:'supported',reason:'重复'};return {items:[r,r]};}])assert.equal((await check(cat,reply,[claim()],model)).grounded.length,0);

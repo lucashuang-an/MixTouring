@@ -83,13 +83,14 @@ export async function groundConversationOutput({reply,draft,catalog,model,signal
           candidate_sources:catalog?.entries || []})});
       if(typeof repaired?.reply==='string' && repaired.reply.trim() && repaired.reply.length<=2500){
         const checked=await groundConversationOutput({reply:repaired.reply,catalog,model,signal,budgetChars,conditions,allowRepair:false});
-        if(checked.status==='complete' && checked.reply.trim()){
+        if(checked.status!=='unavailable' && checked.reply.trim() &&
+          (checked.status==='complete' || checked.claims.length || checked.inferences.length || /待查项|需要核实的|你.{0,120}[?？]/.test(checked.reply))){
           const draftSentences=new Set(fields.filter(f=>f.path!=='reply').map(f=>f.text));
           const draftClaims=result.grounded.filter(c=>draftSentences.has(c.sentence));
           const combined=draftClaims.concat(checked.claims).filter((c,i,a)=>a.findIndex(x=>x.sentence===c.sentence)===i);
           const needed=new Set(combined.flatMap(c=>c.supports.map(s=>s.source_id)));
           return {...checked,status:'partial',draft:outputDraft,claims:combined,
-            sources:sources.concat(checked.sources).filter((s,i,a)=>needed.has(s.id) && a.findIndex(x=>x.id===s.id)===i),gaps:rejected};
+            sources:sources.concat(checked.sources).filter((s,i,a)=>needed.has(s.id) && a.findIndex(x=>x.id===s.id)===i),gaps:rejected.concat(checked.gaps || [])};
         }
       }
     }catch{/* 修复失败不发布未经核对的新回复 */}

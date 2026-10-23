@@ -13,6 +13,8 @@ if(process.env.SOURCE_TASK_CAPTURE){const capture=JSON.parse(readFileSync(resolv
   ili=find('experience-yili-xhs','毕业旅行') || ili;vietnam=find('experience-yili-xhs','越南') || vietnam;ad=find('experience-yili-xhs','圆周旅迹') || ad;camp=find('boundary-sparse-xhs','露营') || camp;
 }
 const report={sampled_at:new Date().toISOString(),model:process.env.VOLC_COMPOSE_MODEL || process.env.LLM_MODEL,capture:!!process.env.SOURCE_TASK_CAPTURE,cases:[]};
+report.model_usage=[];
+const measuredModel=opts=>composeJson({...opts,onUsage:u=>report.model_usage.push(u)});
 const save=()=>{mkdirSync(dirname(output),{recursive:true});writeFileSync(output,JSON.stringify(report,null,2)+'\n');};
 const selected=process.env.SOURCE_TASK_CASES?.split(',');
 for(const scenario of [
@@ -22,14 +24,14 @@ for(const scenario of [
   {name:'正文缺失',task:{destination:'伊宁',query:'伊宁无车旅行',purpose:'experience'},sources:[source('empty','旅行首页','首页 联系我们 关于我们 版权信息')],expected:['uncertain']}
 ]){
   if(selected && !selected.includes(scenario.name))continue;
-  const start=Date.now(),result=await relevanceReviewer(composeJson)(scenario.task,scenario.sources),decisions=result.items.map(x=>x.decision);
+  const start=Date.now(),result=await relevanceReviewer(measuredModel)(scenario.task,scenario.sources),decisions=result.items.map(x=>x.decision);
   const passed=result.status==='completed' && JSON.stringify(decisions)===JSON.stringify(scenario.expected);
   report.cases.push({name:scenario.name,task:scenario.task,sources:scenario.sources,result,expected:scenario.expected,passed,elapsed_ms:Date.now()-start});save();console.log(scenario.name,passed?'通过':'需核查',decisions.join(','));
 }
 if(!selected || selected.includes('真实Tavily对话')){
   const start=Date.now(),searches=[];
   const result=await conversationTurn({text:'请查一下伊宁无车旅行和当地乘车的经验，只回答资料与取舍，先不要修改行程。',conversation:{stage:'draft',brief:{origin:'北京',destination:'伊宁',summary:'伊宁无车旅行体验'},routing:{origin:'北京',destination:'伊宁'},draft:{title:'伊宁探索',overview:'交通待核实',route:['北京','伊宁'],cards:[{id:'city',place:'伊宁',label:'市区阶段',title:'慢游市区',content:'交通仍待查。'}],sections:[],pending:['交通待核实']}}},null,
-    {budgetMs:90000,sourceReview:true,evidenceReview:true,readPage:readPublicPage,search:async(query,options)=>{const r=await searchWebDetailed(query,{...options,provider:'tavily'});searches.push(r);return r.results;}});
+    {budgetMs:90000,sourceReview:true,evidenceReview:true,readPage:readPublicPage,onModelUsage:u=>report.model_usage.push(u),search:async(query,options)=>{const r=await searchWebDetailed(query,{...options,provider:'tavily'});searches.push(r);return r.results;}});
   report.cases.push({name:'真实Tavily对话',result,searches,passed:result.status==='ok' && searches.length<=2,elapsed_ms:Date.now()-start});save();console.log('真实Tavily对话',result.status,result.source_relevance?.status,'查询'+searches.length);
 }
 report.finished_at=new Date().toISOString();save();console.log('私有报告：'+output);if(report.cases.some(c=>!c.passed))process.exitCode=1;

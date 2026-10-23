@@ -9,10 +9,10 @@ const statement='来源记载北京到阿拉木图开通直飞，本次日期仍
 const brief={origin:'北京',destination:'阿拉木图',summary:'北京到阿拉木图旅行'};
 const base={intent_action:'question',reply:statement,brief,ready:true,confirmed:false,requirements_patch:{},preferences:{},travel:{},constraints:{},sights:{},search_query:'北京到阿拉木图航班',search_purpose:'transport',destination_country:'KZ'};
 const start={text:'北京到阿拉木图交通资料怎样？',conversation:{stage:'discuss',brief,routing:{origin:'北京',destination:'阿拉木图'}}};
-const execute=async({page=source,answer=statement,assessment='supported',extract=null,draft=null,action='chat',reviewFailure=false,reviewSources=false,searchFailure=false,omitSearchQuery=false,repairReply=null,withDraft=false,text='北京到阿拉木图交通资料怎样？'}={})=>{
+const execute=async({page=source,answer=statement,assessment='supported',extract=null,draft=null,action='chat',reviewFailure=false,reviewSources=false,searchFailure=false,omitSearchQuery=false,repairReply=null,withDraft=false,contextBudgetChars,text='北京到阿拉木图交通资料怎样？'}={})=>{
   const calls=[],queries=[],collections=[],views=[];const model=async opts=>{
     calls.push(opts.kind);
-    if(['conversation','conversation_review'].includes(opts.kind))views.push({...JSON.parse(opts.user),model_kind:opts.kind});
+    if(['conversation','conversation_review','conversation_evidence_extract'].includes(opts.kind))views.push({...JSON.parse(opts.user),model_kind:opts.kind});
     if(opts.kind==='conversation')return {...base,reply:answer,intent_action:draft?'revise':'question',draft,search_query:omitSearchQuery?'':'北京到阿拉木图航班'};
     if(opts.kind==='conversation_review')return {reply:answer,draft,changes:[]};
     if(opts.kind==='conversation_evidence_repair')return repairReply?{reply:repairReply}:null;
@@ -27,7 +27,7 @@ const execute=async({page=source,answer=statement,assessment='supported',extract
   };
   const input=action==='generate'?{action:'generate',conversation:{stage:'ready',brief,routing:{origin:'北京',destination:'阿拉木图'}}}:{...start,text};
   if(withDraft)input.conversation={...input.conversation,stage:'draft',draft:{title:'已有想法',overview:'交通待查。',route:['北京','阿拉木图'],cards:[{id:'city',place:'阿拉木图',label:'目的地',title:'自由安排',content:'活动待查。'}],sections:[],pending:[]}};
-  const result=await conversationTurn(input,null,{now,evidenceReview:true,sourceReview:reviewFailure || reviewSources,search:async query=>{queries.push(query);return searchFailure?null:page?[page]:[];},model,onSourceCollection:s=>collections.push(s)});
+  const result=await conversationTurn(input,null,{now,contextBudgetChars,evidenceReview:true,sourceReview:reviewFailure || reviewSources,search:async query=>{queries.push(query);return searchFailure?null:Array.isArray(page)?page:page?[page]:[];},model,onSourceCollection:s=>collections.push(s)});
   return {result,calls,queries,collections,views};
 };
 const good=await execute();
@@ -39,6 +39,11 @@ assert.equal(generatedView.evidence_catalog.entries[0].excerpt,source.content);
 assert.deepEqual(generatedView.search_results,[]);assert.deepEqual(generatedView.transport_references,[],'最终生成不借旧交通资料或另一份长摘录扩展事实');
 const editedQuestion=await execute({withDraft:true}),editorView=editedQuestion.views.find(v=>v.model_kind==='conversation_review');
 assert.deepEqual(editorView.search_results,[]);assert.deepEqual(editorView.transport_references,[]);assert.equal(editorView.evidence_catalog.entries[0].excerpt,source.content,'已有草案的问答编辑也使用同一个证据视图');
+const budgeted=await execute({contextBudgetChars:16000,page:Array.from({length:8},(_,i)=>({...source,link:'https://source'+i+'.gov.cn/article',content:source.content+'旅行背景资料。'.repeat(220)}))});
+assert.equal(budgeted.result.status,'ok');
+const generatedIds=budgeted.views.find(v=>v.model_kind==='conversation' && v.search_complete).evidence_catalog.entries.map(e=>e.id);
+assert.ok(generatedIds.length<8,'测试确实触发主生成的证据目录裁剪');
+assert.ok(budgeted.views.filter(v=>v.model_kind==='conversation_evidence_extract').every(v=>v.evidence_catalog.entries.every(e=>generatedIds.includes(e.id))),'后续抽取不能重新扩大到主生成没有看到的来源');
 assert.equal(good.collections[0].source_count,1);assert.ok(!JSON.stringify(good.collections[0]).includes(source.link),'诊断只传计数和状态，不传网页身份或正文');
 const unsupported=await execute({assessment:'unsupported'});
 assert.equal(unsupported.result.status,'ok');assert.match(unsupported.result.reply,/待核实/);assert.equal(unsupported.result.sources.length,0);assert.equal(unsupported.result.evidence_claims.length,0);
