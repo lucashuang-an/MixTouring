@@ -15,9 +15,11 @@ const sentences=text=>String(text || '').split(/(?<=[。！？!?；;\n])/).map(s
 // 转折与分句分别判断，前半句待查不能替后半句的肯定承诺免责。
 const clauses=text=>sentences(text).flatMap(s=>s.split(/[,，]|但是|然而|不过|可是|但|却|\bbut\b/i)).map(s=>s.trim()).filter(Boolean);
 const affirmative=text=>OPERATIONAL.test(text) && !QUESTION.test(text) && !UNCERTAIN.test(text);
+const execution=text=>/可执行|确定可达|确定可行|保证可达|(?:保证|确保).{0,10}(?:到达|抵达|衔接|可行)|可行的(?:路线|走法|行程|方案)|(?:确定|保证|一定)省钱/.test(text) &&
+  /路线|走法|行程|方案|安排|交通|可达|到达|抵达|衔接|省钱/.test(text) && !QUESTION.test(text) && !UNCERTAIN.test(text) && !/不是|并非|不代表|不等于/.test(text);
 export const isPendingChecklist=text=>/^(?:[-*]\s*)?(?:待查(?:项|清单)?(?:包括)?[：:]|待核实(?:项)?[：:]|(?:需要|需|仍需)(?:核实|查证)的(?:具体)?(?:项|信息|内容)(?:包括|有)?[：:])/.test(text) &&
   !/\d|已经|已(?:确认|确定|运行|开通|恢复|运营)|证实|保证|肯定|必定|无需|每天|运营中|但是|然而|不过|可是|但|却/.test(text);
-export const operationalAssertions=text=>sentences(text).filter(s=>!isPendingChecklist(s) && clauses(s).some(affirmative));
+export const operationalAssertions=text=>sentences(text).filter(s=>!isPendingChecklist(s) && clauses(s).some(t=>affirmative(t) || execution(t)));
 
 /** 仅为保守句法提示；问答混合仍须由结论级语义核对逐条验证。 */
 export function isQuestionSource(source){
@@ -87,6 +89,7 @@ function prepare(reply,catalog,claims=[]){
     const fail=reason=>rejected.push({sentence,reason});
     if(matches.length!==1){fail('结论缺少唯一的结构化支持记录');continue;}
     const claim=matches[0],operational=required.includes(sentence);
+    if(clauses(sentence).some(execution)){fail('资料参考不授予本次路线可执行、确定可达或确定省钱资格');continue;}
     if(!['source_reference','travel_experience','inference','conflict'].includes(claim.allowed_use) || !Array.isArray(claim.supports) || !claim.supports.length || claim.supports.length>4 || claim.allowed_use==='conflict' && claim.supports.length<2){fail('结论用途或支持原句无效');continue;}
     const cited=[],ids=new Set(),quotes=new Set();let reason='';
     for(const support of claim.supports){
@@ -99,7 +102,7 @@ function prepare(reply,catalog,claims=[]){
       if(!['recent','window_reference'].includes(entry.temporal_state)){reason='来源时效不足以支持本次结论';break;}
       if(operational && !['recent','window_reference'].includes(entry.operational_temporal_state)){reason='交通资料超过运营复核期';break;}
       if(entry.question_like){reason='提问帖不是已获答案';break;}
-      const personal=entry.kind==='experience' || entry.allowed_use==='travel_experience' || /作者(?:当时|记录|提到|写到|认为|观察|探访)|旅行者|发帖者|该用户|亲历|游记/.test(sentence);
+      const personal=entry.kind==='experience' || entry.allowed_use==='travel_experience' || /(?:作者|旅行者|发帖者|该用户).{0,8}(?:当时|记录|提到|写到|认为|观察|探访|分享)|亲历|游记/.test(sentence);
       if(personal && claim.allowed_use!=='conflict' &&
         (claim.allowed_use!=='travel_experience' || !/作者|旅行者|发帖者|该用户|亲历|记录|游记/.test(sentence))){reason='个人经历须按旅行者经验归因，不能作为普遍资料事实';break;}
       if(operational && claim.allowed_use!=='conflict' && (entry.kind==='experience' || entry.allowed_use!=='source_reference' || claim.allowed_use!=='source_reference')){reason='经验或其他用途不能支持运营结论';break;}

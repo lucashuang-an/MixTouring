@@ -18,7 +18,9 @@ const cases=[
   ['一个景点不能支持另一个','Visit Panfilov Park and admire Zenkov Cathedral.',false,'资料建议游览Panfilov Park，还建议游览Green Bazaar。'],
   ['不能凭空翻译成另一公园','Day 2 - GORKY PARK',false,'资料列出果戈里公园。'],
   ['保留原名的公园参考','Day 2 - GORKY PARK',true,'资料列出GORKY PARK。'],
-  ['原文有中文名可使用','GORKY PARK（高尔基公园）',true,'资料列出高尔基公园。']
+  ['原文有中文名可使用','GORKY PARK（高尔基公园）',true,'资料列出高尔基公园。'],
+  ['workable不授予可执行资格','A workable sequence is central Almaty to Medeu, Shymbulak base, an upper station, then back down.',false,'该指南把这条走法写成一条可执行的路线，仅供参考。'],
+  ['探索顺序参考仍可表达','A workable sequence is central Almaty to Medeu, Shymbulak base, an upper station, then back down.',true,'该指南给出了central Almaty到Medeu的探索顺序，仅供参考。']
 ];
 const report={sampled_at:new Date().toISOString(),fixture:true,model:process.env.VOLC_COMPOSE_MODEL || process.env.LLM_MODEL,cases:[]};
 const output=process.env.EVIDENCE_REPLAY_OUT || join(tmpdir(),'mixtouring-evidence-replay.json');
