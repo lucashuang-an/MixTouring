@@ -59,6 +59,8 @@ assert.equal(inferred.result.status,'ok');assert.match(inferred.result.reply,/�
 assert.equal(inferred.result.evidence_inferences.length,1);assert.equal(inferred.result.sources.length,0);
 const mixedFact=await execute({answer:'伊宁公交比较轻松，去草原通常要县城中转。',page:null});
 assert.equal(mixedFact.result.status,'ok');assert.doesNotMatch(mixedFact.result.reply,/公交比较轻松/,'建议中的客观事实不能因模型漏分类而直接放行');
+const shinkansen=await execute({answer:'可以先比较新干线直达省心、换乘少，还是沿途停一站。',page:null});
+assert.equal(shinkansen.result.status,'ok');assert.doesNotMatch(shinkansen.result.reply,/新干线直达/,'即使抽取模型漏交事实，真实编排也必须移除无来源直达承诺');
 const conflictSources=[{title:'正向报道',url:'https://example.gov.cn/yes',excerpt:'北京到阿拉木图班车已经开通。',published_at:'2026-10-20',kind:'official'},
   {title:'反向公告',url:'https://example.gov.cn/no',excerpt:'北京到阿拉木图班车尚未开通。',published_at:'2026-10-20',kind:'official'}];
 const conflictCatalog=buildEvidenceCatalog({sources:conflictSources,now,routing:{origin:'北京',destination:'阿拉木图'},retrieval:{purpose:'transport'}});

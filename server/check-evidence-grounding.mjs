@@ -51,6 +51,10 @@ for(const text of ['北京到阿拉木图有航班。','北京到阿拉木图每
   assert.ok(validateEvidenceClaims(text,{entries:[]}).rejected.length,'未交结构化支持也必须拦截：'+text);
 }
 assert.equal(validateEvidenceClaims('方向上可优先按成都东—昆明南直达高铁去查。',{entries:[]}).rejected.length,1,'未标注的直达高铁方向不能伪装成确定连接');
+for(const text of ['新干线直达省心、换乘少，适合把时间留给大阪。','可以先比较新干线直达与沿途停留。','高铁可以直达昆明。','东京到大阪有direct trains。'])assert.ok(validateEvidenceClaims(text,{entries:[]}).rejected.length,'交通方式在前的直达承诺同样需要证据：'+text);
+for(const text of ['如果有新干线直达，可以先比较少换乘方案。','新干线是否直达大阪仍待核实。'])assert.equal(validateEvidenceClaims(text,{entries:[]}).rejected.length,0,'明确假设和待查仍可表达：'+text);
+const shinkansen=make([row('东京到大阪新干线直达。')]),shinkansenReply='来源记载东京到大阪新干线直达，本次日期仍待确认。';
+assert.equal((await check(shinkansen,shinkansenReply,[claim(shinkansen,shinkansenReply)])).grounded.length,1,'有原句和语义支持的直达资料参考可通过');
 for(const text of ['北京到阿拉木图未开通直飞。','北京到阿拉木图未恢复航班。','北京到阿拉木图无直飞。','北京到阿拉木图未开通直飞但班车也待查。']){
   assert.equal(operationalAssertions(text).length,0,text);
   assert.equal(validateEvidenceClaims(text,{entries:[]}).rejected.length,0,'诚实否定无需证据支持：'+text);

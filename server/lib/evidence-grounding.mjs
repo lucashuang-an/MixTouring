@@ -9,7 +9,7 @@ import {loadPlaces} from './trip-service.mjs';
 import {buildContext} from './context-builder.mjs';
 
 const str=(v,n=2000)=>typeof v==='string'?v.trim().slice(0,n):'';
-const OPERATIONAL=/开通|恢复(?:运行|运营)|复航|通车|直飞|班车|班线|每天发车|已运行|运营中|(?:直达|直通)(?:高铁|列车|火车|动车|航班|飞机|巴士|班车)|(?:有|提供|运营)(?:直达|直通|定期|每日|每天)?(?:航班|列车|火车|高铁|动车|巴士|客运班车|班车|班线)|有(?:这|此)?(?:趟|班)(?:车|航班|列车)|\b(?:direct flights?|bus service|operat(?:es|ing)|resumed|opened)\b/i;
+const OPERATIONAL=/开通|恢复(?:运行|运营)|复航|通车|直飞|班车|班线|每天发车|已运行|运营中|(?:直达|直通)(?:高铁|新干线|列车|火车|动车|航班|飞机|巴士|班车)|(?:高铁|新干线|列车|火车|动车|航班|飞机|巴士|班车)(?:可|能|可以)?(?:直达|直通)|(?:有|提供|运营)(?:直达|直通|定期|每日|每天)?(?:航班|列车|火车|高铁|动车|巴士|客运班车|班车|班线)|有(?:这|此)?(?:趟|班)(?:车|航班|列车)|\b(?:direct (?:flights?|trains?|buses)|bus service|operat(?:es|ing)|resumed|opened)\b/i;
 const QUESTION=/[?？]|吗|能否|怎么|如何|请问|是否|有没有|有人知道|有人坐过|求攻略|求推荐|\b(?:does|is there|are there|how|can anyone)\b/i;
 const UNCERTAIN=/无法确认|不能确认|未确认|尚不清楚|不确定|待(?:确认|核实|查)|可以考虑|可探索|值得探索|建议先查询|需(?:要)?(?:确认|核实)|可能|也许|假如|如果|假设|尚未|还未|未(?:开通|恢复|运营|复航)|没有|并未|未曾|无(?:直飞|航班|列车|班车|班线)|不(?:再|会|能|提供|运营)|停飞|停运|\b(?:not|no|unknown|unconfirmed|may|might|if|suspended|cancelled)\b/i;
 const sentences=text=>String(text || '').split(/(?<=[。！？!?；;\n])/).map(s=>s.trim()).filter(Boolean);
