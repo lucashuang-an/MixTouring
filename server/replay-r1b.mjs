@@ -28,13 +28,15 @@ async function worker(){
     const text='请核对公开资料，讨论'+query.replace(/\bsite:\S+\s*/g,'')+'，说明有依据的取舍和待查项。先不要改行程。';
     const searches=[],modelUsage=[],modelAttempts=[],rawStages=[],collections=[],started=Date.now();let result;
     try{result=await conversationTurn({text,conversation},null,{now:frozen,budgetMs:110000,sourceReview:true,evidenceReview:true,readPage:readPublicPage,signal:controller.signal,
-      search:async(q,opts)=>{const r=await searchWebDetailed(q,{...opts,provider:'tavily'});searches.push({status:r.status,attempts:r.attempts.map(a=>({provider:a.provider,status:a.status,elapsed_ms:a.elapsed_ms,network_request:a.network_request,usage:a.usage,reason_code:a.reason_code})),elapsed_ms:r.elapsed_ms,result_count:r.results?.length ?? 0});return r.results;},
+      search:async(q,opts)=>{const r=await searchWebDetailed(q,{...opts,provider:'tavily'});searches.push({query:r.query,domains:opts.domains || null,language:opts.language || null,status:r.status,
+        attempts:r.attempts.map(a=>({provider:a.provider,status:a.status,elapsed_ms:a.elapsed_ms,network_request:a.network_request,usage:a.usage,reason_code:a.reason_code})),elapsed_ms:r.elapsed_ms,result_count:r.results?.length ?? 0});return r.results;},
       model:async opts=>{let catalog_count=null;try{catalog_count=JSON.parse(opts.user).evidence_catalog?.entries?.length ?? null;}catch{}
         modelAttempts.push({kind:opts.kind,catalog_count});const output=await composeJson(opts);if(process.env.R1B_CAPTURE_MODEL)rawStages.push({kind:opts.kind,output});return output;},
       onModelUsage:u=>modelUsage.push(u),onSourceCollection:s=>collections.push(s)});}catch{result={status:'unavailable',reply:'运行中断或失败'};}
     const record={task_id:task.id,group:task.group,repeat,query,window,status:result.status,reply:result.reply || '',source_relevance:result.source_relevance?.status || null,
       claims:(result.evidence_claims || []).map(c=>({sentence:c.sentence,allowed_use:c.allowed_use,supports:c.supports})),
       sources:(result.sources || []).map(s=>({url:s.url,title:s.title,kind:s.kind,published_at:s.published_at,read_status:s.read_status})),
+      historical_sources:(result.historical_sources || []).map(s=>({url:s.url,title:s.title,kind:s.kind,published_at:s.published_at,read_status:s.read_status,temporal_state:s.temporal?.state})),
       searches,source_collections:collections,model_attempts:modelAttempts,model_usage:modelUsage,...(process.env.R1B_CAPTURE_MODEL?{raw_stages:rawStages}:{}),elapsed_ms:Date.now()-started};
     report.records.push(record);report.records.sort((a,b)=>a.repeat-b.repeat || a.task_id.localeCompare(b.task_id));save();
     console.log(`${report.records.length}/${jobs.length} ${task.id} 第${repeat}轮：${record.status}；引用${record.sources.length}；结论${record.claims.length}；检索${searches.length}`);
@@ -45,6 +47,6 @@ const durations=report.records.map(r=>r.elapsed_ms).sort((a,b)=>a-b),percentile=
 report.finished_at=new Date().toISOString();report.summary={complete:report.records.length,ok:report.records.filter(r=>r.status==='ok').length,
   search_calls:report.records.reduce((n,r)=>n+r.searches.length,0),reported_credits:report.records.reduce((n,r)=>n+r.searches.reduce((m,s)=>m+s.attempts.reduce((o,a)=>o+(a.usage?.api_credits || 0),0),0),0),
   model_attempts:report.records.reduce((n,r)=>n+r.model_attempts.length,0),reported_model_calls:report.records.reduce((n,r)=>n+r.model_usage.length,0),reported_model_tokens:report.records.reduce((n,r)=>n+r.model_usage.reduce((m,u)=>m+(u.total_tokens || 0),0),0),
-  output_sources:report.records.reduce((n,r)=>n+r.sources.length,0),sourced_claim_rounds:report.records.filter(r=>r.claims.length).length,
+  output_sources:report.records.reduce((n,r)=>n+r.sources.length,0),historical_leads:report.records.reduce((n,r)=>n+r.historical_sources.length,0),sourced_claim_rounds:report.records.filter(r=>r.claims.length).length,
   task_latency_p50_ms:percentile(.5),task_latency_p95_ms:percentile(.95),first_useful_result_ms:null,first_useful_result_note:'需人工评估真实取舍价值；不能把状态ok或链接数量当作有用结果',currency_cost:'unknown'};save();console.log(JSON.stringify(report.summary));console.log('私有报告：'+output);
 if(report.records.length!==jobs.length || report.records.some(r=>r.searches.length>2))process.exitCode=1;

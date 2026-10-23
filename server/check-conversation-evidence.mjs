@@ -9,7 +9,7 @@ const statement='来源记载北京到阿拉木图开通直飞，本次日期仍
 const brief={origin:'北京',destination:'阿拉木图',summary:'北京到阿拉木图旅行'};
 const base={intent_action:'question',reply:statement,brief,ready:true,confirmed:false,requirements_patch:{},preferences:{},travel:{},constraints:{},sights:{},search_query:'北京到阿拉木图航班',search_purpose:'transport',destination_country:'KZ'};
 const start={text:'北京到阿拉木图交通资料怎样？',conversation:{stage:'discuss',brief,routing:{origin:'北京',destination:'阿拉木图'}}};
-const execute=async({page=source,answer=statement,assessment='supported',extract=null,draft=null,action='chat',reviewFailure=false,searchFailure=false,omitSearchQuery=false,repairReply=null,text='北京到阿拉木图交通资料怎样？'}={})=>{
+const execute=async({page=source,answer=statement,assessment='supported',extract=null,draft=null,action='chat',reviewFailure=false,reviewSources=false,searchFailure=false,omitSearchQuery=false,repairReply=null,text='北京到阿拉木图交通资料怎样？'}={})=>{
   const calls=[],queries=[],collections=[];const model=async opts=>{
     calls.push(opts.kind);
     if(opts.kind==='conversation')return {...base,reply:answer,intent_action:draft?'revise':'question',draft,search_query:omitSearchQuery?'':'北京到阿拉木图航班'};
@@ -25,7 +25,7 @@ const execute=async({page=source,answer=statement,assessment='supported',extract
     return {};
   };
   const input=action==='generate'?{action:'generate',conversation:{stage:'ready',brief,routing:{origin:'北京',destination:'阿拉木图'}}}:{...start,text};
-  const result=await conversationTurn(input,null,{now,evidenceReview:true,sourceReview:reviewFailure,search:async query=>{queries.push(query);return searchFailure?null:page?[page]:[];},model,onSourceCollection:s=>collections.push(s)});
+  const result=await conversationTurn(input,null,{now,evidenceReview:true,sourceReview:reviewFailure || reviewSources,search:async query=>{queries.push(query);return searchFailure?null:page?[page]:[];},model,onSourceCollection:s=>collections.push(s)});
   return {result,calls,queries,collections};
 };
 const good=await execute();
@@ -42,6 +42,9 @@ assert.equal(airport.result.status,'ok');assert.equal(airport.result.sources.len
 const failed=await execute({extract:'fail'});assert.equal(failed.result.status,'unavailable');assert.equal(failed.result.conversation.revision || 0,0);
 const unreviewed=await execute({reviewFailure:true});assert.equal(unreviewed.result.status,'unavailable');assert.match(unreviewed.result.reply,/不能据此判断是否有匹配资料/);assert.equal(unreviewed.result.sources.length,0);
 const channelsDown=await execute({searchFailure:true});assert.equal(channelsDown.result.status,'unavailable');assert.match(channelsDown.result.reply,/不能据此判断是否有匹配资料/);
+const historical=await execute({page:{...source,date:null},reviewSources:true});
+assert.equal(historical.result.status,'ok');assert.equal(historical.result.sources.length,0,'日期未明不能成为当前事实引用');
+assert.equal(historical.result.historical_sources.length,1,'相关日期未明来源只进探索折叠区');
 const explicit=await execute({omitSearchQuery:true,text:'请核对公开资料：北京到阿拉木图航班。先不要改行程。'});
 assert.equal(explicit.queries.length,2,'用户明确要求核对时，意图模型漏交查询词不能取消检索');
 const plan={title:'旅行草案',overview:statement,route:['北京','阿拉木图'],cards:[{id:'city',place:'阿拉木图',label:'目的地阶段',title:'城区',content:'安排市区活动。'}],sections:[],pending:['班次待核实。']};

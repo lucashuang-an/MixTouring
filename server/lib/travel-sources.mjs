@@ -57,12 +57,21 @@ export async function collectTravelSources({destination='',query='',question='',
   const language=text=>/[\u3400-\u9fff]/.test(text)?'zh':'en';
   const officialTopic=international?english:topic;
   const officialPlan = { channel: '官方与目的地资料', domains: null, language:language(officialTopic), kinds: ['official', 'guide'],
-    text: officialTopic+' '+(language(officialTopic)==='zh'?'官方 '+(purpose==='transport'?'交通 班次':'开放 最新'):'official '+(purpose==='transport'?'transport schedule':'visitor information')) };
-  const fit=(text,limit)=>text.length<=limit?text:text.slice(0,Math.ceil((limit-1)/2))+' '+text.slice(-Math.floor((limit-1)/2));
+    base:officialTopic,suffix:language(officialTopic)==='zh'?'官方 '+(purpose==='transport'?'交通 班次':'开放 最新'):'official '+(purpose==='transport'?'transport schedule':'visitor information') };
+  const fit=(value,limit)=>{const text=String(value || '').trim();if(text.length<=limit)return text;
+    const headSize=Math.ceil((limit-1)/2),tailSize=Math.floor((limit-1)/2),left=text.slice(0,headSize),right=text.slice(-tailSize);
+    // 英文不在词中间截断；无空格的中文长题仍保留头尾与本轮关键尾词。
+    const head=/\s/.test(left)?left.slice(0,left.lastIndexOf(' ')):left;
+    const tail=/\s/.test(right)?right.slice(right.indexOf(' ')+1):right;
+    return head+' '+tail;
+  };
   const defaults = [
-    { channel: '中文社区', domains: CN_COMMUNITY_DOMAINS, language:language(topic), kinds: communityKinds, text: task.query || destination+' '+themeWords },
-    ...(international && purpose==='experience' ? [{ channel: '海外社区', domains: OVERSEAS_DOMAINS, language:language(english), kinds: communityKinds, text: english }] : [officialPlan])
-  ].map(q => { const scope = stamp.replace(since, new Date(Date.parse(temporal.today + 'T00:00:00Z') - (q.domains ? 365 : temporal.max_age_days) * 86400000).toISOString().slice(0, 10)); return { ...q, text:fit(q.text,100-scope.length)+scope, domain: q.domains ? q.domains[0] : null }; });
+    { channel: '中文社区', domains: CN_COMMUNITY_DOMAINS, language:language(topic), kinds: communityKinds, base:task.query || destination+' '+themeWords },
+    ...(international && purpose==='experience' ? [{ channel: '海外社区', domains: OVERSEAS_DOMAINS, language:language(english), kinds: communityKinds, base:english }] : [officialPlan])
+  ].map(({base,suffix,...q}) => { const scope = stamp.replace(since, new Date(Date.parse(temporal.today + 'T00:00:00Z') - (q.domains ? 365 : temporal.max_age_days) * 86400000).toISOString().slice(0, 10));
+    const room=100-scope.length,primary=fit(base,room),free=room-primary.length-1;
+    const secondary=(suffix || '').split(/\s+/).reduce((value,word)=>{const next=value?value+' '+word:word;return next.length<=free?next:value;},'');
+    return {...q,text:primary+(secondary?' '+secondary:'')+scope,domain:q.domains?q.domains[0]:null}; });
   // 固定探针仅供内部基线工具注入，不接受 HTTP 入参；默认产品检索计划与筛选保持原样。
   if(queryPlans!==null && (!Array.isArray(queryPlans) || !queryPlans.length || queryPlans.length>8 || queryPlans.some(q=>!q || typeof q.text!=='string' || !q.text.trim() || q.text.length>100 || !/^[a-z0-9.-]+$/.test(q.domain || '') || !Array.isArray(q.kinds) || !q.kinds.length || q.kinds.some(k=>!['experience','guide','official'].includes(k)))))throw Error('基线查询计划无效');
   const queries=queryPlans || defaults;

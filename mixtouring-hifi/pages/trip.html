@@ -694,12 +694,12 @@
         var url;try{url=new URL(s.url);}catch(e){return '';}
         if(!/^https?:$/.test(url.protocol))return '';
         var platform=s.platform || url.hostname.replace(/^www\./,''),kind={experience:'旅行体验',guide:'旅行资料',official:'官方资料'}[s.kind] || '旅行资料';
-        return '<a class="source-card" href="'+MT.esc(url.href)+'" target="_blank" rel="noopener noreferrer"><span class="source-meta">'+MT.esc(platform)+'<span aria-hidden="true"> · </span>'+kind+'</span><span class="source-title">'+MT.esc(s.title || platform)+'</span><span class="source-meta">'+MT.esc(historical?'此前回答的出处，当前时效未复核':s.temporal?'检索时：'+s.temporal.label+' · '+(s.temporal.published_at || '发布日期未明')+(s.date_basis==='search_index'?'（索引日期）':''):'历史会话引用，时效未复核')+' · '+MT.esc(s.read_status==='page_excerpt'?'网页摘录':'搜索摘要／目录资料')+'</span><span class="source-arrow" aria-hidden="true">↗</span></a>';
+        return '<a class="source-card" href="'+MT.esc(url.href)+'" target="_blank" rel="noopener noreferrer"><span class="source-meta">'+MT.esc(platform)+'<span aria-hidden="true"> · </span>'+kind+'</span><span class="source-title">'+MT.esc(s.title || platform)+'</span><span class="source-meta">'+MT.esc(historical?'历史或日期未明，仅供探索；本次适用性待查':s.temporal?'检索时：'+s.temporal.label+' · '+(s.temporal.published_at || '发布日期未明')+(s.date_basis==='search_index'?'（索引日期）':''):'历史会话引用，时效未复核')+' · '+MT.esc(s.read_status==='page_excerpt'?'网页摘录':'搜索摘要／目录资料')+'</span><span class="source-arrow" aria-hidden="true">↗</span></a>';
       }).filter(Boolean);
       return items.length?'<details class="source-details"><summary>参考资料<span class="source-count">'+items.length+'</span></summary><div class="source-list">'+items.join('')+'</div></details>':'';
     }
     function historicalMessages(messages) {
-      return (messages || []).map(function(m){return m.role==='assistant' && ((m.sources || []).length || (m.evidence_claims || []).length)?Object.assign({},m,{evidence_historical:true}):m;});
+      return (messages || []).map(function(m){return m.role==='assistant' && ((m.sources || []).length || (m.evidence_claims || []).length || (m.historical_sources || []).length)?Object.assign({},m,{evidence_historical:true}):m;});
     }
     function claimEvidence(message) {
       var claims=Array.isArray(message.evidence_claims)?message.evidence_claims:[],sources=message.sources || [];
@@ -715,8 +715,10 @@
       }).filter(Boolean);
       var used=new Set(claims.flatMap(function(c){return (c.supports || []).map(function(s){return s.source_id;});}));
       var inferences=(message.evidence_inferences || []).map(function(value){return '<p class="claim-inference">探索判断 · '+MT.esc(value)+'</p>';}).join('');
+      var archived=(message.historical_sources || []);
       return (entries.length?'<details class="source-details claim-details"><summary>'+(message.evidence_historical?'此前回答的出处 · 时效需重查':'结论与出处')+'<span class="source-count">'+entries.length+'</span></summary>'+entries.join('')+'</details>':'')+inferences+
-        sourceCards(sources.filter(function(s){return !s.id || !used.has(s.id);}),message.evidence_historical);
+        sourceCards(sources.filter(function(s){return !s.id || !used.has(s.id);}),message.evidence_historical)+
+        (archived.length?'<div class="archive-source-group"><p>历史或日期未明的资料线索 · 不支持当前班次与开放结论</p>'+sourceCards(archived,true)+'</div>':'');
     }
     function versionSnapshot(version) {
       return guideUndo.slice().reverse().find(function(s){return s.conversation && s.conversation.revision===version.revision && JSON.stringify(s.conversation.draft)===JSON.stringify(version.draft);});
@@ -877,7 +879,7 @@
         if(data.research_update){researchScope=data.research_update.scope;pruneTransportResults(researchScope);}
         var newDraft=conversation.preview?.draft || conversation.draft;
         var hasNewVersion=newDraft && (JSON.stringify(conversation.preview)!==JSON.stringify(previous.conversation?.preview || null) || conversation.revision!==previous.conversation?.revision);
-        guideMessages.push({role:'assistant',text:data.reply,sources:data.sources || [],evidence_claims:data.evidence_claims || [],evidence_inferences:data.evidence_inferences || [],version:hasNewVersion?{revision:conversation.revision,preview:!!conversation.preview,draft:newDraft,changes:MTRouteWorkspace.changes(previous.conversation?.draft,newDraft)}:null});
+        guideMessages.push({role:'assistant',text:data.reply,sources:data.sources || [],historical_sources:data.historical_sources || [],evidence_claims:data.evidence_claims || [],evidence_inferences:data.evidence_inferences || [],version:hasNewVersion?{revision:conversation.revision,preview:!!conversation.preview,draft:newDraft,changes:MTRouteWorkspace.changes(previous.conversation?.draft,newDraft)}:null});
         var routing=conversation.routing || {};
         var oldOrigin=previous.conversation && previous.conversation.routing && previous.conversation.routing.origin || previous.request.origin;
         var oldDestination=previous.conversation && previous.conversation.routing && previous.conversation.routing.destination || previous.request.destination;
