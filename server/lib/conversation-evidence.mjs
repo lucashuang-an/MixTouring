@@ -95,10 +95,25 @@ export async function groundConversationOutput({reply,draft,catalog,model,signal
       }
     }catch{/* 修复失败不发布未经核对的新回复 */}
   }
-  // 无法重组时不发布删坏的段落；保留已获支持的完整句和独立探索建议。
-  const independent=s=>!/^(?:[-*]\s*)?(?:这|该|其|上述|前者|后者|因此|所以|也|但|而且)/.test(s) && !/[:：]$/.test(s);
-  const fallback=rejectedReply.length?fields.filter(f=>f.path==='reply' && !rejectedReply.includes(f.text) && independent(f.text) &&
-    (result.grounded.some(c=>c.sentence===f.text) || inferences.includes(f.text) || pendingOnly(f.text) || /^你.{0,120}[?？]$/.test(f.text))).map(f=>f.text).join('\n\n'):reply;
+  // 无法完整重组时，给保留事实补上实际出处主语；不让删掉的前文留下“它/这些”的悬空指代。
+  const independent=s=>/^(?:[-*]\s*)?(?:如果|若|假设|可以先|可以考虑|建议|取舍上|就安排|在|以)/.test(s) &&
+    !/它们|这些|这两|上述|前者|后者/.test(s) && !/[:：]$/.test(s);
+  const chunks=[],rendered=new Set();let previousSources=null,size=0;
+  if(rejectedReply.length)for(const field of fields.filter(f=>f.path==='reply')){
+    if(rejectedReply.includes(field.text) || rendered.has(field.text))continue;
+    const fact=result.grounded.find(c=>c.sentence===field.text);let paragraph=field.text,key=null;
+    if(fact){
+      key=[...new Set(fact.supports.map(s=>s.source_id))].sort().join('|');
+      if(key!==previousSources){
+        const hosts=[...new Set(sources.filter(s=>fact.supports.some(r=>r.source_id===s.id)).map(s=>new URL(s.url).hostname.replace(/^www\./,'')))];
+        paragraph=(fact.allowed_use==='travel_experience'?'旅行者记录':'资料参考')+'（'+hosts.join('、')+'）：\n'+paragraph;
+      }
+    }else if(!(inferences.includes(field.text) && independent(field.text) || pendingOnly(field.text) || /^你.{0,120}[?？]$/.test(field.text)))continue;
+    // 只删完整段落，不让后续回复长度限制截断结论或引用。
+    if(size+paragraph.length+2>1400)continue;
+    chunks.push(paragraph);rendered.add(field.text);size+=paragraph.length+2;previousSources=key;
+  }
+  const fallback=rejectedReply.length?chunks.join('\n\n'):reply;
   const finalReply=rejectedReply.length?(fallback?fallback+'\n\n':'')+'本轮部分具体判断缺少完整出处，相关信息仍待核实。':reply;
   const displayed=new Set(evidenceFields(finalReply,outputDraft).map(f=>f.text));
   const finalClaims=result.grounded.filter(c=>displayed.has(c.sentence)),finalIds=new Set(finalClaims.flatMap(c=>c.supports.map(s=>s.source_id)));

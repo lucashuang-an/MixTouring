@@ -16,7 +16,8 @@ const sentences=text=>String(text || '').split(/(?<=[。！？!?；;\n])/).map(s
 const clauses=text=>sentences(text).flatMap(s=>s.split(/[,，]|但是|然而|不过|可是|但|却|\bbut\b/i)).map(s=>s.trim()).filter(Boolean);
 const affirmative=text=>OPERATIONAL.test(text) && !QUESTION.test(text) && !UNCERTAIN.test(text);
 const execution=text=>/可执行|确定可达|确定可行|保证可达|(?:保证|确保).{0,10}(?:到达|抵达|衔接|可行)|可行的(?:路线|走法|行程|方案)|(?:确定|保证|一定)省钱/.test(text) &&
-  /路线|走法|行程|方案|安排|交通|可达|到达|抵达|衔接|省钱/.test(text) && !QUESTION.test(text) && !UNCERTAIN.test(text) && !/不是|并非|不代表|不等于/.test(text);
+  /路线|走法|行程|方案|安排|交通|可达|到达|抵达|衔接|省钱/.test(text) && !QUESTION.test(text) &&
+  !UNCERTAIN.test(text.replace(/可以考虑|可探索|值得探索|建议先查询/g,'')) && !/不是|并非|不代表|不等于/.test(text);
 export const isPendingChecklist=text=>/^(?:[-*]\s*)?(?:待查(?:项|清单)?(?:包括)?[：:]|待核实(?:项)?[：:]|(?:需要|需|仍需)(?:核实|查证)的(?:具体)?(?:项|信息|内容)(?:包括|有)?[：:])/.test(text) &&
   !/\d|已经|已(?:确认|确定|运行|开通|恢复|运营)|证实|保证|肯定|必定|无需|每天|运营中|但是|然而|不过|可是|但|却/.test(text);
 export const operationalAssertions=text=>sentences(text).filter(s=>!isPendingChecklist(s) && clauses(s).some(t=>affirmative(t) || execution(t)));

@@ -67,7 +67,7 @@ assert.equal((await check(groupGuide,groupText,[claim(groupGuide,groupText)])).g
 const bilingualPlace=make([row('GORKY PARK（高尔基公园）')]);
 assert.equal((await check(bilingualPlace,'资料列出高尔基公园。',[claim(bilingualPlace,'资料列出高尔基公园。')])).grounded.length,1,'来源明确给出的中文名仍可引用');
 const workable=make([row('A workable sequence is central Almaty to Medeu, Shymbulak base, an upper station, then back down.')]);
-for(const text of ['该指南把这条走法写成一条可执行的路线，仅供参考。','这条行程确定可达。','这条方案一定省钱。'])assert.equal((await check(workable,text,[claim(workable,text)])).grounded.length,0,'普通资料不能授予本次可执行或确定省钱资格');
+for(const text of ['该指南把这条走法写成一条可执行的路线，仅供参考。','可以考虑这条可执行的路线。','这条行程确定可达。','这条方案一定省钱。'])assert.equal((await check(workable,text,[claim(workable,text)])).grounded.length,0,'普通资料不能授予本次可执行或确定省钱资格');
 assert.equal(validateEvidenceClaims('当前路线可执行。',{entries:[]}).rejected.length,1,'漏交支持时也拦截可执行承诺');
 for(const text of ['不能把指南当作本次可执行的路线。','如果核实这条路线可执行，可以再安排。'])assert.equal(validateEvidenceClaims(text,{entries:[]}).rejected.length,0,'否定和明确假设不当作可执行承诺');
 const exploratory='该指南给出了central Almaty到Medeu的探索顺序，仅供参考。';

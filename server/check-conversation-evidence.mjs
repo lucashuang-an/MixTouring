@@ -92,4 +92,12 @@ const conflict=await groundConversationOutput({reply:conflictText,catalog:confli
   return {items:JSON.parse(opts.user).claims.map(c=>({id:c.id,decision:'supported',reason:'来源确有冲突且结论保留待查'}))};
 }});
 assert.equal(conflict.status,'complete');assert.equal(conflict.claims[0].allowed_use,'conflict');assert.equal(conflict.sources.length,2);
+const pronounCatalog=buildEvidenceCatalog({sources:[{title:'资料指南',url:'https://example.gov.cn/guide',excerpt:'出发前核对天气与官方开放状态。',published_at:'2026-10-20',kind:'guide'}],now});
+const pronounFact='它要求出发前核对天气与官方开放状态。';
+const pronoun=await groundConversationOutput({reply:'这条路线可执行。\n'+pronounFact,catalog:pronounCatalog,allowRepair:false,model:async opts=>{
+  if(opts.kind==='conversation_evidence_extract')return {items:JSON.parse(opts.user).fields.map(f=>({id:f.id,text:f.text,needs_source:true,allowed_use:'source_reference',supports:f.text===pronounFact?[{source_id:pronounCatalog.entries[0].id,quote:pronounCatalog.entries[0].excerpt}]:[]}))};
+  return {items:JSON.parse(opts.user).claims.map(c=>({id:c.id,decision:'supported',reason:'原句支持'}))};
+}});
+assert.match(pronoun.reply,/资料参考（example.gov.cn）：\n它要求/,'删掉先行句后由实际出处补回主语');
+assert.equal(pronoun.claims[0].sentence,pronounFact,'补归属不改已经核对的事实原句');assert.equal(pronoun.sources.length,1);
 console.log('✓ 主对话、最终答复、生成草案、来源与引用一致、失败保留通过');
