@@ -5,19 +5,21 @@ const ENDPOINT='https://api.tavily.com/search';
 const states=new Map();
 const domain=value=>typeof value==='string' && /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i.test(value);
 export function tavilyConfigured(){return !!process.env.TAVILY_API_KEY;}
-export async function searchTavily(query,{limit=5,timeoutMs=12000,signal,onAttempt,domains=null,language=null}={}){
+export async function searchTavily(query,{limit=5,timeoutMs=12000,signal,onAttempt,domains=null,domainMode='restrict',language=null,startDate=null,endDate=null}={}){
   const started=Date.now(),key=process.env.TAVILY_API_KEY;
   const emit=extra=>searchAttempt(onAttempt,{provider:'tavily',query,started,...extra});
   if(signal?.aborted){emit({status:'cancelled',reason_code:'cancelled'});return null;}
   if(!key){emit({status:'unconfigured',reason_code:'unconfigured'});return null;}
   const text=String(query).slice(0,100),sites=domains ?? [...text.matchAll(/(?:^|\s)site:([a-z0-9.-]+)/gi)].map(m=>m[1]);
-  if(!Array.isArray(sites) || sites.length>8 || sites.some(s=>!domain(s)) || !text.trim() || !Number.isInteger(limit) || limit<1 || limit>10 || !Number.isInteger(timeoutMs) || timeoutMs<1){emit({status:'error',reason_code:'invalid_options'});return null;}
+  const validDate=d=>d===null || typeof d==='string' && /^\d{4}-\d{2}-\d{2}$/.test(d) && Number.isFinite(Date.parse(d)) && new Date(d).toISOString().slice(0,10)===d;
+  if(!Array.isArray(sites) || sites.length>8 || sites.some(s=>!domain(s)) || !['restrict','prefer'].includes(domainMode) || !validDate(startDate) || !validDate(endDate) || startDate && endDate && startDate>endDate || !text.trim() || !Number.isInteger(limit) || limit<1 || limit>10 || !Number.isInteger(timeoutMs) || timeoutMs<1){emit({status:'error',reason_code:'invalid_options'});return null;}
   const cooldown=states.get(key);if(cooldown?.until>Date.now()){emit({status:'skipped',reason_code:cooldown.reason});return null;}
   let httpStatus=null;
   try{
     const res=await fetch(ENDPOINT,{method:'POST',redirect:'error',headers:{'content-type':'application/json',authorization:'Bearer '+key},signal:signal?AbortSignal.any([signal,AbortSignal.timeout(timeoutMs)]):AbortSignal.timeout(timeoutMs),
       body:JSON.stringify({query:text,search_depth:'basic',topic:'general',max_results:limit,include_answer:false,include_raw_content:false,include_images:false,include_usage:true,include_published_date:true,filter_by_published_date:false,auto_parameters:false,
-        ...(sites.length?{include_domains:[...new Set(sites)],include_domains_mode:'restrict'}:{}),...(['zh','en','ja'].includes(language)?{language}:{})})});
+        ...(sites.length?{include_domains:[...new Set(sites)],include_domains_mode:domainMode}:{}),...(['zh','en','ja'].includes(language)?{language}:{}),
+        ...(startDate?{start_date:startDate}:{}),...(endDate?{end_date:endDate}:{})})});
     httpStatus=res.status;
     if(!res.ok){
       const status=res.status===401 || res.status===403?'unauthorized':res.status===429?'rate_limited':[432,433].includes(res.status)?'quota_exhausted':'error';
@@ -31,7 +33,7 @@ export async function searchTavily(query,{limit=5,timeoutMs=12000,signal,onAttem
       let url;try{url=publicUrl(row?.url).href;}catch{continue;}
       if(seen.has(url))continue;seen.add(url);
       // published_date 可能是更新时间的估计，不能成为近期运营资料的准入日期。
-      results.push({title:String(row.title || '').slice(0,120),link:url,content:String(row.content || '').slice(0,300),media:'tavily',date:null,
+      results.push({title:String(row.title || '').slice(0,120),link:url,content:String(row.content || '').slice(0,1600),media:'tavily',date:null,
         estimated_date:typeof row.published_date==='string'?row.published_date.slice(0,100):null,date_basis:'provider_estimate'});
       if(results.length>=limit)break;
     }

@@ -39,6 +39,14 @@ assert.equal(datedNotice.sources[0].date_basis,'page_metadata','原文NEWS日期
 assert.equal(datedNotice.sources[0].temporal.date_scope,'unverified','近期发布不代表具体行程日期已被覆盖');
 const unverifiedNotice=await collectTravelSources({destination:'大阪',purpose:'guide'},async()=>[estimateOnly],{now:noticeNow,useCache:false,readPage:async()=>({read_status:'unavailable'})});
 assert.equal(unverifiedNotice.sources.length,0);assert.equal(unverifiedNotice.archive.length,1,'未读到原文时服务估计日期不能续期');
+const priorityReads=[];
+const prioritized=await collectTravelSources({destination:'大阪',purpose:'guide'},async()=>[
+  {...estimateOnly,link:'https://example.com/undated',estimated_date:''},
+  {...estimateOnly,link:'https://example.com/recent-estimate',estimated_date:'2026-10-20'},
+  {...estimateOnly,link:'https://example.com/another-undated',estimated_date:''}
+],{now:noticeNow,useCache:false,readPage:async url=>{priorityReads.push(url);return {url,read_status:'page_excerpt',excerpt:body,published_at:null};}});
+assert.equal(priorityReads[0],'https://example.com/recent-estimate','近期索引提示可用于挑选读取目标');
+assert.equal(priorityReads.length,2);assert.equal(prioritized.sources.length,0,'优先读取不使估计日期成为可靠发布日期');
 let directReads=0;
 const directNotice=await collectTravelSources({destination:'大阪',question:'请核对这个公开原文 '+noticeUrl,purpose:'guide'},async()=>[],{now:noticeNow,useCache:false,
   readPage:async url=>{directReads++;return {...extractPublicPage(newsTime),url};}});

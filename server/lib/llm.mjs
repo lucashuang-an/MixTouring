@@ -107,10 +107,10 @@ async function searchPublicIndex(query, limit, timeoutMs, signal,observe) {
 /** 最近一次 searchWeb 真实调用的状态（浅拷贝，不泄露凭据）；从未调用过为 unknown */
 export function webSearchStatus() { return { ...SEARCH_STATE }; }
 
-export async function searchWeb(query, { limit = 5, timeoutMs = 30000, signal,onAttempt,provider=process.env.TRAVEL_SEARCH_PROVIDER || 'current',domains=null,language=null } = {}) {
+export async function searchWeb(query, { limit = 5, timeoutMs = 30000, signal,onAttempt,provider=process.env.TRAVEL_SEARCH_PROVIDER || 'current',domains=null,domainMode='restrict',language=null,startDate=null,endDate=null } = {}) {
   if(signal?.aborted){searchAttempt(onAttempt,{provider:'none',query,started:Date.now(),status:'cancelled',reason_code:'cancelled'});return null;}
   if(provider==='tavily'){
-    return searchTavily(query,{limit,timeoutMs,signal,domains,language,onAttempt:event=>{markSearch(event.status,'tavily');if(typeof onAttempt==='function')onAttempt(event);}});
+    return searchTavily(query,{limit,timeoutMs,signal,domains,domainMode,language,startDate,endDate,onAttempt:event=>{markSearch(event.status,'tavily');if(typeof onAttempt==='function')onAttempt(event);}});
   }
   if(provider!=='current'){markSearch('error');searchAttempt(onAttempt,{provider:'none',query,started:Date.now(),status:'error',reason_code:'unsupported_provider'});return null;}
   if (process.env.VOLC_SEARCH_API_KEY) {

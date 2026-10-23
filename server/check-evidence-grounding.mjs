@@ -35,6 +35,30 @@ assert.equal((await check(cat,reply,[{...claim(),supports:[...claim().supports,.
 const wrongRef=reply.replace('。',' [ev_1]。');assert.equal((await check(cat,wrongRef,[claim(cat,wrongRef)])).grounded.length,0);
 console.log('✓ 背景、提问、否定、用途、方向语义、伪造原句及合法参考通过');
 
+const hours=make([row('do not assume every lift section shares the same hours')]);
+const compound='缆车各段开放时间可能不同，不能默认一张票通到底。';let checkedParts=[];
+const compoundClaims=[claim(hours,compound)];
+const partialAssessment=await assessEvidenceClaims(compound,hours,compoundClaims,async({user})=>{
+  const input=JSON.parse(user);checkedParts=input.claims.map(c=>c.claim.text);
+  assert.equal(input.source_catalog.length,1,'分句共享相同可见来源目录');
+  return {items:input.claims.map(c=>({id:c.id,decision:c.claim.text.includes('一张票')?'unsupported':'supported',reason:'时间信息不能证明票券范围'}))};
+});
+assert.equal(checkedParts.length,2,'完整枚举真实反例的两个分句');
+assert.equal(validateEvidenceClaims(compound,hours,{claims:compoundClaims,assessment:partialAssessment}).grounded.length,0,'半句有出处不能放行整句');
+for(const mode of ['missing','duplicate']){
+  const assessment=await assessEvidenceClaims(compound,hours,compoundClaims,async({user})=>{
+    const first={id:JSON.parse(user).claims[0].id,decision:'supported',reason:'只回答前半句'};
+    return {items:mode==='missing'?[first]:[first,first]};
+  });
+  assert.equal(validateEvidenceClaims(compound,hours,{claims:compoundClaims,assessment}).grounded.length,0,'漏交或重复分句不得通过');
+}
+const twoFacts=make([row('鹤鸣茶社提供盖碗茶。大旗茶馆由老厂房改造。')]);
+const twoText='资料提到鹤鸣茶社提供盖碗茶，大旗茶馆由老厂房改造。';
+const twoClaims=[{text:twoText,allowed_use:'source_reference',supports:['鹤鸣茶社提供盖碗茶。','大旗茶馆由老厂房改造。'].map(quote=>({source_id:twoFacts.entries[0].id,quote}))}];
+assert.equal((await check(twoFacts,twoText,twoClaims)).grounded.length,1,'同一篇文章可用不同原句支持多个事实');
+assert.equal((await check(twoFacts,twoText,[{...twoClaims[0],allowed_use:'conflict'}])).grounded.length,0,'同篇多原句不能伪装成两个冲突来源');
+console.log('✓ 逐分句支持、部分支持拒绝、漏交失效及同源多原句通过');
+
 const old=make([row(quote,{published_at:'2026-05-01'})]);assert.equal(old.entries[0].temporal_state,'historical');assert.equal((await check(old)).grounded.length,0);
 const experienceWindow=make([row(quote,{published_at:'2026-05-01'})],{retrieval:{purpose:'experience'}});
 assert.equal(experienceWindow.entries[0].temporal_state,'recent');assert.equal((await check(experienceWindow)).grounded.length,0);
@@ -52,7 +76,7 @@ for(const text of ['北京到阿拉木图有航班。','北京到阿拉木图每
 }
 assert.equal(validateEvidenceClaims('方向上可优先按成都东—昆明南直达高铁去查。',{entries:[]}).rejected.length,1,'未标注的直达高铁方向不能伪装成确定连接');
 for(const text of ['新干线直达省心、换乘少，适合把时间留给大阪。','可以先比较新干线直达与沿途停留。','高铁可以直达昆明。','东京到大阪有direct trains。'])assert.ok(validateEvidenceClaims(text,{entries:[]}).rejected.length,'交通方式在前的直达承诺同样需要证据：'+text);
-for(const text of ['如果有新干线直达，可以先比较少换乘方案。','新干线是否直达大阪仍待核实。'])assert.equal(validateEvidenceClaims(text,{entries:[]}).rejected.length,0,'明确假设和待查仍可表达：'+text);
+for(const text of ['如果有新干线直达，可以先比较少换乘方案。','若能核实高铁直达，可以先比较少换乘方案。','新干线是否直达大阪仍待核实。'])assert.equal(validateEvidenceClaims(text,{entries:[]}).rejected.length,0,'明确假设和待查仍可表达：'+text);
 const shinkansen=make([row('东京到大阪新干线直达。')]),shinkansenReply='来源记载东京到大阪新干线直达，本次日期仍待确认。';
 assert.equal((await check(shinkansen,shinkansenReply,[claim(shinkansen,shinkansenReply)])).grounded.length,1,'有原句和语义支持的直达资料参考可通过');
 for(const text of ['北京到阿拉木图未开通直飞。','北京到阿拉木图未恢复航班。','北京到阿拉木图无直飞。','北京到阿拉木图未开通直飞但班车也待查。']){

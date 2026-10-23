@@ -33,6 +33,15 @@ try{
   assert.ok(!JSON.stringify(available).includes('test-key'));assert.ok(!JSON.stringify(available).includes('不应采用'));
   await collectTravelSources({purpose:'experience'},searchWeb,{useCache:false,now:Date.parse('2026-10-20T02:00Z'),queryPlans:[{channel:'真实出口',domain:'reddit.com',text:'Almaty travel',kinds:['experience'],language:'en'}]});
   const forwarded=JSON.parse(calls.at(-1).opts.body);assert.deepEqual(forwarded.include_domains,['reddit.com']);assert.equal(forwarded.language,'en','来源采集把实际域名和语言送入选中的服务');
+  await collectTravelSources({destination:'成都',query:'成都茶馆体验',purpose:'experience'},searchWeb,{useCache:false,now:Date.parse('2026-10-20T02:00Z')});
+  const preferred=JSON.parse(calls.at(-2).opts.body);assert.equal(preferred.include_domains_mode,'prefer','普通任务保留社区偏好但允许公开补充');
+  assert.equal(preferred.start_date,'2025-10-20');assert.equal(preferred.end_date,'2026-10-20');assert.equal(preferred.filter_by_published_date,false,'不把未知日期候选在搜索端当成不存在');
+  assert.doesNotMatch(preferred.query,/after:|before:/,'日期使用API字段，不挤占主题词或冒充搜索词');
+  await collectTravelSources({destination:'阿拉木图',query:'Reddit Almaty solo travel',purpose:'experience',international:true},searchWeb,{useCache:false,now:Date.parse('2026-10-20T02:00Z')});
+  const specified=JSON.parse(calls.at(-2).opts.body);assert.deepEqual(specified.include_domains,['reddit.com']);assert.equal(specified.include_domains_mode,'restrict','用户指定来源仍严格限定该次查询');
+  const beforeInvalid=calls.length;
+  assert.equal((await searchWebDetailed('非法日期',{startDate:'2026-02-30'})).status,'error');
+  assert.equal((await searchWebDetailed('非法偏好',{domainMode:'anything'})).status,'error');assert.equal(calls.length,beforeInvalid,'非法新选项不联网');
   const collected=await collectTravelSources({purpose:'transport'},async()=>available.results,{now:Date.parse('2026-10-20T02:00Z'),useCache:false,queryPlans:[{channel:'测试',domain:'reddit.com',text:'测试',kinds:['experience']}],readPage:async()=>({read_status:'unavailable'})});
   assert.equal(collected.sources.length,0);assert.equal(collected.archive[0].temporal.state,'undated');assert.equal(collected.archive[0].estimated_date_basis,'provider_estimate');
   const cancelled=new AbortController();cancelled.abort();const count=calls.length;assert.equal((await searchWebDetailed('取消',{signal:cancelled.signal})).network_requests,0);assert.equal(calls.length,count);

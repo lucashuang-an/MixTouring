@@ -10,8 +10,9 @@ const brief={origin:'北京',destination:'阿拉木图',summary:'北京到阿拉
 const base={intent_action:'question',reply:statement,brief,ready:true,confirmed:false,requirements_patch:{},preferences:{},travel:{},constraints:{},sights:{},search_query:'北京到阿拉木图航班',search_purpose:'transport',destination_country:'KZ'};
 const start={text:'北京到阿拉木图交通资料怎样？',conversation:{stage:'discuss',brief,routing:{origin:'北京',destination:'阿拉木图'}}};
 const execute=async({page=source,answer=statement,assessment='supported',extract=null,draft=null,action='chat',reviewFailure=false,reviewSources=false,searchFailure=false,omitSearchQuery=false,repairReply=null,text='北京到阿拉木图交通资料怎样？'}={})=>{
-  const calls=[],queries=[],collections=[];const model=async opts=>{
+  const calls=[],queries=[],collections=[],views=[];const model=async opts=>{
     calls.push(opts.kind);
+    if(opts.kind==='conversation')views.push(JSON.parse(opts.user));
     if(opts.kind==='conversation')return {...base,reply:answer,intent_action:draft?'revise':'question',draft,search_query:omitSearchQuery?'':'北京到阿拉木图航班'};
     if(opts.kind==='conversation_review')return {reply:answer,draft,changes:[]};
     if(opts.kind==='conversation_evidence_repair')return repairReply?{reply:repairReply}:null;
@@ -26,17 +27,26 @@ const execute=async({page=source,answer=statement,assessment='supported',extract
   };
   const input=action==='generate'?{action:'generate',conversation:{stage:'ready',brief,routing:{origin:'北京',destination:'阿拉木图'}}}:{...start,text};
   const result=await conversationTurn(input,null,{now,evidenceReview:true,sourceReview:reviewFailure || reviewSources,search:async query=>{queries.push(query);return searchFailure?null:page?[page]:[];},model,onSourceCollection:s=>collections.push(s)});
-  return {result,calls,queries,collections};
+  return {result,calls,queries,collections,views};
 };
 const good=await execute();
 assert.equal(good.result.status,'ok');assert.equal(good.result.sources.length,1);assert.equal(good.result.evidence_claims.length,1);
 assert.ok(good.calls.includes('conversation_evidence_extract') && good.calls.includes('conversation_evidence_support'));
 assert.equal(good.result.evidence_claims[0].supports[0].source_id,good.result.sources[0].id);
+const generatedView=good.views.find(v=>v.search_complete);
+assert.equal(generatedView.evidence_catalog.entries[0].excerpt,source.content);
+assert.deepEqual(generatedView.search_results,[]);assert.deepEqual(generatedView.transport_references,[],'最终生成不借旧交通资料或另一份长摘录扩展事实');
 assert.equal(good.collections[0].source_count,1);assert.ok(!JSON.stringify(good.collections[0]).includes(source.link),'诊断只传计数和状态，不传网页身份或正文');
 const unsupported=await execute({assessment:'unsupported'});
 assert.equal(unsupported.result.status,'ok');assert.match(unsupported.result.reply,/待核实/);assert.equal(unsupported.result.sources.length,0);assert.equal(unsupported.result.evidence_claims.length,0);
 const repaired=await execute({assessment:'unsupported',repairReply:'可以先比较航班和铁路的查询入口，再分别核实日期与衔接；你更看重少换乘还是沿途体验？'});
 assert.equal(repaired.result.status,'ok');assert.match(repaired.result.reply,/少换乘/);assert.doesNotMatch(repaired.result.reply,/开通直飞/);assert.equal(repaired.result.sources.length,0);
+const brokenLong=await execute({answer:statement+'\n\n这两处都能无车直达，适合安排为固定的当地一日游。\n\n因此它们比其他走法更合适，应当把它们安排进每天的行程。',assessment:'unsupported',
+  repairReply:'如果能核实少换乘的连接，可以优先比较；也可以把沿途停留作为备选，先分别查证交通。'});
+assert.ok(brokenLong.calls.includes('conversation_evidence_repair'),'长回复删句后也必须尝试一次完整重组');
+assert.doesNotMatch(brokenLong.result.reply,/这两处|因此它们/,'不发布失去前文的指代');
+const pending=await execute({answer:'待查项：具体班次、票价与适用日期。',page:null});
+assert.equal(pending.result.status,'ok');assert.match(pending.result.reply,/具体班次/);assert.equal(pending.result.sources.length,0,'明确待查清单不伪装成外部事实');
 const airport=await execute({page:{...source,title:'阿拉木图机场介绍',content:'阿拉木图机场位于哈萨克斯坦。'}});
 assert.equal(airport.result.status,'ok');assert.equal(airport.result.sources.length,0);assert.doesNotMatch(airport.result.reply,/开通直飞/);
 const failed=await execute({extract:'fail'});assert.equal(failed.result.status,'unavailable');assert.equal(failed.result.conversation.revision || 0,0);
