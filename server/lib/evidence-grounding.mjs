@@ -15,7 +15,9 @@ const sentences=text=>String(text || '').split(/(?<=[。！？!?；;\n])/).map(s
 // 转折与分句分别判断，前半句待查不能替后半句的肯定承诺免责。
 const clauses=text=>sentences(text).flatMap(s=>s.split(/[,，]|但是|然而|不过|可是|但|却|\bbut\b/i)).map(s=>s.trim()).filter(Boolean);
 const affirmative=text=>OPERATIONAL.test(text) && !QUESTION.test(text) && !UNCERTAIN.test(text);
-export const operationalAssertions=text=>sentences(text).filter(s=>clauses(s).some(affirmative));
+export const isPendingChecklist=text=>/^(?:[-*]\s*)?(?:待查(?:项|清单)?(?:包括)?[：:]|待核实(?:项)?[：:]|(?:需要|需|仍需)(?:核实|查证)的(?:具体)?(?:项|信息|内容)(?:包括|有)?[：:])/.test(text) &&
+  !/\d|已经|已(?:确认|确定|运行|开通|恢复|运营)|证实|保证|肯定|必定|无需|每天|运营中|但是|然而|不过|可是|但|却/.test(text);
+export const operationalAssertions=text=>sentences(text).filter(s=>!isPendingChecklist(s) && clauses(s).some(affirmative));
 
 /** 仅为保守句法提示；问答混合仍须由结论级语义核对逐条验证。 */
 export function isQuestionSource(source){

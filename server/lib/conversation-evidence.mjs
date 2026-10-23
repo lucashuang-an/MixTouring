@@ -1,13 +1,15 @@
 /* 最终答复与草案共用证据目录；所有句子由模型逐项分类，证据支持另行核对。 */
 import {buildContext} from './context-builder.mjs';
-import {assessEvidenceClaims,operationalAssertions,validateEvidenceClaims} from './evidence-grounding.mjs';
+import {assessEvidenceClaims,operationalAssertions,validateEvidenceClaims,isPendingChecklist} from './evidence-grounding.mjs';
 
 const sentences=text=>String(text || '').split(/(?<=[。！？!?；;\n])/).map(s=>s.trim()).filter(Boolean);
 const assertedTravelFact=text=>/(?:公交|班车|火车|航班|地铁|景区|接驳|门票|住宿).{0,30}(?:比较轻松|方便|通常|必须|直达|开放)|(?:通常|一般|必须).{0,40}(?:中转|接驳|公交|班车|景区)/.test(text);
 // 待查清单的范围从句首开始，不能让句尾一个“待查”覆盖前面的肯定事实。
-const pendingOnly=text=>/^(?:[-*]\s*)?(?:待查(?:项|清单)?[：:]|待核实(?:项)?[：:]|(?:需要|需|仍需)核实的(?:具体)?(?:项|信息|内容)(?:包括|有)?[：:])/.test(text) &&
-  !/\d|已经|已确认|已确定|证实|保证|肯定|必定|无需|每天|运营中/.test(text);
-const unavailableContent=(text,catalog)=>!catalog?.entries?.length && /^(?:目前|本轮|这轮|当前)?(?:尚无|没有)(?:可核对|可引用|足够)(?:的)?(?:公开)?资料/.test(text) && !operationalAssertions(text).length;
+const pendingOnly=isPendingChecklist;
+const unavailableContent=(text,catalog)=>!catalog?.entries?.length &&
+  (/^(?:目前|本轮|这轮|当前)?(?:尚无|没有)(?:可核对|可引用|足够)(?:的)?(?:公开)?(?:资料|来源)/.test(text) ||
+   /^(?:现有|本轮|当前)(?:的)?(?:资料|证据|来源)(?:仍)?不足以(?:核实|支持|确认|给出)/.test(text)) &&
+  !/但是|然而|不过|可是|但|却|已确认|已确定|保证|肯定|必定/.test(text) && !operationalAssertions(text).length;
 export function evidenceFields(reply,draft){
   const fields=[];
   const add=(path,text)=>sentences(text).forEach((sentence,index)=>fields.push({id:path+'#'+index,path,text:sentence}));
@@ -41,7 +43,7 @@ export async function groundConversationOutput({reply,draft,catalog,model,signal
   const claims=[],inferences=[],seen=new Set();
   for(const field of fields){const item=byId.get(field.id)[0];
     if(pendingOnly(field.text) || unavailableContent(field.text,catalog))continue;
-    if(item.allowed_use==='inference' && (!item.supports || !item.supports.length) && !operationalAssertions(field.text).length && !assertedTravelFact(field.text) && /核心取舍|建议|可以先|可以考虑|探索方向|作为候选|优先比较/.test(field.text)){
+    if(item.allowed_use==='inference' && (!item.supports || !item.supports.length) && !operationalAssertions(field.text).length && !assertedTravelFact(field.text) && /核心取舍|建议|可以先|可以考虑|探索方向|作为候选|优先比较|如果|若(?:能|有|可|无法)|假设/.test(field.text)){
       inferences.push(field.text);continue;
     }
     if(!item.needs_source && !operationalAssertions(field.text).length && !assertedTravelFact(field.text))continue;

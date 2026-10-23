@@ -475,8 +475,8 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
     if(questionOnly){next.brief=before.brief;next.routing=before.routing;}
     if(questionOnly && before.draft){
       const checked=await model({kind:'conversation_review',timeoutMs:25000,
-        schema_prompt:'你是旅行问答编辑，只输出 JSON {reply:string}。用户这轮只咨询、不修改方案。用已有意图和资料直接回答，保留原方案。删除资料没有支持的具体地点事实、室内外判断、开放、交通运营和天气保证；雨天可建议咖啡馆、展馆、餐馆等活动类型，但不要凭模型记忆补具体场馆或说某处一定不受影响。数字事实必须来自上下文。只回答当前问题，最多一个必要追问。',
-        user:JSON.stringify({...context,proposed_reply:raw.reply})});
+        schema_prompt:'你是旅行问答编辑，只输出 JSON {reply:string}。用户这轮只咨询、不修改方案，保留原方案。保留proposed_reply已经有证据的事实，不主动增加数字或新事实。外部事实只取evidence_catalog实际可见原句，每句只表达一个有支持的事实；不从旧目录、历史或模型记忆补充。删除没有支持的具体地点事实、室内外判断、开放、交通运营和天气保证；雨天可建议咖啡馆、展馆、餐馆等活动类型，但不补具体场馆或说某处一定不受影响。数字必须有对应对象与用途，不将笼统活动起价改成具体项目价格；无需提及的价格直接省略。没有当前证据时给明确假设下的取舍和待查项，不等于没有相关网页。只回答当前问题，最多一个必要追问。',
+        user:JSON.stringify({...generationContext(),proposed_reply:raw.reply})});
       if(!str(checked?.reply) || unsupportedNumbers(checked).length)throw new Error('问答资料校对未完成');
       raw.reply=checked.reply;
     }

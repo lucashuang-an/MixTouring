@@ -9,10 +9,10 @@ const statement='来源记载北京到阿拉木图开通直飞，本次日期仍
 const brief={origin:'北京',destination:'阿拉木图',summary:'北京到阿拉木图旅行'};
 const base={intent_action:'question',reply:statement,brief,ready:true,confirmed:false,requirements_patch:{},preferences:{},travel:{},constraints:{},sights:{},search_query:'北京到阿拉木图航班',search_purpose:'transport',destination_country:'KZ'};
 const start={text:'北京到阿拉木图交通资料怎样？',conversation:{stage:'discuss',brief,routing:{origin:'北京',destination:'阿拉木图'}}};
-const execute=async({page=source,answer=statement,assessment='supported',extract=null,draft=null,action='chat',reviewFailure=false,reviewSources=false,searchFailure=false,omitSearchQuery=false,repairReply=null,text='北京到阿拉木图交通资料怎样？'}={})=>{
+const execute=async({page=source,answer=statement,assessment='supported',extract=null,draft=null,action='chat',reviewFailure=false,reviewSources=false,searchFailure=false,omitSearchQuery=false,repairReply=null,withDraft=false,text='北京到阿拉木图交通资料怎样？'}={})=>{
   const calls=[],queries=[],collections=[],views=[];const model=async opts=>{
     calls.push(opts.kind);
-    if(opts.kind==='conversation')views.push(JSON.parse(opts.user));
+    if(['conversation','conversation_review'].includes(opts.kind))views.push({...JSON.parse(opts.user),model_kind:opts.kind});
     if(opts.kind==='conversation')return {...base,reply:answer,intent_action:draft?'revise':'question',draft,search_query:omitSearchQuery?'':'北京到阿拉木图航班'};
     if(opts.kind==='conversation_review')return {reply:answer,draft,changes:[]};
     if(opts.kind==='conversation_evidence_repair')return repairReply?{reply:repairReply}:null;
@@ -26,6 +26,7 @@ const execute=async({page=source,answer=statement,assessment='supported',extract
     return {};
   };
   const input=action==='generate'?{action:'generate',conversation:{stage:'ready',brief,routing:{origin:'北京',destination:'阿拉木图'}}}:{...start,text};
+  if(withDraft)input.conversation={...input.conversation,stage:'draft',draft:{title:'已有想法',overview:'交通待查。',route:['北京','阿拉木图'],cards:[{id:'city',place:'阿拉木图',label:'目的地',title:'自由安排',content:'活动待查。'}],sections:[],pending:[]}};
   const result=await conversationTurn(input,null,{now,evidenceReview:true,sourceReview:reviewFailure || reviewSources,search:async query=>{queries.push(query);return searchFailure?null:page?[page]:[];},model,onSourceCollection:s=>collections.push(s)});
   return {result,calls,queries,collections,views};
 };
@@ -36,6 +37,8 @@ assert.equal(good.result.evidence_claims[0].supports[0].source_id,good.result.so
 const generatedView=good.views.find(v=>v.search_complete);
 assert.equal(generatedView.evidence_catalog.entries[0].excerpt,source.content);
 assert.deepEqual(generatedView.search_results,[]);assert.deepEqual(generatedView.transport_references,[],'最终生成不借旧交通资料或另一份长摘录扩展事实');
+const editedQuestion=await execute({withDraft:true}),editorView=editedQuestion.views.find(v=>v.model_kind==='conversation_review');
+assert.deepEqual(editorView.search_results,[]);assert.deepEqual(editorView.transport_references,[]);assert.equal(editorView.evidence_catalog.entries[0].excerpt,source.content,'已有草案的问答编辑也使用同一个证据视图');
 assert.equal(good.collections[0].source_count,1);assert.ok(!JSON.stringify(good.collections[0]).includes(source.link),'诊断只传计数和状态，不传网页身份或正文');
 const unsupported=await execute({assessment:'unsupported'});
 assert.equal(unsupported.result.status,'ok');assert.match(unsupported.result.reply,/待核实/);assert.equal(unsupported.result.sources.length,0);assert.equal(unsupported.result.evidence_claims.length,0);
@@ -47,6 +50,10 @@ assert.ok(brokenLong.calls.includes('conversation_evidence_repair'),'长回复�
 assert.doesNotMatch(brokenLong.result.reply,/这两处|因此它们/,'不发布失去前文的指代');
 const pending=await execute({answer:'待查项：具体班次、票价与适用日期。',page:null});
 assert.equal(pending.result.status,'ok');assert.match(pending.result.reply,/具体班次/);assert.equal(pending.result.sources.length,0,'明确待查清单不伪装成外部事实');
+for(const text of ['现有资料不足以核实直飞是否在售、由哪家航司执飞或换乘方案是否更省时。','目前没有可核对的公开来源内容，因此无法确认航班的具体班次、运行日、票价或行李规则。','待查项包括：具体票价，班车适用日期。']){
+  const checked=await groundConversationOutput({reply:text,catalog:{entries:[]},allowRepair:false,model:async({user})=>({items:JSON.parse(user).fields.map(f=>({id:f.id,text:f.text,needs_source:true,allowed_use:null,supports:[]}))})});
+  assert.equal(checked.reply,text,'模型误标纯待查或本轮证据不足时，不删除诚实边界');
+}
 const airport=await execute({page:{...source,title:'阿拉木图机场介绍',content:'阿拉木图机场位于哈萨克斯坦。'}});
 assert.equal(airport.result.status,'ok');assert.equal(airport.result.sources.length,0);assert.doesNotMatch(airport.result.reply,/开通直飞/);
 const failed=await execute({extract:'fail'});assert.equal(failed.result.status,'unavailable');assert.equal(failed.result.conversation.revision || 0,0);
