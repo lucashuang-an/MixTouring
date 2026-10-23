@@ -61,6 +61,22 @@ export function buildEvidenceCatalog({sources=[],routing={},retrieval={},travel=
 }
 
 const signature=(claim,entries,scope)=>'claim_'+createHash('sha256').update(JSON.stringify({claim,entries,scope})).digest('hex').slice(0,24);
+function unverifiedPlaceTranslation(sentence,supports,entries){
+  const cited=supports.map(s=>entries.find(e=>e.id===s?.source_id)).filter(Boolean),context=cited.map(e=>e.title+'\n'+e.excerpt).join('\n');
+  const suffixes=new Set(['park','cathedral','market','square','valley','rink','resort','pass','station']);
+  const foreignPlace=supports.some(s=>{
+    const words=[...String(s?.quote || '').matchAll(/[A-Za-z][A-Za-z']*/g)];
+    return words.some((w,i)=>i && suffixes.has(w[0].toLowerCase()) && /^[A-Z]/.test(words[i-1][0]) && /^\s+$/.test(s.quote.slice(words[i-1].index+words[i-1][0].length,w.index)));
+  });
+  if(!foreignPlace)return false;
+  for(const m of sentence.matchAll(/([\u3400-\u9fff]{2,})(公园|教堂|市场|广场|山谷|冰场|滑雪场|山口)/g)){
+    if(/(?:当地|城区|市区|城市|这座|一座|木结构|附近|多个|不同|任何|某个)$/.test(m[1]))continue;
+    let known=false;
+    for(let size=2;size<=Math.min(8,m[1].length);size++)if(context.includes(m[1].slice(-size)+m[2]))known=true;
+    if(!known)return true;
+  }
+  return false;
+}
 function prepare(reply,catalog,claims=[]){
   claims=Array.isArray(claims)?claims:[];
   const entries=catalog?.entries || [],rejected=[],pending=[];
@@ -83,13 +99,15 @@ function prepare(reply,catalog,claims=[]){
       if(!['recent','window_reference'].includes(entry.temporal_state)){reason='来源时效不足以支持本次结论';break;}
       if(operational && !['recent','window_reference'].includes(entry.operational_temporal_state)){reason='交通资料超过运营复核期';break;}
       if(entry.question_like){reason='提问帖不是已获答案';break;}
-      if(entry.kind==='experience' && claim.allowed_use!=='conflict' &&
-        (claim.allowed_use!=='travel_experience' || !/作者|旅行者|发帖者|该用户|亲历|记录|游记中/.test(sentence))){reason='个人经历须按旅行者经验归因，不能作为普遍资料事实';break;}
+      const personal=entry.kind==='experience' || entry.allowed_use==='travel_experience' || /作者(?:当时|记录|提到|写到|认为|观察|探访)|旅行者|发帖者|该用户|亲历|游记/.test(sentence);
+      if(personal && claim.allowed_use!=='conflict' &&
+        (claim.allowed_use!=='travel_experience' || !/作者|旅行者|发帖者|该用户|亲历|记录|游记/.test(sentence))){reason='个人经历须按旅行者经验归因，不能作为普遍资料事实';break;}
       if(operational && claim.allowed_use!=='conflict' && (entry.kind==='experience' || entry.allowed_use!=='source_reference' || claim.allowed_use!=='source_reference')){reason='经验或其他用途不能支持运营结论';break;}
       if(operational && claim.allowed_use!=='conflict' && !clauses(quote).some(affirmative)){reason='原句没有可供核对的肯定运营陈述';break;}
       if(!ids.has(entry.id))cited.push(entry);ids.add(entry.id);
     }
     if(reason){fail(reason);continue;}
+    if(unverifiedPlaceTranslation(sentence,claim.supports,entries)){fail('外文地点缺少可核对的中文译名，请保留来源原名');continue;}
     if(claim.allowed_use==='conflict' && ids.size<2){fail('冲突结论需要至少两个不同来源');continue;}
     const sourceCount=sentence.match(/(?:这|该|上述|本轮)?([一二两三四五六\d])(?:份|条|篇)(?:资料|来源|文章|报道)/);
     if(sourceCount){const count=Number(sourceCount[1]) || ({一:1,二:2,两:2,三:3,四:4,五:5,六:6}[sourceCount[1]] || 0);

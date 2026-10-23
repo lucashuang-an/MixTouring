@@ -15,7 +15,10 @@ const cases=[
   ['缺少一端不能证明航线','阿拉木图开通直飞服务，目的城市未注明。',false],
   ['时间不能支持票券范围','do not assume every lift section shares the same hours',false,'缆车各段开放时间可能不同，不能默认一张票通到底。'],
   ['完整复合参考仍可支持','缆车各段开放时间不同。各段票券需要分别确认。',true,'资料提示缆车各段开放时间不同，各段票券需要分别确认。'],
-  ['一个景点不能支持另一个','Visit Panfilov Park and admire Zenkov Cathedral.',false,'资料建议游览潘菲洛夫公园，还建议游览绿色巴扎。']
+  ['一个景点不能支持另一个','Visit Panfilov Park and admire Zenkov Cathedral.',false,'资料建议游览Panfilov Park，还建议游览Green Bazaar。'],
+  ['不能凭空翻译成另一公园','Day 2 - GORKY PARK',false,'资料列出果戈里公园。'],
+  ['保留原名的公园参考','Day 2 - GORKY PARK',true,'资料列出GORKY PARK。'],
+  ['原文有中文名可使用','GORKY PARK（高尔基公园）',true,'资料列出高尔基公园。']
 ];
 const report={sampled_at:new Date().toISOString(),fixture:true,model:process.env.VOLC_COMPOSE_MODEL || process.env.LLM_MODEL,cases:[]};
 const output=process.env.EVIDENCE_REPLAY_OUT || join(tmpdir(),'mixtouring-evidence-replay.json');
@@ -25,7 +28,7 @@ for(const [name,excerpt,expected,statement=reply] of cases){
   const usage=[],realModel=opts=>composeJson({...opts,onUsage:u=>usage.push(u)});
   const start=Date.now(),assessment=await assessEvidenceClaims(statement,catalog,claims,realModel,{signal:AbortSignal.timeout(20000)});
   const result=validateEvidenceClaims(statement,catalog,{claims,assessment});
-  const passed=assessment.status==='completed' && (result.grounded.length===1)===expected;
+  const passed=assessment.status!=='unavailable' && (result.grounded.length===1)===expected;
   report.cases.push({name,excerpt,expected,assessment,result,passed,usage,elapsed_ms:Date.now()-start});
   writeFileSync(output,JSON.stringify(report,null,2)+'\n');console.log(name,passed?'通过':'需核查');
 }

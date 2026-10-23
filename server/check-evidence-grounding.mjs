@@ -58,6 +58,11 @@ const twoClaims=[{text:twoText,allowed_use:'source_reference',supports:['鹤鸣�
 assert.equal((await check(twoFacts,twoText,twoClaims)).grounded.length,1,'同一篇文章可用不同原句支持多个事实');
 assert.equal((await check(twoFacts,twoText,[{...twoClaims[0],allowed_use:'conflict'}])).grounded.length,0,'同篇多原句不能伪装成两个冲突来源');
 console.log('✓ 逐分句支持、部分支持拒绝、漏交失效及同源多原句通过');
+const foreignPlace=make([row('Day 2 - GORKY PARK')]);
+for(const text of ['资料列出果戈里公园。','城区建议果戈里公园。','资料列出果戈里公园（GORKY PARK）。'])assert.equal((await check(foreignPlace,text,[claim(foreignPlace,text)])).grounded.length,0,'未核实音译不能改变地点对象');
+assert.equal((await check(foreignPlace,'资料列出GORKY PARK。',[claim(foreignPlace,'资料列出GORKY PARK。')])).grounded.length,1,'保留来源原名可正常引用');
+const bilingualPlace=make([row('GORKY PARK（高尔基公园）')]);
+assert.equal((await check(bilingualPlace,'资料列出高尔基公园。',[claim(bilingualPlace,'资料列出高尔基公园。')])).grounded.length,1,'来源明确给出的中文名仍可引用');
 
 const old=make([row(quote,{published_at:'2026-05-01'})]);assert.equal(old.entries[0].temporal_state,'historical');assert.equal((await check(old)).grounded.length,0);
 const experienceWindow=make([row(quote,{published_at:'2026-05-01'})],{retrieval:{purpose:'experience'}});
@@ -91,6 +96,9 @@ assert.equal((await check(experience,experienceText,[{...claim(experience,experi
 assert.equal((await check(experience,experienceText,[claim(experience,experienceText)])).grounded.length,0,'不能把个人记录标成普通资料事实');
 const unAttributed='大阪散步很愉快。';
 assert.equal((await check(experience,unAttributed,[{...claim(experience,unAttributed),allowed_use:'travel_experience'}])).grounded.length,0,'个人感受缺少旅行者归因时不作为普遍结论发布');
+const personalArticle=make([row('作者当时在大阪步行游览。',{kind:'guide'})]),personalText='这篇游记记录了作者当时在大阪步行游览的经历。';
+assert.equal((await check(personalArticle,personalText,[claim(personalArticle,personalText)])).grounded.length,0,'综合媒体中的游记也不能冒充普遍事实');
+assert.equal((await check(personalArticle,personalText,[{...claim(personalArticle,personalText),allowed_use:'travel_experience'}])).grounded.length,1);
 console.log('✓ 否定、疑问、假设、转折和有出处经验正常表达通过');
 
 for(const model of [async()=>null,async()=>({items:[]}),async()=>{throw Error('不记录原始故障');},async({user})=>({items:[{id:JSON.parse(user).claims[0].id,decision:'supported',reason:''}]}),async({user})=>{const r={id:JSON.parse(user).claims[0].id,decision:'supported',reason:'重复'};return {items:[r,r]};}])assert.equal((await check(cat,reply,[claim()],model)).grounded.length,0);
