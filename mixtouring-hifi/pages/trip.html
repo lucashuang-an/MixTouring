@@ -212,8 +212,8 @@
     var savedDraftId=null,saveFailure=null,researchScope=null,researchTasks=null,researchHydrationKey=null,researchJournalError=false;
     var researchJournal=MTResearchTasks.journal({getItem:function(k){return localStorage.getItem(k);},setItem:function(k,v){localStorage.setItem(k,v);}});
     /* R1-C 有界补查：从待查清单显式继续核对一个缺口；结果只展示，不改条件、草案或选择。 */
-    var researchLoopState={running:false,record:null,binding:null,error:null,interrupted:false,controller:null};
-    var lastEvidenceGaps=[],restoredGapResearch=null;
+    var researchLoopState={running:false,record:null,binding:null,error:null,interrupted:false,controller:null,runToken:0};
+    var lastEvidenceGaps=[],restoredGapResearch=null,dismissedPlaceKey=null;
     var routeResearch=MTRouteResearch.create({request:function(input,signal){return post(input.kind==='draft'?'/api/anywhere/transport-search-batch':'/api/anywhere/route-research',input,signal);},onChange:function(){renderResearchProgress();renderGuide();}});
 
     /* ---------- 卡 B（v0.44.2）：交通锚点（用户确认事实）与会话级新约束 ----------
@@ -513,8 +513,10 @@
     /* R1-C 有界补查（桌面显式入口）：从待查清单挑一项，服务端在共享预算内完成检索、
      * 读取、整合与证据核对；这里只发起、取消与展示，不自动选路或采纳任何预览。 */
     var GAP_STOP_LABELS={completed:'完成',planner_done:'已无可试的新查询或原文',rounds:'到达三轮上限',budget_rounds:'到达三轮上限',budget_searches:'搜索预算已用完',budget_model:'模型预算已用完',deadline:'九十秒时限已到',cancelled:'已取消',no_gain:'连续两轮没有新增有效来源',no_new_query:'没有不重复的新查询',no_new_read:'没有未读过的原文',plan_off_topic:'规划偏离原问题，已拒绝',plan_invalid:'规划无效',plan_unavailable:'规划模型暂不可用，可重试',search_unavailable:'检索通道不可用（含鉴权或额度失败）',relevance_unavailable:'来源相关性核对未完成'};
+    var researchLoopRunSeq=0;
     /* 新输入或范围改变时使旧补查结果失效：中断在途请求并丢弃记录，不回填当前界面。 */
     function cancelGapResearch(){
+      researchLoopRunSeq++;/* 旧任务的异步回写从此全部失效 */
       if(researchLoopState.controller)researchLoopState.controller.abort();
       researchLoopState.running=false;researchLoopState.record=null;researchLoopState.error=null;researchLoopState.interrupted=false;restoredGapResearch=null;
     }
@@ -523,41 +525,55 @@
       return String(lastUser || conversation?.brief?.summary || '本次旅行的待查缺口').slice(0,500);
     }
     function gapResearchBinding(item){
-      var transportWords=/交通|班次|班期|航班|直飞|机票|航司|列车|火车|高铁|大巴|班车|公路|铁路|口岸|票价|直达|接驳|机场|跨境/;
-      if(transportWords.test(item)){
-        var scope=taskScope();if(!scope)return null;
+      var scope=taskScope();
+      /* 复审 P2-5：按缺口语义绑定，实体名称（如“铁路博物馆”）不决定补查类型——
+       * 明确两端的是交通；开放/门票/闭馆等场馆运营是体验；其余按交通/体验信号，再退目的地。 */
+      var attractionOps=/开放时间|开放状态|闭馆|营业|门票|售票|免票|展览|参观/;
+      var transportOps=/班次|班期|时刻|车次|航班|机票|车票|乘车|接驳|口岸|跨境|直达|交通方式|交通/;
+      if(scope){
         var mentioned=scope.legs.filter(function(l){return item.indexOf(l.from)>=0 && item.indexOf(l.to)>=0;});
-        var leg=mentioned[0] || scope.legs.find(function(l){return !l.locked;});
-        if(!leg)return null;
-        return {gap:String(item).slice(0,500),task_type:'transport',leg:{from:leg.from,to:leg.to,mode:leg.mode,exclude_road:leg.exclude_road===true}};
+        if(mentioned.length && !attractionOps.test(item)){
+          var leg=mentioned[0];
+          return {gap:String(item).slice(0,500),task_type:'transport',leg:{from:leg.from,to:leg.to,mode:leg.mode,exclude_road:leg.exclude_road===true}};
+        }
       }
-      var route=conversation?.draft?.route;
-      var destination=conversation?.routing?.destination || (Array.isArray(route) && route.length?route[route.length-1]:null);
-      if(!destination)return null;
-      return {gap:String(item).slice(0,500),task_type:'experience',destination:destination};
+      var destination=conversation?.routing?.destination || (Array.isArray(conversation?.draft?.route) && conversation.draft.route.length?conversation.draft.route[conversation.draft.route.length-1]:null);
+      if(attractionOps.test(item)){
+        return destination?{gap:String(item).slice(0,500),task_type:'experience',destination:destination}:null;
+      }
+      if(transportOps.test(item)){
+        var legAny=scope && scope.legs.find(function(l){return !l.locked;});
+        if(legAny)return {gap:String(item).slice(0,500),task_type:'transport',leg:{from:legAny.from,to:legAny.to,mode:legAny.mode,exclude_road:legAny.exclude_road===true}};
+      }
+      return destination?{gap:String(item).slice(0,500),task_type:'experience',destination:destination}:null;
     }
     async function runGapResearch(item){
       if(researchLoopState.running)return;
       var extra=gapResearchBinding(item);if(!extra){MT.toast('暂无可补查的交通路段或目的地');return;}
       var binding=Object.assign({question:gapQuestionText(),window:currentSearchWindow()},extra);
       var seq=guideSequence,controller=new AbortController();
-      researchLoopState={running:true,record:null,binding:binding,error:null,interrupted:false,controller:controller};
+      /* 复审 P2-7：每次运行带身份令牌；取消/新输入递增序号后，旧请求的回写一律失效，
+       * 不能把新任务的 running 改回 false 或误标 interrupted。 */
+      var runToken=++researchLoopRunSeq;
+      researchLoopState={running:true,record:null,binding:binding,error:null,interrupted:false,controller:controller,runToken:runToken};
       restoredGapResearch=null;renderResearchProgress();
       try{
         var res=await post('/api/anywhere/research-loop',binding,controller.signal);
-        if(seq!==guideSequence)return;
+        if(researchLoopState.runToken!==runToken)return;
         if(res.code!==0 || !res.data)throw Error(res.msg || '补查未完成');
         researchLoopState.record=res.data;
         persistGapResearch(binding,res.data);
       }catch(e){
+        if(researchLoopState.runToken!==runToken)return;
         if(controller.signal.aborted){
           researchLoopState.interrupted=true;
           /* 取消后按同一任务身份找回服务端保留的部分结果；只读展示，不重启付费任务。 */
           try{var partial=await post('/api/anywhere/research-loop-status',{task:binding});
-            if(seq===guideSequence && partial.code===0 && partial.data && partial.data.record)researchLoopState.record=partial.data.record;
+            if(researchLoopState.runToken===runToken && seq===guideSequence && partial.code===0 && partial.data && partial.data.record)researchLoopState.record=partial.data.record;
           }catch(err){}
         }else if(seq===guideSequence)researchLoopState.error='补查未完成，已确认条件与草案保留，可重试。';
       }finally{
+        if(researchLoopState.runToken!==runToken)return;
         researchLoopState.running=false;
         if(seq===guideSequence)renderResearchProgress();
       }
@@ -1377,7 +1393,8 @@
       return MT.esc(name || '') + (AW_KIND[kind] ? '<span style="font-size:11px;color:var(--mixtouring-muted-foreground);">（' + AW_KIND[kind] + '）</span>' : '');
     }
 
-    /* 内联地点确认卡：只回传服务端签发的 candidate_id；候选过期由服务端拒绝并在此提示重新核验 */
+    /* 内联地点确认卡：只回传服务端签发的 candidate_id；候选过期由服务端拒绝并在此提示重新核验。
+     * “都不是·继续聊”只是放行对话，不确认任何候选、不改已确认条件（复审：会话内逃生口）。 */
     function confirmBoxHtml(data) {
       var html = '';
       ['origin', 'destination'].forEach(function (ep) {
@@ -1398,8 +1415,9 @@
         html += '</div>';
       });
       if (!html) return '';
-      return html + '<p style="font-size:12px;color:#A16207;line-height:1.6;">没有目标地点？在对话中补充国家或地区即可。</p>' +
-        '<button id="btnAwConfirm" style="margin-top:12px;min-height:44px;background:var(--mixtouring-primary);color:var(--mixtouring-primary-foreground);border:none;border-radius:10px;padding:11px 20px;font-size:13.5px;font-family:inherit;cursor:pointer;">确认地点并生成方案</button>';
+      return html + '<p style="font-size:12px;color:#A16207;line-height:1.6;">没有目标地点？在对话中补充国家，或改用英文地名（如 Bangkok）再试。</p>' +
+        '<button id="btnAwConfirm" style="margin-top:12px;min-height:44px;background:var(--mixtouring-primary);color:var(--mixtouring-primary-foreground);border:none;border-radius:10px;padding:11px 20px;font-size:13.5px;font-family:inherit;cursor:pointer;">确认地点并生成方案</button>' +
+        '<button id="btnAwDismiss" type="button" style="margin-top:12px;margin-left:8px;min-height:44px;background:transparent;color:var(--mixtouring-muted-foreground);border:0.5px solid var(--mixtouring-border);border-radius:10px;padding:11px 16px;font-size:13px;font-family:inherit;cursor:pointer;">都不是·继续聊</button>';
     }
 
     function candidateTitle(c) {
@@ -1481,7 +1499,15 @@
       if ((data.needs_confirmation || []).some(function (n) { return n.indexOf('无效或已过期') >= 0; })) {
         html += '<button id="btnReplan" style="margin-top:10px;background:var(--mixtouring-muted);color:var(--mixtouring-foreground);border:none;border-radius:10px;padding:10px 18px;font-size:13px;font-family:inherit;cursor:pointer;">重新规划（重新核验地点候选）</button>';
       }
-      html += confirmBoxHtml(data);
+      /* 会话内逃生口（复审）：用户明确跳过本轮地点确认后收起确认卡，只放行对话；
+       * 不提交任何 candidate_id、不改已确认条件；下一批新候选出现时恢复确认。 */
+      var placeKey=JSON.stringify(['origin','destination'].map(function(ep){return ((data.place_candidates || {})[ep] || []).map(function(c){return c.candidate_id;});}));
+      if(placeKey===dismissedPlaceKey){
+        html += '<p style="margin-top:12px;font-size:12.5px;color:#A16207;line-height:1.7;">已先跳过这批地点候选。可以在对话里换一个说法、补充国家或改用英文地名（如 Bangkok）；这批候选不作确认。</p>';
+      }else{
+        html += confirmBoxHtml(data);
+        dismissedPlaceKey=null;
+      }
       html += '<div id="revisionBar" style="margin-top:10px;"></div>';
       html += '</div>';
 
@@ -1611,6 +1637,12 @@
         if (needPick) { MT.toast('重名候选请先选择一个再确认'); return; }
         if (!confirmed.origin && !confirmed.destination) { MT.toast('没有可确认的候选'); return; }
         requestPlan(confirmed).then(function(ok){if(ok!==false && conversation && !conversation.draft && activePlan && activePlan.plan_id)sendConversation('按已确认的旅行想法生成初步方案。',false,'generate');});
+      });
+      var btnDismiss = document.getElementById('btnAwDismiss');
+      if (btnDismiss) btnDismiss.addEventListener('click', function () {
+        dismissedPlaceKey=placeKey;
+        MT.toast('已跳过这批地点候选，可继续在对话中补充或换说法');
+        renderUnified(activePlan);
       });
       var btnReplan = document.getElementById('btnReplan');
       if (btnReplan) btnReplan.addEventListener('click', function () { requestPlan(); });

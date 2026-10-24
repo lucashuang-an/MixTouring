@@ -1,5 +1,5 @@
-/* R1-C 有界补查回归：共享预算、增量判定、去重与跑题拦截、取消、鉴权停止、换范围失效与恢复只读。
- * 全部使用确定性桩：不联网、不使用真实模型。 */
+/* R1-C 有界补查回归：共享预算、逐轮相关性与数字守门、增量判定、去重与跑题拦截、取消、
+ * 鉴权停止、换范围失效与恢复只读、桌面入口与旧请求隔离。全部确定性桩：不联网、不使用真实模型。 */
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
@@ -8,7 +8,7 @@ import {runResearchLoop,resolveResearchLoop,researchLoopTask,createResearchBudge
 const now=Date.parse('2026-10-24T02:00:00Z');
 const transportInput={question:'北京到阿拉木图的交通怎么走',gap:'直飞班期与票价未知',task_type:'transport',leg:{from:'北京',to:'阿拉木图',mode:'plane'},window:'2026-11-01 ~ 2026-11-08'};
 
-async function harness({plans,searchResults,readPage=null,answer=null,extractSupports=true,assessment='supported',searchThrows=null,limits=null,signal=null,nowOverride=now,relevanceFail=false}={}){
+async function harness({plans,searchResults,readPage=null,answer=null,extractSupports=true,assessment='supported',searchThrows=null,limits=null,signal=null,nowOverride=now,relevanceFail=false,relevanceDecision='keep'}={}){
   const calls={model:[],search:0,read:0};
   let planIndex=0;
   const model=async opts=>{
@@ -20,13 +20,13 @@ async function harness({plans,searchResults,readPage=null,answer=null,extractSup
     if(opts.kind==='conversation_source_relevance'){
       if(relevanceFail)return null;
       const views=JSON.parse(opts.user).candidates;
-      return {items:views.map(v=>({id:v.id,decision:'keep',reason:'与任务相关',quote:v.title}))};
+      return {items:views.map(v=>({id:v.id,decision:relevanceDecision,reason:relevanceDecision==='keep'?'与任务相关':'与任务无关',quote:v.title}))};
     }
     if(opts.kind==='research_loop_answer')return {reply:answer || '来源记载北京到阿拉木图开通直飞，本次日期仍待确认。'};
     if(opts.kind==='conversation_evidence_extract'){
       const {fields,evidence_catalog}=JSON.parse(opts.user),entry=evidence_catalog.entries[0];
-      return {items:fields.map(f=>({id:f.id,text:f.text,needs_source:extractSupports && /直飞/.test(f.text),
-        allowed_use:'source_reference',supports:extractSupports && /直飞/.test(f.text) && entry?[{source_id:entry.id,quote:entry.excerpt}]:[]}))};
+      return {items:fields.map(f=>({id:f.id,text:f.text,needs_source:extractSupports && /直飞|200元/.test(f.text),
+        allowed_use:'source_reference',supports:extractSupports && /直飞|200元/.test(f.text) && entry?[{source_id:entry.id,quote:entry.excerpt}]:[]}))};
     }
     if(opts.kind==='conversation_evidence_support')return {items:JSON.parse(opts.user).claims.map(c=>({id:c.id,decision:assessment,reason:'原句支持该结论'}))};
     return {};
@@ -38,38 +38,62 @@ async function harness({plans,searchResults,readPage=null,answer=null,extractSup
 }
 const fresh=i=>({title:'北京到阿拉木图客运公告'+(i||''),link:'https://example'+(i || 0)+'.gov.cn/transport/notice',content:'来源记载北京到阿拉木图开通直飞。',date:'2026-10-20'});
 
-/* 1) 最小闭环：一轮检索→整合→证据核对在预算内完成，嵌套调用全部入账。 */
+/* 0) 接口取消接通（复审 P1-1）：正式路由必须把依赖对象整体传入，丢弃 signal 的三参数形状不允许再出现。 */
+assert.ok(readFileSync(new URL('./index.mjs',import.meta.url),'utf8').includes('runResearchLoop(body,{search:searchWeb,signal})'),'research-loop 路由以依赖对象传参，请求取消接通共享预算');
+
+/* 1) 最小闭环：一轮检索→逐轮相关性→整合→证据与数字核对在预算内完成，嵌套调用全部入账。 */
 const minimal=await harness({plans:[{query:'北京 阿拉木图 官方 航班',foreign_query:'Beijing Almaty flight',rationale:'查官方班期'},{done:true}],searchResults:()=>[fresh()]});
 assert.equal(minimal.record.status,'ok');
 assert.equal(minimal.record.stop_reason,'planner_done');
 assert.equal(minimal.record.rounds.length,1);
+assert.equal(minimal.record.rounds[0].relevance,'completed','相关性核对逐轮执行');
 assert.ok(minimal.record.reply.includes('直飞'));
 assert.equal(minimal.record.claims.length,1);
 assert.equal(minimal.record.claims[0].supports[0].source_id,minimal.record.evidence_sources[0].id);
 assert.equal(minimal.record.usage.model_calls,minimal.calls.model.length,'用量与实际调用一致，无隐藏开销');
 assert.deepEqual(new Set(minimal.calls.model),new Set(['research_loop_plan','conversation_source_relevance','research_loop_answer','conversation_evidence_extract','conversation_evidence_support']));
+assert.equal(minimal.record.usage.model_calls,6);
 assert.ok(minimal.record.usage.searches<=RESEARCH_LOOP_LIMITS.searches && minimal.record.usage.reads<=RESEARCH_LOOP_LIMITS.reads && minimal.record.usage.model_calls<=RESEARCH_LOOP_LIMITS.model_calls);
 
-/* 2) 预算上限：三轮全程有增益也不得越过轮次、搜索与模型上限。 */
-const plans3=[{query:'北京 阿拉木图 航班',foreign_query:''},{query:'北京 阿拉木图 铁路',foreign_query:''},{query:'北京 阿拉木图 客运',foreign_query:''},{done:true}];
+/* 2) 满三轮仍有增益：三轮后按轮次上限停止，终验照常完成，不越上限。 */
 let sourceIndex=0;
+const plans3=[{query:'北京 阿拉木图 航班',foreign_query:''},{query:'北京 阿拉木图 铁路',foreign_query:''},{query:'北京 阿拉木图 客运',foreign_query:''},{done:true}];
 const full=await harness({plans:plans3,searchResults:()=>[fresh(++sourceIndex)]});
-assert.equal(full.record.stop_reason,'rounds');
+assert.equal(full.record.stop_reason,'rounds','三轮增益后按轮次上限停止');
 assert.equal(full.record.rounds.length,3);
 assert.equal(full.record.rounds.filter(r=>r.gain>0).length,3);
 assert.equal(full.record.usage.searches,6);
-assert.equal(full.record.usage.model_calls,7,'三轮规划+最终四次均在八次上限内');
+assert.equal(full.record.usage.model_calls,9,'三轮各一次规划+逐轮相关性+终验三次均在十二次上限内');
 assert.equal(full.calls.search,full.record.usage.searches);
-assert.ok(full.record.status==='ok' && full.record.claims.length>=1);
+assert.equal(full.record.status,'ok');
+assert.ok(full.record.claims.length>=1);
+/* 模型额度不足时以预算停止并保留部分成果，不强行发布未核对回复。 */
+const capped=await harness({plans:[{query:'北京 阿拉木图 航班',foreign_query:''},{query:'北京 阿拉木图 铁路',foreign_query:''}],searchResults:()=>[fresh('cap')],limits:{...RESEARCH_LOOP_LIMITS,model_calls:7}});
+assert.equal(capped.record.stop_reason,'budget_model');
+assert.equal(capped.record.rounds.length,2);
+assert.equal(capped.record.reply,null,'终验预留不足时不发布回复');
+assert.ok(capped.record.sources.length>=1,'部分成果保留');
+assert.equal(capped.record.status,'partial');
 
-/* 3) 新URL不算增量：旧日期资料只进历史线索，连续两轮无增益即停止。 */
+/* 3) 新URL不算增量：旧日期资料只进历史线索，连续两轮无已核对增益即停止。 */
 let oldIndex=0;
-const noGain=await harness({plans:plans3.slice(0,2).concat([{done:true}]),searchResults:()=>[{title:'旧攻略'+(++oldIndex),link:'https://example-old'+oldIndex+'.gov.cn/a',content:'历史上的口岸通行记录。',date:'2024-05-01'}]});
+const noGain=await harness({plans:[{query:'北京 阿拉木图 航班',foreign_query:''},{query:'北京 阿拉木图 铁路',foreign_query:''},{done:true}],
+  searchResults:()=>[{title:'旧攻略'+(++oldIndex),link:'https://example-old'+oldIndex+'.gov.cn/a',content:'历史上的口岸通行记录。',date:'2024-05-01'}]});
 assert.equal(noGain.record.stop_reason,'no_gain');
 assert.equal(noGain.record.rounds.length,2);
 assert.ok(noGain.record.rounds.every(r=>r.gain===0));
 assert.ok(noGain.record.leads.length>0 && noGain.record.sources.length===0,'旧资料只作历史线索');
 assert.equal(noGain.record.status,'partial');
+
+/* 3b) 增益只认已核对来源（复审 P1-3）：相关性全部拒绝时两轮即停，不再打满六次搜索。 */
+let rejectIndex=0;
+const rejected=await harness({plans:plans3.slice(0,2).concat([{done:true}]),relevanceDecision:'reject',
+  searchResults:()=>[fresh(++rejectIndex)]});
+assert.equal(rejected.record.stop_reason,'no_gain','被拒来源不计增益');
+assert.equal(rejected.record.rounds.length,2);
+assert.equal(rejected.record.usage.searches,4,'未打满三轮六搜');
+assert.equal(rejected.record.sources.length,0);
+assert.equal(rejected.record.status,'partial');
 
 /* 4) 不重复原查询：规划再次给出同一查询即停止，不重复消耗搜索。 */
 const repeat=await harness({plans:[{query:'北京 阿拉木图 航班',foreign_query:''},{query:'北京 阿拉木图 航班',foreign_query:''}],searchResults:()=>[fresh()]});
@@ -78,13 +102,9 @@ assert.equal(repeat.record.rounds.length,1);
 assert.equal(repeat.record.usage.searches,2);
 
 /* 5) 体验任务跑题拦截：泛化的直达班次咨询不回答原问题，直接拒绝。 */
-const experiencePlans=[{query:'北京到阿拉木图 直飞 班期',foreign_query:''}];
-const experienceModel=async opts=>{
-  if(opts.kind==='research_loop_plan')return experiencePlans[0];
-  return {};
-};
 const offTopic=await runResearchLoop({question:'伊犁无车独自旅行怎么玩',gap:'无车可达的草原交通未知',task_type:'experience',destination:'伊犁'},
-  {now,model:experienceModel,search:async()=>{throw Error('不应发起跑题搜索');}});
+  {now,model:async opts=>opts.kind==='research_loop_plan'?{query:'北京到阿拉木图 直飞 班期',foreign_query:''}:{},
+  search:async()=>{throw Error('不应发起跑题搜索');}});
 assert.equal(offTopic.stop_reason,'plan_off_topic');
 assert.equal(offTopic.usage.search_calls,0);
 assert.ok(planFitsTask({query:'伊犁 无车 草原 交通',foreign_query:'Yili grassland transport'},researchLoopTask({question:'伊犁无车独自旅行怎么玩',gap:'x',task_type:'experience',destination:'伊犁'},now)),'贴题查询仍可执行');
@@ -93,12 +113,12 @@ assert.ok(planFitsTask({query:'伊犁 无车 草原 交通',foreign_query:'Yili 
 const cancelController=new AbortController();
 const cancelPlans=[{query:'北京 阿拉木图 航班',foreign_query:''},{query:'北京 阿拉木图 铁路',foreign_query:''}];
 let cancelSearches=0;
-const cancelModel=async opts=>{
-  if(opts.kind==='research_loop_plan')return cancelPlans[0];
-  if(opts.kind==='conversation_source_relevance')return {items:JSON.parse(opts.user).candidates.map(v=>({id:v.id,decision:'keep',reason:'相关',quote:v.title}))};
-  throw Error('取消后不得再调用模型');
-};
-const cancelled=await runResearchLoop(transportInput,{now,model:cancelModel,signal:cancelController.signal,
+const cancelled=await runResearchLoop(transportInput,{now,
+  model:async opts=>{
+    if(opts.kind==='research_loop_plan')return cancelPlans[0];
+    if(opts.kind==='conversation_source_relevance')return {items:JSON.parse(opts.user).candidates.map(v=>({id:v.id,decision:'keep',reason:'相关',quote:v.title}))};
+    throw Error('取消后不得再调用模型');
+  },signal:cancelController.signal,
   search:async()=>{cancelSearches++;const results=[fresh()];cancelController.abort();return results;},readPage:null});
 assert.equal(cancelled.stop_reason,'cancelled');
 assert.equal(cancelled.rounds.length,0,'取消轮不登记为完成');
@@ -123,7 +143,7 @@ assert.equal(resolveResearchLoop({task_id:minimal.record.task.id,task:{...transp
 const byIdentity=resolveResearchLoop({task:transportInput},{now:now+1000});
 assert.equal(byIdentity.record.task.question,transportInput.question,'取消后可按任务身份找回最新部分结果');
 
-/* 9) 读原文轮：只读当前来源，读到正文计为增量；同一篇原文不重复读，历史线索不在可选范围。 */
+/* 9) 读原文轮：只读当前来源，读到正文不计增益；同一篇原文不重复读。 */
 const readPlans=[
   {query:'北京 阿拉木图 官方 航班',foreign_query:''},
   {read_url:'https://example0.gov.cn/transport/notice'},
@@ -134,10 +154,7 @@ const readRecord=await runResearchLoop(transportInput,{now,
     if(opts.kind==='research_loop_plan')return readPlans[0] && readPlans.shift();
     if(opts.kind==='conversation_source_relevance')return {items:JSON.parse(opts.user).candidates.map(v=>({id:v.id,decision:'keep',reason:'相关',quote:v.title}))};
     if(opts.kind==='research_loop_answer')return {reply:'来源记载北京到阿拉木图开通直飞，本次日期仍待确认。'};
-    if(opts.kind==='conversation_evidence_extract'){
-      const {fields,evidence_catalog}=JSON.parse(opts.user),entry=evidence_catalog.entries[0];
-      return {items:fields.map(f=>({id:f.id,text:f.text,needs_source:/直飞/.test(f.text),allowed_use:'source_reference',supports:/直飞/.test(f.text)&&entry?[{source_id:entry.id,quote:entry.excerpt}]:[]}))};
-    }
+    if(opts.kind==='conversation_evidence_extract'){const {fields,evidence_catalog}=JSON.parse(opts.user),e=evidence_catalog.entries[0];return {items:fields.map(f=>({id:f.id,text:f.text,needs_source:/直飞/.test(f.text),allowed_use:'source_reference',supports:/直飞/.test(f.text)&&e?[{source_id:e.id,quote:e.excerpt}]:[]}))};}
     if(opts.kind==='conversation_evidence_support')return {items:JSON.parse(opts.user).claims.map(c=>({id:c.id,decision:'supported',reason:'原句支持'}))};
     return {};
   },
@@ -145,33 +162,51 @@ const readRecord=await runResearchLoop(transportInput,{now,
   readPage:async url=>{directReads++;return directReads>=2?{read_status:'page_excerpt',url,excerpt:'来源记载北京到阿拉木图开通直飞，每周三班。',title:'北京到阿拉木图客运公告',published_at:'2026-10-18'}:null;}});
 assert.equal(readRecord.stop_reason,'planner_done');
 assert.equal(readRecord.rounds[1].read_url,'https://example0.gov.cn/transport/notice');
-assert.equal(readRecord.rounds[1].gain,1,'读到正文计为增量');
+assert.equal(readRecord.rounds[1].gain,0,'读到正文不等于新增支持，不计增益');
 assert.equal(readRecord.sources[0].read_status,'page_excerpt');
 const reread=await runResearchLoop(transportInput,{now,model:async opts=>opts.kind==='research_loop_plan'?{read_url:'https://example0.gov.cn/transport/notice'}:{},
   search:async()=>[fresh()]});
 assert.equal(reread.stop_reason,'no_new_read','同一篇原文去重');
 
-/* 10) 预算与核对失败都保留部分成果：削减轮次仍预留终验；核对未完成不发布回复。 */
-let tightIndex=0;
-const tight=await harness({plans:plans3,searchResults:()=>[fresh(++tightIndex)],limits:{...RESEARCH_LOOP_LIMITS,model_calls:6}});
-assert.equal(tight.record.stop_reason,'budget_model','模型额度不足提前停轮');
-assert.equal(tight.record.rounds.length,2);
+/* 10) 预算不足与相关性核对失败都保留部分成果。 */
+const tight=await harness({plans:[{query:'北京 阿拉木图 航班',foreign_query:''},{done:true}],searchResults:()=>[fresh()],limits:{...RESEARCH_LOOP_LIMITS,model_calls:5}});
+assert.equal(tight.record.stop_reason,'budget_model');
+assert.equal(tight.record.rounds.length,1);
 assert.ok(tight.record.sources.length>=1,'部分成果保留');
-assert.equal(tight.record.status,'ok','预留额度仍保证最终整合与证据核对完成');
+assert.equal(tight.record.reply,null,'未核对回复不发布');
+assert.equal(tight.record.status,'partial');
 const unverified=await harness({plans:[{query:'北京 阿拉木图 航班',foreign_query:''},{done:true}],searchResults:()=>[fresh()],relevanceFail:true});
-assert.equal(unverified.record.stop_reason,'relevance_unavailable');
+assert.equal(unverified.record.stop_reason,'relevance_unavailable','逐轮核对未完成即诚实停止');
 assert.equal(unverified.record.reply,null,'未核对回复不发布');
-assert.ok(unverified.record.sources.length>=1,'来源保留为待核对线索');
 assert.equal(unverified.record.status,'partial');
 
-/* 11) 预算对象合同：失败与重试占原额度，调用前拦截。 */
+/* 11) 数字守门（复审 P1-2）：语义核对误判也不能把行李费发布成机票价格。 */
+const numericSource=()=>[{title:'北京到阿拉木图航空行李规定',link:'https://example0.gov.cn/transport/baggage',content:'北京到阿拉木图航线航空行李托运费200元。',date:'2026-10-20'}];
+const fareSwap=await harness({plans:[{query:'北京 阿拉木图 行李 票价',foreign_query:''},{done:true}],searchResults:numericSource,
+  answer:'资料记载北京到阿拉木图的机票价格为200元，仅供参考。'});
+assert.equal(fareSwap.record.verify_status,'numeric_rejected','数字口径不一致被守门拒绝');
+assert.equal(fareSwap.record.reply,null,'错误口径回复不发布');
+assert.equal(fareSwap.record.status,'partial');
+assert.ok(fareSwap.record.evidence_gaps.length>=1);
+const fareHonest=await harness({plans:[{query:'北京 阿拉木图 行李 票价',foreign_query:''},{done:true}],searchResults:numericSource,
+  answer:'资料记载北京到阿拉木图航线航空行李托运费为200元，仅供参考，本次日期仍待确认。'});
+assert.equal(fareHonest.record.status,'ok','同口径数字照常发布');
+assert.ok(fareHonest.record.reply.includes('行李托运费'));
+
+/* 12) 搜索出口去重（复审 P2-6）：换无效外文串重发相同中文查询时按实际查询跳过。 */
+const {record:dupRecord}=await harness({plans:[{query:'北京 阿拉木图 官方 航班',foreign_query:'aa'},{query:'北京 阿拉木图 官方 航班',foreign_query:'bb'},{done:true}],searchResults:()=>[fresh()]});
+assert.equal(dupRecord.usage.dedup_searches,1,'相同实际查询在出口被跳过');
+assert.equal(dupRecord.usage.search_calls,3,'真实网络搜索只发三条');
+assert.equal(dupRecord.usage.searches,3,'去重不消耗搜索预算');
+
+/* 13) 预算对象合同：失败与重试占原额度，调用前拦截。 */
 const budget=createResearchBudget({now,signal:new AbortController().signal});
 assert.equal(budget.take('searches',8),null);
 assert.equal(budget.take('searches'),'budget_searches');
 assert.equal(budget.take('rounds',3),null);
 assert.equal(budget.take('rounds'),'budget_rounds');
 
-/* 12) 桌面入口合同：待查清单出入口、绑定正确、取消可找回部分结果、新输入失效、恢复只读。 */
+/* 14) 桌面入口合同：待查清单出入口、语义绑定、取消找回、新输入失效、恢复只读与旧请求隔离。 */
 const html=readFileSync(new URL('../mixtouring-hifi/pages/trip.html',import.meta.url),'utf8');
 const gapStart=html.indexOf('var GAP_STOP_LABELS='),gapEnd=html.indexOf('function renderResearchProgress(){');
 assert.ok(gapStart>=0 && gapEnd>gapStart,'trip.html 保留有界补查入口代码块');
@@ -183,29 +218,31 @@ const env={console,JSON,Object,Array,Date,Error,Promise,Set,encodeURIComponent,d
   MT:{esc:v=>String(v == null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),toast(){}},
   sessionStorage:{getItem:k=>store[k] ?? null,setItem(k,v){store[k]=String(v);},removeItem(k){delete store[k];}},
   guideMessages:[{role:'user',text:'北京到阿拉木图怎么走'}],guideSequence:1,
-  conversation:{routing:{origin:'北京',destination:'阿拉木图'},draft:{route:['北京','阿拉木图'],pending:['跨境交通须有可核查来源及适用日期。']}},
-  researchScope:null,researchTasks:null,lastEvidenceGaps:['北京到阿拉木图有直飞'],
-  researchLoopState:{running:false,record:null,binding:null,error:null,interrupted:false,controller:null},restoredGapResearch:null,
+  conversation:{routing:{origin:'北京',destination:'昆明'},draft:{route:['北京','昆明'],pending:['跨境交通须有可核查来源及适用日期。','昆明铁路博物馆当期开放时间待查。']}},
+  researchScope:null,researchTasks:null,lastEvidenceGaps:['北京到昆明有直飞','到昆明后用米轨漫步和铁路博物馆这类火车主题体验过渡'],
+  researchLoopState:{running:false,record:null,binding:null,error:null,interrupted:false,controller:null,runToken:0},restoredGapResearch:null,
   currentSearchWindow:()=>'2026-11-01 ~ 2026-11-08',guideState:{road:null},anchors:{},
-  taskScope:()=>({route:['北京','阿拉木图'],window:'2026-11-01 ~ 2026-11-08',legs:[{from:'北京',to:'阿拉木图',mode:'unknown',exclude_road:false,locked:false}]}),
+  taskScope:()=>({route:['北京','昆明'],window:'2026-11-01 ~ 2026-11-08',legs:[{from:'北京',to:'昆明',mode:'unknown',exclude_road:false,locked:false}]}),
   renderResearchProgress(){env.rendered=env.gapResearchHtml(false,true);},
   rendered:'',
-  post:async(url,body,signal)=>{posts.push({url,body,signal});
-    if(url==='/api/anywhere/research-loop'){
-      /* 等一拍让测试侧模拟用户点击取消（控制器中止），再按真实 fetch 语义抛 AbortError。 */
-      await new Promise(resolve=>setTimeout(resolve,5));
-      if(env.abortOnRun && signal?.aborted)throw Object.assign(new Error('The operation was aborted'),{name:'AbortError'});
-      return {code:0,data:structuredClone(loopRecord)};}
-    if(url==='/api/anywhere/research-loop-status')return {code:0,data:{record:{...structuredClone(loopRecord),stop_reason:'cancelled'}}};
-    throw Error('意外的接口调用 '+url);}};
+  /* 可控异步：每个请求挂起，测试侧决定何时解决/拒绝（复审 P2-7 旧请求隔离）。 */
+  jobs:[],abortOnRun:false,
+  post:(url,body,signal)=>new Promise((resolve,reject)=>{posts.push({url,body,signal,resolve,reject});
+    if(url==='/api/anywhere/research-loop' && env.abortOnRun){signal?.addEventListener('abort',()=>reject(Object.assign(new Error('The operation was aborted'),{name:'AbortError'})));}
+    if(url==='/api/anywhere/research-loop-status')resolve({code:0,data:{record:{...structuredClone(loopRecord),stop_reason:'cancelled'}}});
+  })};
 env.globalThis=env;env.window=env;
 vm.createContext(env);
 vm.runInContext(html.slice(gapStart,gapEnd),env);
 const entryHtml=env.gapResearchHtml(false,true);
 assert.ok(entryHtml.includes('继续核对缺口') && entryHtml.includes('跨境交通须有可核查来源及适用日期。'),'待查清单成为显式补查入口');
-assert.ok(entryHtml.includes('交通补查 · 北京 → 阿拉木图'),'交通类待查显示绑定路段');
-assert.ok(entryHtml.includes('北京到阿拉木图有直飞') && entryHtml.includes('体验补查 · 阿拉木图')===false,'缺口句进入清单并按内容绑定类型');
+const bindings=item=>{const b=env.gapResearchBinding(item);return b?(b.task_type==='transport'?'交通补查 · '+b.leg.from+' → '+b.leg.to:'体验补查 · '+b.destination):'';};
+assert.equal(bindings('北京到昆明的交通方式、班次与乘车点'),'交通补查 · 北京 → 昆明','明确两端绑交通');
+assert.equal(bindings('昆明铁路博物馆当期开放时间'),'体验补查 · 昆明','场馆开放时间按语义绑体验，不因“铁路”二字绑交通');
+assert.equal(bindings('后续东南亚陆路段的跨境交通与班次'),'交通补查 · 北京 → 昆明','交通信号仍绑路段');
+assert.equal(bindings('到昆明后用米轨漫步和铁路博物馆这类火车主题体验过渡'),'体验补查 · 昆明','纯体验建议绑目的地');
 let ran=env.runGapResearch('跨境交通须有可核查来源及适用日期。');
+const firstPost=posts.at(-1);firstPost.settled=true;firstPost.resolve({code:0,data:structuredClone(loopRecord)});
 await ran;
 assert.equal(posts[0].url,'/api/anywhere/research-loop');
 assert.equal(posts[0].body.task_type,'transport');
@@ -217,16 +254,35 @@ assert.ok(env.rendered.includes('https://example.gov.cn/notice'),'支持结论�
 assert.ok(JSON.parse(store['mt:gap-research']).task_id==='research_loop_ui','记录写入本机只读存储');
 env.cancelGapResearch();
 assert.equal(env.researchLoopState.record,null,'新输入或重置使旧补查结果失效');
+/* 取消后按任务身份找回部分结果 */
 env.abortOnRun=true;
 const cancelRun=env.runGapResearch('跨境交通须有可核查来源及适用日期。');
-setTimeout(()=>env.researchLoopState.controller.abort(),0);/* 模拟点击取消按钮 */
+setTimeout(()=>env.researchLoopState.controller.abort(),0);
 await cancelRun;
 assert.equal(posts.at(-1).url,'/api/anywhere/research-loop-status','取消后按任务身份找回部分结果');
 assert.equal(env.researchLoopState.record.stop_reason,'cancelled');
 assert.ok(env.rendered.includes('已取消'));
-env.cancelGapResearch();/* 新输入或重置使旧补查失效，再模拟刷新后的只读恢复 */
+/* 旧请求隔离（复审 P2-7）：取消旧任务再启动新任务，旧请求回写不得干扰新任务。 */
+env.abortOnRun=false;
+const stale=env.runGapResearch('后续东南亚陆路段的跨境交通与班次');
+env.cancelGapResearch();
+const live=env.runGapResearch('北京到昆明的交通方式、班次与乘车点');
+const stalePost=posts.find(p=>p.body && p.body.gap && p.body.gap.includes('跨境交通与班次') && p.url==='/api/anywhere/research-loop' && !p.settled);
+const livePost=posts.at(-1);
+stalePost.settled=true;
+stalePost.reject(Object.assign(new Error('aborted'),{name:'AbortError'}));
+await new Promise(r=>setTimeout(r,10));
+assert.equal(env.researchLoopState.running,true,'旧请求失败不得把新任务改为已结束');
+assert.equal(env.researchLoopState.interrupted,false,'旧请求失败不得误标新任务中断');
+assert.ok(env.researchLoopState.binding.gap.includes('交通方式'),'当前状态仍属新任务');
+livePost.settled=true;livePost.resolve({code:0,data:structuredClone(loopRecord)});
+await live;
+assert.equal(env.researchLoopState.running,false);
+assert.ok(env.researchLoopState.record && env.researchLoopState.record.task.id==='research_loop_ui','新任务正常完成并回写');
+await stale;/* 旧任务应已静默退出 */
+env.cancelGapResearch();
 env.restoredGapResearch={claims:['x'],stop_reason:'planner_done',reply:'上次结论'};
 const restoredHtml=env.gapResearchHtml(false,true);
 assert.ok(restoredHtml.includes('上次补查记录（只读）') && restoredHtml.includes('不自动重启付费任务'),'恢复只读且不自动重启');
 
-console.log('✓ R1-C 有界补查：共享预算、增量与去重、取消、鉴权停止、换范围失效、恢复只读与桌面入口通过');
+console.log('✓ R1-C 有界补查：取消接通、逐轮相关性与数字守门、已核对增量、出口去重、恢复只读、桌面入口与旧请求隔离通过');

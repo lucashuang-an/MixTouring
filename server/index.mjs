@@ -404,10 +404,11 @@ app.use(async (ctx, next) => {
     catch(error){ctx.body={code:1,msg:error.message};}
     return;
   }
-  /* R1-C 有界补查：单个任务在共享预算内完成检索、读取、整合与证据核对后一次返回。 */
+  /* R1-C 有界补查：单个任务在共享预算内完成检索、读取、整合与证据核对后一次返回。
+   * 依赖对象必须整体传入：请求断开/取消沿 deps.signal 进入循环预算（复审 P1-1）。 */
   if (path === '/api/anywhere/research-loop' && ctx.method === 'POST') {
     const signal=createRequestSignal(ctx.req,ctx.res),body=await readBody(ctx) || {};
-    try{ctx.body={code:0,data:await runResearchLoop(body,searchWeb,{signal})};}
+    try{ctx.body={code:0,data:await runResearchLoop(body,{search:searchWeb,signal})};}
     catch(error){ctx.body={code:1,msg:error.message};}
     return;
   }

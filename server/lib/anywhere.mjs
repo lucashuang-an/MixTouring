@@ -1305,7 +1305,10 @@ function llmHubPrompt(citiesJson, originName, destName) {
  * @param {object} deps 测试注入 {callJson, searchWeb, osmSearch, env, webSearchStatus}
  */
 export async function planAnywhere(input, deps = {}) {
-  const callJson = deps.callJson || callJsonDefault;
+  /* 复审 P1-4：开放地点候选走当前组合通道（composeJson）——组合模型可用而旧 LLM 通道未配置时，
+   * 仍能产出 name_latin／国家，使“曼谷（Bangkok Thailand）”这类表述进入英文地理查询；
+   * 未配置火山 key 时 composeJson 内部落回 callJson，离线行为不变。 */
+  const callJson = deps.callJson || composeJsonDefault;
   const env = deps.env || process.env;
   const degradations = [];
   const needs = [];

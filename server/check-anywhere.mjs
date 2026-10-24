@@ -406,6 +406,34 @@ const NO_DIGIT_RE = /\d/;
     r1c.explorations.some((e) => e.type === 'land_rail'),
     'P0-1 场景1 续：确认后存证恢复动态 Place（international；塔什干无铁路走廊依据 → 仅航班直达 + 陆路探索）');
 
+  /* 复审 P1-4：开放地点候选走当前组合通道；模型给出的 name_latin／国家进入实际地理查询，
+   * 上下文中的英文与国家不被丢弃，中国同名 POI 不冒充目标城市。 */
+  ok(readFileSync(new URL('./lib/anywhere.mjs', import.meta.url), 'utf8').includes('const callJson = deps.callJson || composeJsonDefault'),
+    'P1-4：planAnywhere 默认模型出口为 composeJson（无火山 key 时内部落回旧通道）');
+  {
+    const geocodeQueries = [];
+    let promptSeen = null;
+    const chineseBangkokPOIs = [
+      { display_name: '曼谷布科山, 云南省, 中国', country: 'CN', lat: '25.1', lon: '99.2', type: 'peak', category: 'natural', osm_type: 'node', osm_id: '1', url: 'https://www.openstreetmap.org/node/1' },
+      { display_name: '曼谷阳光, 青岛市, 中国', country: 'CN', lat: '36.1', lon: '120.3', type: 'poi', category: 'amenity', osm_type: 'node', osm_id: '2', url: 'https://www.openstreetmap.org/node/2' }
+    ];
+    const bangkokCity = { display_name: 'Bangkok, Thailand', country: 'TH', lat: '13.75', lon: '100.5', type: 'city', category: 'place', osm_type: 'relation', osm_id: '2051002', url: 'https://www.openstreetmap.org/relation/2051002' };
+    const r = await planAnywhere({ origin: '北京', destination: '曼谷' }, {
+      callJson: async (opts) => {
+        if (String(opts.user).includes('地点表述')) { promptSeen = opts.user; return { candidates: [{ name: '曼谷', name_latin: 'Bangkok', kind: 'city', country: 'TH', country_name: '泰国', note: '泰国首都' }] }; }
+        return null;
+      },
+      osmSearch: async (q) => { geocodeQueries.push(String(q)); return /bangkok/i.test(q) ? [bangkokCity, ...chineseBangkokPOIs] : chineseBangkokPOIs; },
+      env: {}
+    });
+    ok(promptSeen && promptSeen.includes('曼谷'), 'P1-4：地点表述进入候选模型');
+    ok(geocodeQueries.some(q => /bangkok/i.test(q)) && !geocodeQueries.some(q => /^曼谷/.test(q)),
+      'P1-4：地理查询使用模型 name_latin（Bangkok），不再只查中文原名');
+    ok(r.place_candidates.destination.length === 1 && r.place_candidates.destination[0].country === 'TH' &&
+      r.place_candidates.destination.every(c => c.country !== 'CN'),
+      'P1-4：泰国曼谷成为唯一已核验候选，中国同名 POI 被国家过滤');
+  }
+
   /* 场景2：CDG→布拉格中央车站——两端都未收录，各自开放解析并确认 */
   const osmByQuery = async (q) => {
     if (/charles|cdg/i.test(q)) return [{
