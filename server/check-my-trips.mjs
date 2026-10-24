@@ -1,0 +1,31 @@
+/* 私人行程管理：稳定身份、重命名后续存、版本差异和同名独立旅行。 */
+import assert from 'node:assert/strict';
+import vm from 'node:vm';
+import {readFileSync} from 'node:fs';
+import trips from '../mixtouring-hifi/assets/my-trips.js';
+import saveState from '../mixtouring-hifi/assets/save-state.js';
+const store=new Map(),env={window:{},localStorage:{getItem:k=>store.get(k) || null,setItem:(k,v)=>store.set(k,v),removeItem:k=>store.delete(k)}};
+vm.createContext(env);vm.runInContext(readFileSync(new URL('../mixtouring-hifi/assets/draft-store.js',import.meta.url),'utf8'),env);
+const db=env.window.MTDrafts,snapshot={request:{origin:'北京',destination:'阿拉木图'},conversation:{requirements:{trip_days:10,required_stops:['伊宁']},draft:{title:'沿途探索',route:['北京','伊宁','阿拉木图'],cards:[{id:'stay',title:'街区体验'}]}},travel:{traveler_count:1},constraints:{budget_max_cny:8000}};
+const first=db.save('北京 → 阿拉木图',snapshot,{create_new:true}),id=first.draft.id;
+assert.equal(db.rename(id,'我的中亚旅行').ok,true);
+const revised=structuredClone(snapshot);revised.conversation.requirements.trip_days=7;
+assert.equal(db.save('北京 → 阿拉木图',revised,{id}).draft.name,'我的中亚旅行','继续保存按ID保留重命名，不再按原OD新建');
+assert.equal(db.list().drafts.length,1);assert.equal(db.get(id).versions.length,2);assert.equal(db.get(id).versions[0].snapshot.conversation.requirements.trip_days,10);
+const copy=db.save('我的中亚旅行',revised,{create_new:true});assert.notEqual(copy.draft.id,id);assert.equal(db.list().drafts.length,2,'同名可另存独立旅行');
+const identity=saveState.find(snapshot,db.list(),id);assert.equal(identity.saved,false,'历史版匹配不冒充当前版已保存');
+assert.equal(saveState.find(revised,db.list(),id).id,id,'同内容的副本不挤占原行程身份');
+assert.equal(db.save('其他名称',snapshot,{id:'missing'}).reason,'not_found','已删除的目标不静默改存另一份旅行');
+assert.equal(db.list().drafts.length,2);
+assert.equal(trips.filter(db.list().drafts,'中亚').length,2);assert.equal(trips.filter(db.list().drafts,'伊宁').length,2);assert.equal(trips.filter(db.list().drafts,'不存在').length,0);
+assert.deepEqual(trips.changes(snapshot,revised),['更新旅行条件']);assert.deepEqual(trips.changes(null,revised),['首次保存']);
+const detail=trips.summary(revised);assert.equal(detail.route,'北京 → 伊宁 → 阿拉木图');assert.ok(detail.conditions.includes('7 天全程'));assert.ok(detail.conditions.includes('日期未定'));
+assert.ok(!JSON.stringify(detail).includes('已核实'));
+const legacy=trips.summary({request:{origin:'北京',destination:'喀什'},candidate:{label:'历史单程结构'}});assert.equal(legacy.route,'北京 → 喀什');
+/* 提取真实页面保存函数，覆盖重命名后的保存与另存路径，避免仅测存储接口。 */
+const html=readFileSync(new URL('../mixtouring-hifi/pages/trip.html',import.meta.url),'utf8'),src=html.slice(html.indexOf('function saveCurrentTask('),html.indexOf('function rememberSession()'));
+const page={console,MTDrafts:db,MTSaveState:saveState,savedDraftId:id,conversationBusy:false,planning:false,conversation:revised.conversation,activePlan:{intent:{origin:'北京',destination:'阿拉木图'}},lastRequest:{},taskSnapshot:()=>revised,renderTaskPreview(){},rememberSession(){},saveFailure:null,MT:{toast(){}},document:{getElementById:()=>({innerHTML:'',textContent:'',disabled:false})}};
+vm.createContext(page);vm.runInContext(src,page);page.saveCurrentTask('note');assert.equal(db.get(id).versions.length,2,'无变化不重复保存');
+revised.conversation.draft.cards[0].title='河谷体验';page.saveCurrentTask('note');assert.equal(db.get(id).versions.length,3);assert.equal(db.get(id).name,'我的中亚旅行');
+page.saveCurrentTask('note',true);assert.notEqual(page.savedDraftId,id);assert.equal(db.get(page.savedDraftId).versions.length,1);
+console.log('✓ 重命名续存、独立副本、历史版本、保存目标隔离、搜索摘要与真实保存函数通过');

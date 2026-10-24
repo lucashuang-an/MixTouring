@@ -21,6 +21,15 @@ import { planAnywhere } from './lib/anywhere.mjs';
 import { registerJourneyPlan, journeyDetailFromPlanId, guidePlanFromId } from './lib/journey.mjs';
 import { webSearchStatus } from './lib/llm.mjs';
 import { parseGuideTurn } from './lib/guide.mjs';
+import { conversationTurn } from './lib/conversation.mjs';
+import { buildRouteComparison } from './lib/route-comparison.mjs';
+import { researchSelectedRoute } from './lib/route-research.mjs';
+import { draftResearchChanges,searchDraftChanges } from './lib/draft-research.mjs';
+import { createRequestSignal } from './lib/request-signal.mjs';
+import { routeTransportReferences } from './lib/transport-references.mjs';
+import { searchTransportSources,resolveTransportSearch } from './lib/transport-search.mjs';
+import { runResearchLoop,resolveResearchLoop } from './lib/research-loop.mjs';
+import {searchWeb} from './lib/llm.mjs';
 import planningGuide from '../mixtouring-hifi/assets/trip-guide.js';
 import { sightCatalog, compareSights } from './lib/sights.mjs';
 import { progressivePlan } from './lib/progressive.mjs';
@@ -348,6 +357,65 @@ app.use(async (ctx, next) => {
 
   if (path === '/api/inspirations' && ctx.method === 'GET') {
     ctx.body = { code: 0, data: listInspirations() };
+    return;
+  }
+  if (path === '/api/anywhere/compare' && ctx.method === 'POST') {
+    const body=await readBody(ctx) || {},plan=guidePlanFromId(body.plan_id);
+    ctx.body=plan?{code:0,data:buildRouteComparison(plan,{preferences:body.preferences,requirements:body.requirements,constraints:body.constraints,travel:body.travel,retrieval_ids:body.retrieval_ids,current_route:body.current_route})}:{code:1,msg:'路线比较已过期，请重新发现走法'};
+    return;
+  }
+  if (path === '/api/anywhere/conversation' && ctx.method === 'POST') {
+    /* #32：客户端断开（提交阶段断开或等待回复时断开）取消下游模型/检索；正常完成不取消 */
+    const signal = createRequestSignal(ctx.req, ctx.res);
+    const body = await readBody(ctx) || {};
+    const plan=guidePlanFromId(body.plan_id),data=await conversationTurn(body,plan,{signal});
+    data.research_update=draftResearchChanges(body,data,plan);
+    ctx.body = { code: 0, data };
+    return;
+  }
+  if (path === '/api/anywhere/route-research' && ctx.method === 'POST') {
+    const signal=createRequestSignal(ctx.req,ctx.res),body=await readBody(ctx) || {};
+    try{ctx.body={code:0,data:await researchSelectedRoute(body,guidePlanFromId(body.plan_id),searchWeb,{signal})};}
+    catch(error){ctx.body={code:1,msg:error.message};}
+    return;
+  }
+  if (path === '/api/anywhere/transport-references' && ctx.method === 'POST') {
+    const body=await readBody(ctx) || {};
+    try {ctx.body={code:0,data:routeTransportReferences(body.route,Date.now(),body.window || null)};}
+    catch(error){ctx.body={code:1,msg:error.message};}
+    return;
+  }
+  if (path === '/api/anywhere/transport-search' && ctx.method === 'POST') {
+    const signal = createRequestSignal(ctx.req, ctx.res);
+    const body=await readBody(ctx) || {};
+    try{ctx.body={code:0,data:await searchTransportSources({from:body.from,to:body.to,window:body.window,mode:body.mode,exclude_road:body.exclude_road},searchWeb,{signal})};}
+    catch(error){ctx.body={code:1,msg:error.message};}
+    return;
+  }
+  if (path === '/api/anywhere/transport-search-status' && ctx.method === 'POST') {
+    const body=await readBody(ctx) || {};
+    try{ctx.body={code:0,data:resolveTransportSearch({ids:body.ids,legs:body.legs,window:body.window})};}
+    catch(error){ctx.body={code:1,msg:error.message};}
+    return;
+  }
+  if (path === '/api/anywhere/transport-search-batch' && ctx.method === 'POST') {
+    const signal=createRequestSignal(ctx.req,ctx.res),body=await readBody(ctx) || {};
+    try{ctx.body={code:0,data:await searchDraftChanges(body,searchWeb,{signal})};}
+    catch(error){ctx.body={code:1,msg:error.message};}
+    return;
+  }
+  /* R1-C 有界补查：单个任务在共享预算内完成检索、读取、整合与证据核对后一次返回。
+   * 依赖对象必须整体传入：请求断开/取消沿 deps.signal 进入循环预算（复审 P1-1）。 */
+  if (path === '/api/anywhere/research-loop' && ctx.method === 'POST') {
+    const signal=createRequestSignal(ctx.req,ctx.res),body=await readBody(ctx) || {};
+    try{ctx.body={code:0,data:await runResearchLoop(body,{search:searchWeb,signal})};}
+    catch(error){ctx.body={code:1,msg:error.message};}
+    return;
+  }
+  if (path === '/api/anywhere/research-loop-status' && ctx.method === 'POST') {
+    const body=await readBody(ctx) || {};
+    try{ctx.body={code:0,data:resolveResearchLoop({task_id:body.task_id,task:body.task})};}
+    catch(error){ctx.body={code:1,msg:error.message};}
     return;
   }
   if (path === '/api/anywhere/guide' && ctx.method === 'POST') {

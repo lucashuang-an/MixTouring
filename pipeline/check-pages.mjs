@@ -25,6 +25,9 @@ for (const page of pages) {
   if (!html.includes('data-mobile-nav="global"')) err(page, '缺少统一响应式导航');
   if (!html.includes(page === 'trip.html' ? 'class="trip-shell"' : 'class="app-shell"')) err(page, '缺少桌面内容容器');
 
+  /* 当前三个主要页面必须真正引用唯一设计令牌，不再保留会漂移的内联副本。 */
+  if(['trip.html','library.html','me.html'].includes(page) && (!html.includes('href="../colors_and_type.css"') || html.includes('id="theme-vars"')))err(page,'主要页面没有使用统一设计令牌');
+
   /* 1) 内联脚本语法 */
   const scripts = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)].map((m) => m[1]);
   scripts.forEach((code, i) => {

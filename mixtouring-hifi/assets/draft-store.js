@@ -123,7 +123,7 @@
     try { localStorage.removeItem(DRAFT_KEY); return { ok: true }; } catch (e) { return { ok: false, reason: 'write_failed' }; }
   }
 
-  function save(name, snapshot) {
+  function save(name, snapshot, options) {
     if (!snapshot || typeof snapshot !== 'object' || !snapshot.request ||
       typeof snapshot.request !== 'object' || Array.isArray(snapshot.request)) return { ok: false, reason: 'bad_snapshot' };
     var st = readState();
@@ -131,7 +131,9 @@
     var all = st.data;
     var now = new Date().toISOString();
     var existing = Object.keys(all).filter(function (k) { return isDraftShape(all[k]); });
-    var match = existing.filter(function (k) { return all[k].name === name; })[0];
+    options=options || {};
+    if(options.id && !isDraftShape(all[options.id]))return {ok:false,reason:'not_found'};
+    var match=options.id || (!options.create_new && existing.filter(function (k) { return all[k].name === name; })[0]);
     /* 版本唯一 vid：跨草案单调递增（存全局序号于顶层 __seq，兼容旧数据从现有最大 vid 推） */
     var seq = Number.isSafeInteger(all.__seq) && all.__seq >= 0 ? all.__seq : 0;
     var vid = 'v' + (seq + 1);

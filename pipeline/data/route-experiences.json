@@ -1,0 +1,30 @@
+{
+  "sampled_at": "2026-10-17",
+  "usage": "地点与体验背景，仅支持路线探索；不证明本次开放、客运、接驳、班次或价格。停留天数为可调整的规划预算。",
+  "places": {
+    "阿拉木图": {
+      "headline": "把停留留给城市与天山周边",
+      "benefits": ["绿色巴扎与城区街巷的本地生活", "将山地或峡谷体验作为目的地内的可选安排"],
+      "themes": ["city", "nature"],
+      "source": {"title": "哈萨克斯坦旅游门户：阿拉木图", "url": "https://www.kazakhstan.travel/en/regions/almaty", "published_at": null, "sampled_at": "2026-10-17"}
+    },
+    "伊宁": {
+      "headline": "给伊犁的街巷与河谷留一站",
+      "benefits": ["六星街、喀赞其的街区文化与本地饮食", "把伊犁河周边体验加入同一次旅行"],
+      "themes": ["city", "nature"],
+      "source": {"title": "伊宁市政府：历史文化街区与旅游资源建设答复", "url": "https://www.yining.gov.cn/yining/c115634/202508/a7a244a7a132475ca56b1dfbe7ac51c8.shtml", "published_at": null, "sampled_at": "2026-10-17"}
+    },
+    "乌鲁木齐": {
+      "headline": "在市场与街区感受新疆城市生活",
+      "benefits": ["国际大巴扎与和田二街的市场、饮食体验", "在进入中亚之前增加一段城市停留"],
+      "themes": ["city"],
+      "source": {"title": "乌鲁木齐市政府：城市文旅场景与特色街区", "url": "https://www.wlmq.gov.cn/wlmqs/c119052/202606/0598754422e447b8b5851621a3f6c58a.shtml", "published_at": "2026-06-18", "sampled_at": "2026-10-17"}
+    },
+    "塔城": {
+      "headline": "探索手风琴文化与边城街区",
+      "benefits": ["以红楼、手风琴文化为线索了解城市", "为明确想去塔城的人保留边城停留方向"],
+      "themes": ["city"],
+      "source": {"title": "塔城地区政府：城市文化与旅游发展回顾", "url": "https://www.xjtc.gov.cn/ywdt/jrtc/xsdt/content_58783", "published_at": null, "sampled_at": "2026-10-17"}
+    }
+  }
+}

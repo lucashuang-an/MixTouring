@@ -3,73 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>我的 · MixTouring</title>
-    <style id="theme-vars">
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Noto+Sans+SC:wght@400;500&display=swap');
-/* MixTouring HiFi — colors_and_type.css */
-/* Brand prefix: mixtouring */
-/* Design system: Warm Modern Minimalist (from travel-app-hifi) applied to MixTouring product */
-
-:root {
-  /* === Core Color Tokens === */
-  --color-canvas: #F8F9FA;
-  --color-surface: #FFFFFF;
-  --color-primary-dark: #111111;
-  --color-brand-accent: #C86A4B;
-  --color-text-main: #1E2022;
-  --color-text-muted: #7C8089;
-  --color-badge-rating: #FBBF24;
-  --color-accent-heart: #E11D48;
-  --color-surface-2: #F4F5F7;
-  --color-border-soft: #E8E9EB;
-
-  /* === Semantic Aliases === */
-  --mixtouring-background: #F8F9FA;
-  --mixtouring-foreground: #1E2022;
-  --mixtouring-card: #FFFFFF;
-  --mixtouring-card-foreground: #1E2022;
-  --mixtouring-popover: #FFFFFF;
-  --mixtouring-popover-foreground: #1E2022;
-  --mixtouring-primary: #111111;
-  --mixtouring-primary-foreground: #FFFFFF;
-  --mixtouring-muted: #F4F5F7;
-  --mixtouring-muted-foreground: #7C8089;
-  --mixtouring-border: #E8E9EB;
-  --mixtouring-input: #FFFFFF;
-  --mixtouring-ring: #C86A4B;
-
-  /* === Radius Scale === */
-  --mixtouring-radius-sm: 8px;
-  --mixtouring-radius-md: 16px;
-  --mixtouring-radius-lg: 24px;
-
-  /* === Typography === */
-  --mixtouring-font-sans: "Inter", "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
-
-  /* === Shadows === */
-  --shadow-dock: 0 10px 30px -5px rgba(0, 0, 0, 0.08);
-  --shadow-card-soft: 0 4px 20px -2px rgba(0, 0, 0, 0.04);
-
-  /* === Spacing (8pt grid) === */
-  --s-1: 4px;
-  --s-2: 8px;
-  --s-3: 12px;
-  --s-4: 16px;
-  --s-5: 24px;
-  --s-6: 32px;
-
-  /* === Radii === */
-  --r-sheet: 32px;
-  --r-card: 24px;
-  --r-pill: 9999px;
-
-  /* === State colors === */
-  --state-warning: #FBBF24;
-  --state-error: #E11D48;
-  --state-success: #34c759;
-}
-
-    </style>
+    <title>MixTouring · 我的旅行</title>
+    <link rel="stylesheet" href="../colors_and_type.css">
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.1/dist/index.global.js"></script>
     <style type="text/tailwindcss">
   @theme inline {
@@ -108,8 +43,9 @@
       .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
   <link rel="stylesheet" href="../assets/desktop.css" />
+  <link rel="stylesheet" href="../assets/product-shell.css">
 </head>
-<body style="margin:0;padding:0;background:var(--mixtouring-background,#F8F9FA);font-family:var(--mixtouring-font-sans,'Inter','Noto Sans SC',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,system-ui,sans-serif);color:var(--mixtouring-foreground,#1E2022);-webkit-font-smoothing:antialiased;">
+<body class="trip-page product-page user-page" style="margin:0;padding:0;background:var(--mixtouring-background,#F8F9FA);font-family:var(--mixtouring-font-sans,'Inter','Noto Sans SC',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,system-ui,sans-serif);color:var(--mixtouring-foreground,#1E2022);-webkit-font-smoothing:antialiased;">
 <svg xmlns="http://www.w3.org/2000/svg" style="display: none;" aria-hidden="true">
   <defs>
     <symbol id="hero-magnifying-glass" viewBox="0 0 24 24">
@@ -167,14 +103,17 @@
 
     <!-- 页头 -->
     <header class="px-4" style="padding-top: 26px;">
-      <h1 style="font-size: 24px; color: var(--mixtouring-foreground, #1E2022); letter-spacing: -0.02em;">我的</h1>
-      <p style="font-size: 13.5px; color: var(--mixtouring-muted-foreground, #7C8089); margin-top: 6px;">匿名使用中 · 私人草案、收藏与回填仅保存在当前浏览器</p>
+      <div class="mt-page-heading"><h1 style="font-size: 24px; color: var(--mixtouring-foreground, #1E2022); letter-spacing: -0.02em;">我的旅行</h1><a class="mt-button-primary" href="trip.html?new=1">开始新旅行</a></div>
+      <p style="font-size: 13.5px; color: var(--mixtouring-muted-foreground, #7C8089); margin-top: 6px;">行程仅保存在当前浏览器，不会自动公开；清理浏览器数据前请妥善保留安排。</p>
     </header>
 
+    <section id="sessionResume" class="mt-panel resume-panel" hidden></section>
+    <div class="trips-toolbar"><label for="draftSearch">查找旅行<input id="draftSearch" type="search" placeholder="搜索名称或城市" autocomplete="off"></label><p id="draftCount" role="status"></p></div>
     <!-- 私人草案（卡 A：本机私密保存，恢复须重新规划并重新确认开放地点） -->
-    <h3 class="px-4" style="font-size: 13px; color: var(--mixtouring-muted-foreground, #7C8089); letter-spacing: 0.08em; margin-top: 24px;">私人草案</h3>
+    <h3 class="px-4" style="font-size: 13px; color: var(--mixtouring-muted-foreground, #7C8089); letter-spacing: 0.08em; margin-top: 24px;">已保存行程</h3>
     <div class="px-4 pt-3 flex flex-col" style="gap: 10px;" id="draftWrap"></div>
 
+    <details class="legacy-collections"><summary>收藏、心愿与回填</summary>
     <!-- 我的收藏 -->
     <h3 class="px-4" style="font-size: 13px; color: var(--mixtouring-muted-foreground, #7C8089); letter-spacing: 0.08em; margin-top: 24px;">我的收藏</h3>
     <div class="px-4 pt-3 flex flex-col" style="gap: 10px;" id="favWrap"></div>
@@ -187,6 +126,7 @@
     <h3 class="px-4" style="font-size: 13px; color: var(--mixtouring-muted-foreground, #7C8089); letter-spacing: 0.08em; margin-top: 24px;">回填记录</h3>
     <div class="px-4 pt-3 flex flex-col" style="gap: 10px;" id="fbWrap"></div>
 
+    </details>
     <!-- 关于 -->
     <h3 class="px-4" style="font-size: 13px; color: var(--mixtouring-muted-foreground, #7C8089); letter-spacing: 0.08em; margin-top: 24px;">关于</h3>
     <div class="px-4 pt-3">
@@ -215,27 +155,18 @@
   </main>
 
   <!-- Bottom Navigation -->
-  <nav data-mobile-nav="global" class="fixed bottom-4 left-1/2 -translate-x-1/2 w-[calc(100%-32px)] max-w-md h-[52px] rounded-full bg-white z-50" style="box-shadow: var(--shadow-dock);">
-    <div class="flex items-center justify-between w-full h-full px-1">
-      <button data-nav-key="search" data-dom-id="nav-search" class="flex flex-col justify-center gap-0.5 px-4 h-full items-center shrink-0" style="color: var(--mixtouring-muted-foreground);">
-        <svg class="w-[18px] h-[18px] shrink-0"><use href="#hero-magnifying-glass"></use></svg>
-        <span class="text-[10px] leading-none whitespace-nowrap">搜索</span>
-      </button>
-      <button data-nav-key="library" data-dom-id="nav-library" class="flex flex-col justify-center gap-0.5 px-4 h-full items-center shrink-0" style="color: var(--mixtouring-muted-foreground);">
-        <svg class="w-[18px] h-[18px] shrink-0"><use href="#hero-map-pin"></use></svg>
-        <span class="text-[10px] leading-none whitespace-nowrap">路线库</span>
-      </button>
-      <button data-nav-key="me" data-active="true" data-dom-id="nav-me" class="flex flex-col justify-center gap-0.5 w-[52px] h-[52px] items-center rounded-full shrink-0" style="background: var(--mixtouring-primary); color: var(--mixtouring-primary-foreground);">
-        <svg class="w-[18px] h-[18px] shrink-0"><use href="#hero-user"></use></svg>
-        <span class="text-[10px] leading-none whitespace-nowrap">我的</span>
-      </button>
-    </div>
-  </nav>
+  <nav data-mobile-nav="global" aria-label="主要导航" class="trip-nav"><div>
+    <a href="trip.html"><svg aria-hidden="true"><use href="#hero-magnifying-glass"></use></svg><span>规划</span></a>
+    <a href="library.html"><svg aria-hidden="true"><use href="#hero-map-pin"></use></svg><span>路线灵感</span></a>
+    <a href="me.html" aria-current="page" class="trip-nav-current"><svg aria-hidden="true"><use href="#hero-user"></use></svg><span>我的旅行</span></a>
+  </div></nav>
 
   <script src="../assets/mock.js"></script>
   <script src="../assets/api.js"></script>
   <script src="../assets/app.js"></script>
   <script src="../assets/draft-store.js"></script>
+  <script src="../assets/save-state.js"></script>
+  <script src="../assets/my-trips.js"></script>
   <script>
   (function () {
     function savedDate(value) {
@@ -250,14 +181,15 @@
       var wrap = document.getElementById('draftWrap');
       if (!wrap || !window.MTDrafts) return;
       var res = MTDrafts.list();
-      var html = '';
+      var html = '';document.getElementById('draftCount').textContent=res.drafts.length+' 份旅行';
       if (res.corrupted_ids.length) {
         html += '<div class="detail-card p-4" style="border:1px solid #A16207;"><div style="font-size:13px;color:#A16207;">有 ' + res.corrupted_ids.length + ' 条本地草案数据损坏，已跳过显示（不影响其它草案）。</div>' +
           '<button type="button" id="btnPurgeCorrupted" style="min-height:40px;margin-top:8px;padding:7px 14px;border:1px solid #A16207;border-radius:9px;background:#fff;color:#A16207;font-family:inherit;font-size:12px;cursor:pointer;">清理损坏数据</button>' +
           '<div id="purgeNote" style="font-size:11.5px;color:var(--mixtouring-muted-foreground,#7C8089);margin-top:6px;">清理仅移除损坏条目，好草案不受影响；需确认后执行。</div></div>';
       }
       if (res.store_corrupted) {
-        var raw = localStorage.getItem(MTDrafts.DRAFT_KEY);
+        var raw=null;try{raw=localStorage.getItem(MTDrafts.DRAFT_KEY);}catch(e){}
+        if(res.reason==='read_failed'){wrap.innerHTML='<div class="mt-empty"><h2>暂时无法读取本机行程</h2><p>请检查浏览器的存储权限后重试，原数据未清理。</p><button type="button" id="retryDraftRead" class="mt-button-secondary">重新读取</button></div>';document.getElementById('retryDraftRead').onclick=renderDrafts;return;}
         html += '<div class="detail-card p-4" style="border:1px solid #A8543A;"><div id="corruptStatus" style="font-size:13px;color:#A8543A;">本地草案存储数据损坏，为保护原数据已暂停读写。</div>' +
           '<div style="font-size:12px;color:var(--mixtouring-muted-foreground,#7C8089);margin-top:6px;line-height:1.7;">第一步：先复制/导出下方原文备份（清空前始终可见）。</div>' +
           '<textarea id="corruptBackup" readonly style="width:100%;height:90px;margin-top:6px;font-family:monospace;font-size:11px;box-sizing:border-box;"></textarea>' +
@@ -290,91 +222,36 @@
         return;
       }
       if (!res.drafts.length) {
-        html += '<div class="detail-card p-4"><p style="font-size:12.5px;color:var(--mixtouring-muted-foreground,#7C8089);line-height:1.7;">还没有私人草案。在规划页走法详情里点「保存到我的行程」即可保存探索快照；恢复时会重新规划并重新确认开放地点，不把当时的走法当已核事实。草案仅保存在本浏览器，清理浏览器数据可能丢失。</p></div>';
+        html += '<div class="mt-empty"><h2>把下一趟旅行放在这里</h2><p>从一个想法开始，比较走法并保存安排，下次回来就能接着规划。</p><a class="mt-button-primary" href="trip.html?new=1">开始规划 →</a></div>';
         wrap.innerHTML = html;
         return;
       }
-      res.drafts.forEach(function (d) {
-        var latest = d.versions[d.versions.length - 1];
-        var s = latest.snapshot;
-        var summary = [s.candidate ? s.candidate.label : s.scope === 'task' ? '交通锚点与景点草案' : '待重新选择走法'];
-        if (s.sights && Array.isArray(s.sights.selected_ids)) summary.push('已选 ' + s.sights.selected_ids.length + ' 处景点');
-        if (s.travel && s.travel.trip_type === 'round_trip') summary.push('往返');
-        else if (s.travel && s.travel.trip_type === 'one_way') summary.push('单程');
-        if (s.travel && s.travel.outbound_window) summary.push('去 ' + s.travel.outbound_window);
-        if (s.travel && s.travel.return_window) summary.push('返 ' + s.travel.return_window);
-        if (s.nights) summary.push('停 ' + s.nights + ' 晚');
-        html += '<div class="detail-card p-4" data-draft="' + MT.esc(d.id) + '">' +
-          '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;">' +
-          '<div style="font-size:14px;font-weight:500;">' + MT.esc(d.name) + '</div>' +
-          '<div style="font-size:11px;color:var(--mixtouring-muted-foreground,#7C8089);">更新于 ' + MT.esc(savedDate(d.updated_at)) + '</div></div>' +
-          '<div style="font-size:12px;color:var(--mixtouring-muted-foreground,#7C8089);margin-top:4px;line-height:1.7;">' + MT.esc(summary.join(' · ')) + ' · ' + d.versions.length + ' 个版本</div>' +
-          (d.corrupted_version_count ? '<div style="font-size:11.5px;color:#A16207;margin-top:4px;">另有 ' + d.corrupted_version_count + ' 个版本损坏，原始记录已保留；其他版本仍可恢复。</div>' : '') +
-          '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">' +
-          '<button type="button" class="btnDraftContinue" data-id="' + MT.esc(d.id) + '" style="min-height:44px;padding:8px 14px;border:0;border-radius:9px;background:var(--mixtouring-primary);color:#fff;font-family:inherit;cursor:pointer;">继续规划</button>' +
-          '<button type="button" class="btnDraftOpen" data-id="' + MT.esc(d.id) + '" style="min-height:44px;padding:8px 14px;border:1px solid var(--mixtouring-border,#E5E7EB);border-radius:9px;background:#fff;font-family:inherit;font-size:12.5px;cursor:pointer;">历史版本</button>' +
-          '<button type="button" class="btnDraftRename" data-id="' + MT.esc(d.id) + '" style="min-height:40px;padding:8px 14px;border:1px solid var(--mixtouring-border,#E5E7EB);border-radius:9px;background:#fff;font-family:inherit;font-size:12.5px;cursor:pointer;">重命名</button>' +
-          '<button type="button" class="btnDraftDel" data-id="' + MT.esc(d.id) + '" style="min-height:40px;padding:8px 14px;border:1px solid #E5B4B4;border-radius:9px;background:#fff;color:#A8543A;font-family:inherit;font-size:12.5px;cursor:pointer;">删除</button>' +
-          '</div><div class="draftDetail" style="display:none;margin-top:12px;"></div></div>';
+      var query=document.getElementById('draftSearch').value,visible=MTTrips.filter(res.drafts,query);
+      document.getElementById('draftCount').textContent=visible.length+' 份旅行'+(query?' · 已按搜索筛选':'');
+      if(!visible.length)html+='<div class="mt-empty"><h2>没有找到匹配的旅行</h2><p>试试其他城市或名称。</p><button type="button" class="mt-button-secondary" id="clearDraftSearch">清除搜索</button></div>';
+      visible.forEach(function(d){var latest=d.versions.at(-1),info=MTTrips.summary(latest.snapshot),id=MT.esc(d.id);
+        html+='<article class="trip-library-card" data-draft="'+id+'"><div class="trip-library-heading"><div><p class="mt-eyebrow">'+MT.esc(info.route || '旅行草案')+'</p><h2>'+MT.esc(d.name)+'</h2></div><span class="mt-meta">'+MT.esc(savedDate(d.updated_at))+'</span></div><div class="trip-library-tags">'+info.conditions.map(function(c){return '<span>'+MT.esc(c)+'</span>';}).join('')+'</div><p class="mt-meta">'+'最近保存 · '+d.versions.length+' 个版本</p>'+(d.corrupted_version_count?'<p class="mt-notice">部分版本损坏，原记录保留；仍可继续其他版本。</p>':'')+
+          '<div class="trip-library-actions"><button type="button" class="btnDraftContinue mt-button-primary" data-id="'+id+'">继续规划</button><button type="button" class="btnDraftOpen mt-button-secondary" data-id="'+id+'" aria-expanded="false">历史版本</button><details class="trip-more"><summary>更多</summary><div><button type="button" class="btnDraftRename mt-text-button" data-id="'+id+'">重命名</button><button type="button" class="btnDraftDel mt-text-button" data-id="'+id+'">删除</button></div></details></div>'+
+          '<form class="draftRename" hidden><label>旅行名称<input name="tripName" maxlength="40" required value="'+MT.esc(d.name)+'"></label><p class="mt-form-error" role="status"></p><div class="mt-actions"><button class="mt-button-primary" type="submit">保存名称</button><button class="mt-button-secondary cancelRename" type="button">取消</button></div></form>'+
+          '<div class="draftDelete mt-notice" hidden><p>将删除这份旅行及其 '+d.versions.length+' 个版本，此操作无法撤销。</p><div class="mt-actions"><button class="mt-button-danger confirmDelete" type="button">确认删除这份旅行</button><button class="mt-button-secondary cancelDelete" type="button">保留旅行</button></div><p class="mt-form-error" role="status"></p></div><div class="draftDetail" hidden></div></article>';
+      });wrap.innerHTML=html;
+      var clear=document.getElementById('clearDraftSearch');if(clear)clear.onclick=function(){document.getElementById('draftSearch').value='';renderDrafts();};
+      wrap.querySelectorAll('[data-draft]').forEach(function(card){var id=card.dataset.draft,rename=card.querySelector('.draftRename'),deletion=card.querySelector('.draftDelete');
+        card.querySelector('.btnDraftContinue').onclick=function(){var d=MTDrafts.get(id);if(d?.versions.length)restoreDraft(id,d.versions.at(-1).vid);else MT.toast('行程暂不可读取，请刷新列表');};
+        card.querySelector('.btnDraftOpen').onclick=function(){toggleDraftDetail(id);};
+        card.querySelector('.btnDraftRename').onclick=function(){card.querySelector('.trip-more').open=false;rename.hidden=!rename.hidden;deletion.hidden=true;if(!rename.hidden)rename.querySelector('input').focus();};
+        function closeRename(){rename.hidden=true;card.querySelector('.btnDraftRename').focus();}
+        card.querySelector('.cancelRename').onclick=closeRename;rename.onkeydown=function(e){if(e.key==='Escape'){e.preventDefault();closeRename();}};
+        rename.onsubmit=function(e){e.preventDefault();var name=rename.querySelector('input').value.trim();if(!name){rename.querySelector('[role=status]').textContent='请输入旅行名称';return;}var r=MTDrafts.rename(id,name);if(r.ok){MT.toast('旅行名称已更新');renderDrafts();}else rename.querySelector('[role=status]').textContent='名称未保存，请稍后重试。';};
+        card.querySelector('.btnDraftDel').onclick=function(){card.querySelector('.trip-more').open=false;deletion.hidden=!deletion.hidden;rename.hidden=true;};
+        card.querySelector('.cancelDelete').onclick=function(){deletion.hidden=true;card.querySelector('.btnDraftDel').focus();};
+        card.querySelector('.confirmDelete').onclick=function(){var r=MTDrafts.remove(id);if(r.ok){MT.toast('旅行已删除');renderDrafts();}else deletion.querySelector('[role=status]').textContent='未删除成功，请稍后重试。';};
       });
-      wrap.innerHTML = html;
-      wrap.querySelectorAll('.btnDraftContinue').forEach(function(btn){btn.onclick=function(){var d=MTDrafts.get(btn.getAttribute('data-id'));if(d && d.versions.length) restoreDraft(d.id,d.versions[d.versions.length-1].vid);};});
-      wrap.querySelectorAll('.btnDraftOpen').forEach(function (btn) {
-        btn.addEventListener('click', function () { toggleDraftDetail(btn.getAttribute('data-id')); });
-      });
-      wrap.querySelectorAll('.btnDraftRename').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-          var d = MTDrafts.get(btn.getAttribute('data-id'));
-          if (!d) return;
-          var name = prompt('重命名草案', d.name);
-          if (name == null) return;
-          var res2 = MTDrafts.rename(d.id, name);
-          if (res2.ok) { MT.toast('已重命名'); renderDrafts(); }
-          else MT.toast('重命名失败（存储不可写）');
-        });
-      });
-      wrap.querySelectorAll('.btnDraftDel').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-          var id = btn.getAttribute('data-id');
-          var d = MTDrafts.get(id);
-          if (!d) return;
-          if (!confirm('删除草案「' + d.name + '」及其 ' + d.versions.length + ' 个版本？删除后不可恢复。')) return;
-          var res2 = MTDrafts.remove(id);
-          if (res2.ok) { MT.toast('已删除'); renderDrafts(); }
-          else MT.toast('删除失败（存储不可写）');
-        });
-      });
+
     }
-    function toggleDraftDetail(id) {
-      var card = document.querySelector('[data-draft="' + id + '"]');
-      if (!card) return;
-      var box = card.querySelector('.draftDetail');
-      if (!box) return;
-      if (box.style.display !== 'none') { box.style.display = 'none'; return; }
-      var d = MTDrafts.get(id);
-      if (!d) { box.style.display = 'block'; box.innerHTML = '<div style="font-size:12px;color:#A8543A;">草案已不存在或损坏。</div>'; return; }
-      var html = '';
-      d.versions.slice().reverse().forEach(function (v) {
-        var s = v.snapshot;
-        var sum = [s.candidate ? s.candidate.label : s.scope === 'task' ? '交通锚点与景点草案' : '待重新选择走法'];
-        if (s.sights && Array.isArray(s.sights.selected_ids)) sum.push('已选 ' + s.sights.selected_ids.length + ' 处景点');
-        if (s.travel && s.travel.trip_type === 'round_trip') sum.push('往返');
-        if (s.travel && s.travel.outbound_window) sum.push('去 ' + s.travel.outbound_window);
-        if (s.travel && s.travel.return_window) sum.push('返 ' + s.travel.return_window);
-        if (s.nights) sum.push('停 ' + s.nights + ' 晚');
-        html += '<div style="padding:10px 0;border-bottom:1px solid var(--mixtouring-border,#E5E7EB);">' +
-          '<div style="font-size:12.5px;">版本 ' + v.version + ' · ' + MT.esc(savedDate(v.saved_at)) + ' · ' + MT.esc(sum.join(' · ')) + '</div>' +
-          (s.confirmed_note && (s.confirmed_note.origin || s.confirmed_note.destination)
-            ? '<div style="font-size:11.5px;color:#A16207;margin-top:3px;">保存时含开放地点确认——恢复时须重新核验确认。</div>' : '') +
-          '<button type="button" class="btnDraftRestore" data-id="' + MT.esc(d.id) + '" data-vid="' + MT.esc(v.vid) + '" style="min-height:44px;margin-top:6px;padding:7px 14px;border:1px solid var(--mixtouring-ring,#C86A4B);border-radius:9px;background:#fff;color:var(--mixtouring-ring,#C86A4B);font-family:inherit;font-size:12px;cursor:pointer;">从此版本继续</button>' +
-          '</div>';
-      });
-      html += '<div style="font-size:11.5px;color:var(--mixtouring-muted-foreground,#7C8089);margin-top:8px;line-height:1.6;">继续时保留你的安排，并更新路线信息。</div>';
-      box.innerHTML = html;
-      box.style.display = 'block';
-      box.querySelectorAll('.btnDraftRestore').forEach(function (btn) {
-        btn.addEventListener('click', function () { restoreDraft(btn.getAttribute('data-id'), btn.getAttribute('data-vid')); });
-      });
+    function toggleDraftDetail(id){var card=Array.from(document.querySelectorAll('[data-draft]')).find(function(c){return c.dataset.draft===id;});if(!card)return;var box=card.querySelector('.draftDetail'),button=card.querySelector('.btnDraftOpen');if(!box.hidden){box.hidden=true;button.setAttribute('aria-expanded','false');return;}var d=MTDrafts.get(id);if(!d){MT.toast('行程暂不可读取');return;}
+      box.innerHTML='<h3>历史版本</h3>'+d.versions.slice().reverse().map(function(v,i){var info=MTTrips.summary(v.snapshot),index=d.versions.indexOf(v),diff=MTTrips.changes(d.versions[index-1]?.snapshot,v.snapshot);return '<section class="trip-version"><div class="trip-version-heading"><span>版本 '+v.version+(i===0?' · 最新保存':'')+'</span><span class="mt-meta">'+MT.esc(savedDate(v.saved_at))+'</span></div><p>'+MT.esc(diff.join(' · '))+'</p><details><summary>查看这版安排</summary><p>'+MT.esc(info.title)+'</p><p>'+MT.esc(info.route)+'</p><p class="mt-meta">'+MT.esc(info.conditions.join(' · '))+' · '+info.cards+' 张安排卡</p></details><button class="btnDraftRestore mt-button-secondary" type="button" data-vid="'+MT.esc(v.vid)+'">从此版本继续</button></section>';}).join('')+'<p class="mt-meta">继续时保留此版安排；交通与开放资料仍需按出行时间重新核对。</p>';
+      box.hidden=false;button.setAttribute('aria-expanded','true');box.querySelectorAll('.btnDraftRestore').forEach(function(b){b.onclick=function(){restoreDraft(id,b.dataset.vid);};});
     }
     function restoreDraft(id, vid) {
       var d = MTDrafts.get(id);
@@ -409,6 +286,10 @@
       location.href = 'trip.html?' + params.toString();
     }
     renderDrafts();
+    document.getElementById('draftSearch').addEventListener('input',renderDrafts);
+    document.getElementById('draftWrap').addEventListener('click',function(e){if(!e.target.closest('#btnPurgeCorrupted'))return;if(!confirm('只清理无法识别的损坏条目？正常旅行和版本会保留。'))return;var result=MTDrafts.purgeCorrupted();if(result.ok)renderDrafts();else MT.toast('未能清理，原记录保留');});
+    var resume=document.getElementById('sessionResume');try{var session=JSON.parse(sessionStorage.getItem('mt:planning-session') || 'null');if(session?.conversation && !MTSaveState.find(session,MTDrafts.list(),session.saved_draft_id).saved){var info=MTTrips.summary(session);resume.hidden=false;resume.innerHTML='<div><p class="mt-eyebrow">上次尚未保存</p><h2>'+MT.esc(info.route || '还在讨论的旅行想法')+'</h2><p class="mt-meta">继续上次对话，保存后会出现在下方列表。</p></div><a class="mt-button-secondary" href="trip.html">继续这次规划</a>';}}catch(e){}
+    window.addEventListener('storage',function(e){if(e.key===MTDrafts.DRAFT_KEY)MT.toast('其他窗口已更新旅行，请刷新后继续管理');});
 
     /* ---------- 收藏列表 ---------- */
     function favRowHtml(f) {

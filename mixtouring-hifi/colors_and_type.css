@@ -1,6 +1,6 @@
 /* MixTouring HiFi — colors_and_type.css */
 /* Brand prefix: mixtouring */
-/* Design system: Warm Modern Minimalist (from travel-app-hifi) applied to MixTouring product */
+/* 设计系统：温暖、现代、简洁；主产品页面的语义令牌统一在此维护。 */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Noto+Sans+SC:wght@400;500&display=swap');
 
@@ -61,4 +61,25 @@
   --state-warning: #FBBF24;
   --state-error: #E11D48;
   --state-success: #34c759;
+}
+
+/* 当前规划、路线灵感、我的旅行；历史页面继续使用原有令牌。 */
+body.product-page {
+  --mixtouring-background: #F8F9FA;
+  --mixtouring-foreground: #202220;
+  --mixtouring-primary: #111111;
+  --mixtouring-muted-foreground: #626873;
+  --mixtouring-border: #E5E7EB;
+  --color-brand-accent: #B35E45;
+  --color-accent-text: #8A523D;
+  --color-route-soft: #F5F3EF;
+  --color-route-selected: #FFFDF9;
+  --color-map-background: #E8EFE7;
+  --mt-type-caption: 12px;
+  --mt-type-small: 14px;
+  --mt-type-body: 15px;
+  --mt-type-card: 20px;
+  --mt-type-title: 28px;
+  --mt-control-radius: 12px;
+  --mt-panel-radius: 20px;
 }

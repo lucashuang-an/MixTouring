@@ -50,6 +50,8 @@ export function resolveRoute(origin, destination) {
  * 兼容聊天模型的 key/base 不代表该端点可用。仅当配置了 key 且 base 指向智谱（或显式 WEB_SEARCH_AVAILABLE=1）时视为已配置。
  * 返回 {configured, basis}——布尔由调用方消费，不泄露任何凭据。 */
 export function webSearchConfigured(env = process.env) {
+  if(env.TRAVEL_SEARCH_PROVIDER==='tavily')return {configured:!!env.TAVILY_API_KEY,basis:'tavily'};
+  if(env.TRAVEL_SEARCH_PROVIDER && env.TRAVEL_SEARCH_PROVIDER!=='current')return {configured:false,basis:'unsupported-provider'};
   if (env.VOLC_SEARCH_API_KEY) return { configured: true, basis: 'volc-search' };
   const key = !!env.LLM_API_KEY;
   const base = env.LLM_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4';

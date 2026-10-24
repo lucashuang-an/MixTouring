@@ -2,6 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { buildServiceDB } from '../../pipeline/lib/derive.mjs';
 const data = new URL('../../pipeline/data/', import.meta.url);
+const experiences=JSON.parse(readFileSync(new URL('route-experiences.json',data),'utf8')).places;
 const EDITORIAL = {
   'tpl-001':'在银川停一站，再经阿克苏继续到喀什，把铁路与航班分成不同阶段。',
   'tpl-002':'在兰州暂停一下，把前往乌鲁木齐的铁路旅程分成两段。',
@@ -34,10 +35,11 @@ export function listInspirations() {
     return {
       id: 'intl-' + choice.gateway, scope: 'international', from: choice.from, to: corridor.destination,
       stops: [choice.from, corridor.gateway, corridor.destination], modes: [null, 'road'], via: corridor.waypoints,
-      title: choice.title, reason: choice.reason,
+      title: experiences[choice.gateway]?.headline || choice.title, reason: choice.reason,
+      benefits:experiences[choice.gateway]?.benefits || [],stop_days:{min:1,max:2,basis:'可调整停留建议，未包含未知交通耗时'},cost_label:'沿途住宿与接驳支出需另计',
       tradeoff: '进入门户城市的交通待查；跨境客运班期、口岸手续与衔接均须确认。',
       evidence_state: 'explore', preferences: { pace: 'explore' },
-      sources: [{ title: corridor.title, link: corridor.link, date: corridor.date }]
+      sources: [{ title: corridor.title, link: corridor.link, date: corridor.date },...(experiences[choice.gateway]?[{title:experiences[choice.gateway].source.title,link:experiences[choice.gateway].source.url,date:experiences[choice.gateway].source.published_at}]:[])]
     };
   }).filter(Boolean);
   return [...international, ...domestic];

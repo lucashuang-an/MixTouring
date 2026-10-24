@@ -10,6 +10,8 @@ import { appendFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { searchVolc } from './search-volc.mjs';
+import {searchTavily} from './search-tavily.mjs';
+import {searchAttempt,detailedSearch} from './search-diagnostics.mjs';
 
 const VOLC_CHAT = 'https://ark.cn-beijing.volces.com/api/v3/chat/completions';
 
@@ -56,6 +58,7 @@ function logUsage(kind, usage, model) {
 let SEARCH_STATE = { status: 'unknown', at: null };
 let SEARCH_QUOTA_UNTIL = 0;
 let PUBLIC_SEARCH_RETRY_AT = 0;
+let VOLC_SEARCH_RETRY_AT = 0;
 function markSearch(status, provider = null) { SEARCH_STATE = { status, provider, at: new Date().toISOString() }; }
 
 function searchText(value) {
@@ -64,16 +67,19 @@ function searchText(value) {
     })[entity] || (entity === '&nbsp;' ? ' ' : entity)).replace(/\s+/g, ' ').trim();
 }
 
-async function searchPublicIndex(query, limit, timeoutMs, signal) {
-  if (Date.now() < PUBLIC_SEARCH_RETRY_AT) return null;
+async function searchPublicIndex(query, limit, timeoutMs, signal,observe) {
+  const started=Date.now(),emit=extra=>searchAttempt(observe,{provider:'public-search',query,started,...extra});
+  if(signal?.aborted){emit({status:'cancelled',reason_code:'cancelled'});return null;}
+  if (Date.now() < PUBLIC_SEARCH_RETRY_AT){emit({status:'skipped',reason_code:'cooldown'});return null;}
   try {
     const url = 'https://www.so.com/s?' + new URLSearchParams({ q: String(query).slice(0, 100) });
     const timeout = AbortSignal.timeout(Math.min(timeoutMs, 8000));
     const res = await fetch(url, { signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
-    if (!res.ok || !/html/i.test(res.headers.get('content-type') || '')) return null;
+    if (!res.ok || !/html/i.test(res.headers.get('content-type') || '')){emit({status:'error',network_request:true,http_status:res.status,reason_code:'http_or_content_type'});return null;}
     const html = (await res.text()).slice(0, 600000);
     if (html.includes('<title>访问异常页面</title>')) {
       PUBLIC_SEARCH_RETRY_AT = Date.now() + 5 * 60 * 1000;
+      emit({status:'blocked',network_request:true,http_status:res.status,reason_code:'verification_page'});
       return null;
     }
     const blocks = html.split(/<li\s+class=["']res-list["']/i).slice(1, 16);
@@ -89,8 +95,10 @@ async function searchPublicIndex(query, limit, timeoutMs, signal) {
     const seen = new Set();
     const unique = results.filter((r) => !seen.has(r.link) && seen.add(r.link)).slice(0, limit);
     if (!unique.length) PUBLIC_SEARCH_RETRY_AT = Date.now() + 5 * 60 * 1000;
+    emit({status:unique.length?'available':'empty',network_request:true,http_status:res.status,reason_code:unique.length?null:'no_index_results'});
     return unique.length ? unique : null;
   } catch (err) {
+    emit({status:signal?.aborted?'cancelled':err?.name==='TimeoutError' || err?.name==='AbortError'?'timeout':'error',network_request:true,reason_code:signal?.aborted?'cancelled':'network_or_timeout'});
     console.error('✗ 公开搜索备用通道失败：' + err.message);
     return null;
   }
@@ -99,22 +107,37 @@ async function searchPublicIndex(query, limit, timeoutMs, signal) {
 /** 最近一次 searchWeb 真实调用的状态（浅拷贝，不泄露凭据）；从未调用过为 unknown */
 export function webSearchStatus() { return { ...SEARCH_STATE }; }
 
-export async function searchWeb(query, { limit = 5, timeoutMs = 30000, signal } = {}) {
+export async function searchWeb(query, { limit = 5, timeoutMs = 30000, signal,onAttempt,provider=process.env.TRAVEL_SEARCH_PROVIDER || 'current',domains=null,domainMode='restrict',language=null,startDate=null,endDate=null } = {}) {
+  if(signal?.aborted){searchAttempt(onAttempt,{provider:'none',query,started:Date.now(),status:'cancelled',reason_code:'cancelled'});return null;}
+  if(provider==='tavily'){
+    return searchTavily(query,{limit,timeoutMs,signal,domains,domainMode,language,startDate,endDate,onAttempt:event=>{markSearch(event.status,'tavily');if(typeof onAttempt==='function')onAttempt(event);}});
+  }
+  if(provider!=='current'){markSearch('error');searchAttempt(onAttempt,{provider:'none',query,started:Date.now(),status:'error',reason_code:'unsupported_provider'});return null;}
   if (process.env.VOLC_SEARCH_API_KEY) {
-    const outcome = await searchVolc(query, {
+    const started=Date.now();
+    const skipped=started<VOLC_SEARCH_RETRY_AT,model=process.env.VOLC_SEARCH_MODEL || 'doubao-seed-2-1-lite-260915';
+    const outcome = skipped?{status:'quota_exhausted',results:null}:await searchVolc(query, {
       key: process.env.VOLC_SEARCH_API_KEY,
       model: process.env.VOLC_SEARCH_MODEL || 'doubao-seed-2-1-lite-260915',
       limit, timeoutMs, signal
     });
-    markSearch(outcome.status, 'volc-search');
-    return outcome.results;
+    searchAttempt(onAttempt,{provider:'volc-search',model,query,started,status:skipped?'skipped':outcome.status,network_request:!skipped,http_status:outcome.http_status,reason_code:skipped?'cooldown':outcome.reason_code,usage:outcome.usage});
+    if(outcome.results){markSearch(outcome.status,'volc-search');return outcome.results;}
+    if(outcome.status==='quota_exhausted')VOLC_SEARCH_RETRY_AT=Date.now()+300000;
+    const remaining=timeoutMs-(Date.now()-started);
+    const fallback=remaining>500 && !signal?.aborted?await searchPublicIndex(query,limit,Math.min(remaining,8000),signal,onAttempt):null;
+    markSearch(fallback?'available':outcome.status,fallback?'public-search':'volc-search');
+    SEARCH_STATE.primary_status=outcome.status;
+    return fallback;
   }
-  if (!llmConfigured()) return null;
+  if (!llmConfigured()){searchAttempt(onAttempt,{provider:'none',query,started:Date.now(),status:'unconfigured',reason_code:'unconfigured'});return null;}
   if (Date.now() < SEARCH_QUOTA_UNTIL) {
-    const fallback = await searchPublicIndex(query, limit, timeoutMs, signal);
+    searchAttempt(onAttempt,{provider:'zhipu',query,started:Date.now(),status:'skipped',reason_code:'cooldown'});
+    const fallback = await searchPublicIndex(query, limit, timeoutMs, signal,onAttempt);
     markSearch(fallback ? 'available' : 'quota_exhausted', fallback ? 'public-search' : null);
     return fallback;
   }
+  const started=Date.now();let httpStatus=null;
   try {
     const res = await fetch(`${BASE}/web_search`, {
       method: 'POST',
@@ -125,23 +148,28 @@ export async function searchWeb(query, { limit = 5, timeoutMs = 30000, signal } 
       }),
       signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs)
     });
+    httpStatus=res.status;
     if (!res.ok) {
       markSearch(res.status === 429 ? 'quota_exhausted' : 'error');
       throw new Error('search HTTP ' + res.status);
     }
     const body = await res.json();
-    markSearch('available', 'zhipu');
-    return (body.search_result || []).slice(0, limit).map((r) => ({
+    if(body.search_result!==undefined && !Array.isArray(body.search_result))throw Error('检索返回格式无效');
+    const results=(body.search_result || []).slice(0, limit).map((r) => ({
       title: r.title || '',
       link: r.link || '',
       content: (r.content || '').slice(0, 300),
       media: r.media || null,
       date: r.publish_date || null
     }));
+    searchAttempt(onAttempt,{provider:'zhipu',query,started,status:results.length?'available':'empty',network_request:true,http_status:httpStatus});
+    markSearch('available', 'zhipu');
+    return results;
   } catch (err) {
+    searchAttempt(onAttempt,{provider:'zhipu',query,started,status:signal?.aborted?'cancelled':httpStatus===429?'quota_exhausted':err?.name==='TimeoutError' || err?.name==='AbortError'?'timeout':'error',network_request:true,http_status:httpStatus,reason_code:signal?.aborted?'cancelled':httpStatus?'http_error':'network_or_timeout'});
     if (err && err.message === 'search HTTP 429') {
       SEARCH_QUOTA_UNTIL = Date.now() + 10 * 60 * 1000;
-      const fallback = await searchPublicIndex(query, limit, timeoutMs, signal);
+      const fallback = await searchPublicIndex(query, limit, timeoutMs, signal,onAttempt);
       if (fallback) {
         markSearch('available', 'public-search');
         return fallback;
@@ -154,6 +182,7 @@ export async function searchWeb(query, { limit = 5, timeoutMs = 30000, signal } 
     return null;
   }
 }
+export function searchWebDetailed(query,options={}){return detailedSearch(searchWeb,query,options);}
 
 /**
  * 路线组合专用通道（v0.44.0）：Coding Plan 模型（ark-code-latest）对组合任务实测经常 >12s
@@ -186,6 +215,7 @@ export async function composeJson(opts) {
     if (!res.ok) throw new Error('VOLC compose HTTP ' + res.status);
     const body = await res.json();
     logUsage(opts.kind, body.usage, model);
+    try{opts.onUsage?.({kind:opts.kind,model,prompt_tokens:body.usage?.prompt_tokens ?? null,completion_tokens:body.usage?.completion_tokens ?? null,total_tokens:body.usage?.total_tokens ?? null});}catch{}
     const raw = body.choices?.[0]?.message?.content;
     if (!raw) return null;
     const m = raw.match(/\{[\s\S]*\}/);
@@ -233,6 +263,7 @@ export async function callJson(opts) {
     if (!res.ok) throw new Error('LLM HTTP ' + res.status);
     const resBody = await res.json();
     logUsage(opts.kind, resBody.usage, body.model);
+    try{opts.onUsage?.({kind:opts.kind,model:body.model,prompt_tokens:resBody.usage?.prompt_tokens ?? null,completion_tokens:resBody.usage?.completion_tokens ?? null,total_tokens:resBody.usage?.total_tokens ?? null});}catch{}
     const raw = resBody.choices?.[0]?.message?.content;
     if (!raw) return null;
     // 兼容模型可能在代码块里包 JSON

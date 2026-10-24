@@ -1,0 +1,115 @@
+/* 时效、时间窗、原文读取与查询隔离：确定性回归，不使用真实网络或密钥。 */
+import assert from 'node:assert/strict';
+import {sourceDay,retrievalContext,assessSourceTime,partitionTimedSources} from './lib/source-time.mjs';
+import {extractPublicPage,publicUrl,publicAddress,readPublicPage} from './lib/public-reader.mjs';
+import {collectTravelSources} from './lib/travel-sources.mjs';
+import {searchTransportSources,transportSearchEvidence} from './lib/transport-search.mjs';
+import {verifyLegs} from './lib/anywhere.mjs';
+import {conversationTurn} from './lib/conversation.mjs';
+import {discoverRoutes} from './lib/route-discovery.mjs';
+const now=Date.parse('2026-10-15T02:00:00Z');
+const context=retrievalContext({window:'2027-10-01 ~ 2027-10-07',purpose:'transport',now});
+assert.equal(sourceDay('2026年9月2日'),'2026-09-02');assert.equal(sourceDay('2026-02-30'),null);
+assert.equal(sourceDay('昨天'),null,'不从相对索引日期猜发布日期');
+assert.equal(assessSourceTime({published_at:'2023-08-03',sampled_at:'2026-10-15'},context).state,'historical','重新采样不刷新旧文');
+assert.equal(assessSourceTime({published_at:'2027-01-01'},context).state,'future');
+assert.equal(assessSourceTime({published_at:null,sampled_at:'2026-10-15'},context).state,'undated');
+assert.equal(assessSourceTime({published_at:'2026-10-01',valid_until:'2026-10-23'},context).state,'outside_window');
+assert.equal(assessSourceTime({published_at:null,valid_from:'2027-10-01',valid_until:'2027-10-07',validity_basis:'schedule'},context).state,'window_reference');
+assert.equal(assessSourceTime({published_at:'2026-10-01'},context).date_scope,'unverified','发布近期不等于覆盖未来日期');
+const part=partitionTimedSources([{url:'https://example.com/old',published_at:'2023-01-01'},{url:'https://example.com/new',published_at:'2026-10-01'},{url:'https://example.com/future',published_at:'2027-01-01'}],context);
+assert.equal(part.current.length,1);assert.equal(part.archive.length,1);assert.equal(part.excluded.length,1);
+const body='伊宁到阿拉木图有国际客运班车，具体运行时间与可用性应向运营方确认。'.repeat(4);
+const page=extractPublicPage('<html><head><meta property="article:published_time" content="2023-08-03"><meta property="article:modified_time" content="2026-10-15"></head><body><article>'+body+'</article><footer>2026-10-15</footer></body></html>');
+assert.equal(page.published_at,'2023-08-03');assert.equal(page.updated_at,'2026-10-15');assert.ok(!page.excerpt.includes('2026-10-15'));
+assert.equal(extractPublicPage('<body><article>'+body+'</article><footer>2026-10-15</footer></body>').published_at,null,'页脚年份不是发布日期');
+assert.equal(extractPublicPage('<script type="application/ld+json">{"@type":"BlogPosting","datePublished":"2026-09-30"}</script><article>'+body+'</article>').published_at,'2026-09-30');
+const newsTime='<main><header class="page-title"><span class="category">NEWS</span><time class="date" datetime="2026-10-16">2026.10.16</time><h1>铁路服务调整</h1></header><section>'+body+'</section></main>';
+assert.equal(extractPublicPage(newsTime).published_at,'2026-10-16','文章标题前的官方NEWS时间可作发布日期');
+assert.equal(extractPublicPage('<main><div class="content-display--time"><time class="posted-date" datetime="2026/10/16">2026/10/16</time></div><h1>服务公告</h1><p>'+body+'</p></main>').published_at,'2026-10-16','posted-date的斜杠日期也可确认为发布日期');
+assert.equal(extractPublicPage('<main><h1>景区活动</h1><p>'+body+'</p><time datetime="2026-10-16">活动日期</time></main>').published_at,null,'正文活动日期不能冒充发布日期');
+assert.equal(extractPublicPage('<main><header><span>NEWS</span><time datetime="2026-10-16">更新</time><h1>新闻列表</h1></header><p>'+body+'</p></main><footer><time datetime="2026-10-22">页脚</time></footer>').published_at,'2026-10-16');
+const noticeUrl='https://line-shinkansen.jr-central.co.jp/topics/info_00021.html';
+const estimateOnly={title:'官方铁路价格改定公告',link:noticeUrl,content:'铁路公告讨论未来价格调整与适用日期。'.repeat(4),date:null,date_basis:'provider_estimate',estimated_date:'2026-10-22'};
+const noticeNow=Date.parse('2026-10-23T02:00:00Z');
+const datedNotice=await collectTravelSources({destination:'大阪',purpose:'guide'},async()=>[estimateOnly],{now:noticeNow,useCache:false,
+  readPage:async url=>({...extractPublicPage(newsTime),url})});
+assert.equal(datedNotice.sources.length,1);assert.equal(datedNotice.sources[0].published_at,'2026-10-16');
+assert.equal(datedNotice.sources[0].date_basis,'page_metadata','原文NEWS日期与服务估计日期必须分开');
+assert.equal(datedNotice.sources[0].temporal.date_scope,'unverified','近期发布不代表具体行程日期已被覆盖');
+const unverifiedNotice=await collectTravelSources({destination:'大阪',purpose:'guide'},async()=>[estimateOnly],{now:noticeNow,useCache:false,readPage:async()=>({read_status:'unavailable'})});
+assert.equal(unverifiedNotice.sources.length,0);assert.equal(unverifiedNotice.archive.length,1,'未读到原文时服务估计日期不能续期');
+const priorityReads=[];
+const prioritized=await collectTravelSources({destination:'大阪',purpose:'guide'},async()=>[
+  {...estimateOnly,link:'https://example.com/undated',estimated_date:''},
+  {...estimateOnly,link:'https://example.com/recent-estimate',estimated_date:'2026-10-20'},
+  {...estimateOnly,link:'https://example.com/another-undated',estimated_date:''}
+],{now:noticeNow,useCache:false,readPage:async url=>{priorityReads.push(url);return {url,read_status:'page_excerpt',excerpt:body,published_at:null};}});
+assert.equal(priorityReads[0],'https://example.com/recent-estimate','近期索引提示可用于挑选读取目标');
+assert.equal(priorityReads.length,2);assert.equal(prioritized.sources.length,0,'优先读取不使估计日期成为可靠发布日期');
+let directReads=0;
+const directNotice=await collectTravelSources({destination:'大阪',question:'请核对这个公开原文 '+noticeUrl,purpose:'guide'},async()=>[],{now:noticeNow,useCache:false,
+  readPage:async url=>{directReads++;return {...extractPublicPage(newsTime),url};}});
+assert.equal(directReads,1,'用户指定网页占用普通读取预算，不重复读取');
+assert.equal(directNotice.sources.length,1);assert.equal(directNotice.sources[0].published_at,'2026-10-16');
+assert.equal(directNotice.channels.at(-1).status,'found');
+assert.equal(directNotice.query_diagnostics.at(-1).accepted_count,1);
+const redirected=await collectTravelSources({destination:'大阪',question:'请核对 '+noticeUrl,purpose:'guide'},async()=>[],{now:noticeNow,useCache:false,
+  readPage:async()=>({...extractPublicPage(newsTime),url:'https://example.com/other-article'})});
+assert.equal(redirected.sources.length,0);assert.equal(redirected.query_diagnostics.at(-1).rejected_count,1,'跳到另一文章不能冒充用户指定原文');
+let unsafeReads=0;
+const unsafeDirect=await collectTravelSources({destination:'大阪',question:'请打开 http://127.0.0.1/private',purpose:'guide'},async()=>[],{now:noticeNow,useCache:false,
+  readPage:async()=>{unsafeReads++;return {read_status:'page_excerpt',excerpt:body};}});
+assert.equal(unsafeReads,0);assert.equal(unsafeDirect.sources.length,0,'非公开地址不会进入读取器');
+assert.throws(()=>extractPublicPage('<title>Just a moment...</title><form id="challenge-form">验证</form>'));
+assert.throws(()=>extractPublicPage('<title>Sign in</title><input type="password"><article>'+body+'</article>'));
+for(const value of ['http://localhost/','http://127.0.0.1/','http://user:pass@example.com/','file:///server/.env','https://example.com:3000/'])assert.throws(()=>publicUrl(value));
+for(const ip of ['127.0.0.1','10.0.0.1','169.254.169.254','172.16.1.1','192.168.1.1','100.64.0.1','::1','0000:0000:0000:0000:0000:0000:0000:0001','::ffff:127.0.0.1','fd00::1'])assert.equal(publicAddress(ip),false);
+assert.equal(publicAddress('8.8.8.8'),true);
+assert.equal((await readPublicPage('https://example.com/',{resolve:async()=>[{address:'127.0.0.1',family:4}]})).read_status,'unavailable','DNS解析到内网不发送网页请求');
+const queries=[];
+const search=async q=>{queries.push(q);return [{title:'伊宁到阿拉木图国际客运班车',link:'https://example.com/recent',content:body,date:'2026-10-01'},{title:'旧交通',link:'https://example.com/old',content:body,date:'2023-08-03'},{title:'无日期',link:'https://example.com/unknown',content:body}];};
+const got=await collectTravelSources({destination:'阿拉木图',purpose:'transport',window:context.target_window},search,{useCache:false,now,readPage:async url=>url.endsWith('/recent')?{read_status:'page_excerpt',published_at:'2023-08-03',excerpt:body}:{read_status:'unavailable'}});
+assert.ok(queries.every(q=>q.includes('2027-10-01') && q.includes('2027-10-07')));
+assert.equal(got.sources.length,0,'原文较旧时不能沿用索引宣称的新日期');assert.equal(got.archive.length,2);assert.equal(got.reader.available,1);
+assert.equal((await collectTravelSources({destination:'空样本'},async()=>[],{useCache:false,now})).status,'available','确实无匹配与通道失败分别记录');
+assert.equal((await collectTravelSources({destination:'失败样本'},async()=>null,{useCache:false,now})).status,'unavailable');
+const live=await searchTransportSources({from:'伊宁',to:'阿拉木图',window:context.target_window},async()=>[{title:'伊宁到阿拉木图国际客运班车',link:'https://www.mafengwo.cn/gonglue/line',content:body,date:'2026-10-01'}],{now,useCache:false,readPage:async()=>({read_status:'page_excerpt',published_at:'2026-10-01',excerpt:body})});
+assert.equal(live.sources.length,1);assert.equal(live.sources[0].temporal.date_scope,'unverified');
+assert.equal(transportSearchEvidence([live.retrieval_id],{route:['伊宁','阿拉木图'],window:context.target_window,now}).length,1);
+assert.equal(transportSearchEvidence([live.retrieval_id],{route:['伊宁','阿拉木图'],window:'2026-10-20 ~ 2026-10-20',now}).length,0,'改日期不复用旧查询');
+assert.equal(transportSearchEvidence([live.retrieval_id],{route:['阿拉木图','伊宁'],window:context.target_window,now}).length,0,'不反转查询结果');
+/* #29：有效项筛选先于限额——12 条旧方向/过期记录夹着的有效 ID 不得被输入上限挤掉 */
+const staleSource=async()=>[{title:'乌鲁木齐到伊宁客运班车',link:'https://www.mafengwo.cn/gonglue/stale',content:body,date:'2026-10-01'}];
+const staleIds=[];
+for(let i=0;i<12;i++){
+  const stale=await searchTransportSources({from:'乌鲁木齐',to:'伊宁',window:context.target_window},staleSource,{now,useCache:false,readPage:async()=>({read_status:'page_excerpt',published_at:'2026-10-01',excerpt:body})});
+  staleIds.push(stale.retrieval_id);
+}
+const expired=await searchTransportSources({from:'乌鲁木齐',to:'伊宁',window:context.target_window},staleSource,{now:now-900001,useCache:false,readPage:async()=>({read_status:'page_excerpt',published_at:'2026-10-01',excerpt:body})});
+const solo=transportSearchEvidence([live.retrieval_id],{route:['伊宁','阿拉木图'],window:context.target_window,now});
+const sandwiched=transportSearchEvidence([...staleIds,expired.retrieval_id,live.retrieval_id,live.retrieval_id],{route:['伊宁','阿拉木图'],window:context.target_window,now});
+assert.equal(solo.length,1);
+assert.deepEqual(sandwiched,solo,'有效项单独提交与夹在有界无关/过期/重复ID中提交，结果一致');
+assert.equal(transportSearchEvidence([...staleIds,expired.retrieval_id],{route:['伊宁','阿拉木图'],window:context.target_window,now}).length,0,'仅无关/过期记录时返回空，不误用旧方向资料');
+assert.equal(transportSearchEvidence([live.retrieval_id],{route:['乌鲁木齐','伊宁'],window:context.target_window,now}).length,0,'方向切换后当前链不复用反方向缓存');
+const candidates=[{legs:[{from:'伊宁',to:'阿拉木图',mode_guess:'road',evidence_state:'explore'}]}];
+await verifyLegs(candidates,async()=>[{title:'伊宁到阿拉木图国际客运班车',link:'https://example.com/old',content:body,date:'2020-01-01'}]);
+assert.equal(candidates[0].legs[0].evidence_state,'explore','旧运营资料不能进入当前连接线索');
+let oldDiscoveryInvoked=false;
+const oldDiscovery=await discoverRoutes({name:'哈尔滨',country:'CN'},{name:'三亚',country:'CN'},{searchFn:async()=>[{title:'哈尔滨经上海至三亚航班',link:'https://example.com/old-flight',content:'哈尔滨至上海航班，上海至三亚航班。',date:'2020-01-01'}],modelFn:async()=>{oldDiscoveryInvoked=true;return {};}});
+assert.equal(oldDiscoveryInvoked,false);assert.equal(oldDiscovery.routes.length,0,'在线路线组合不再消费已过时的运营来源');
+const changedQueries=[];
+const changed=await conversationTurn({text:'出发窗改到2027年10月1日至7日',travel:{outbound_window:'2026-10-20 ~ 2026-10-20'}},null,{now,search:async q=>{changedQueries.push(q);return [];},model:async opts=>opts.kind==='conversation_calendar'?{travel:{outbound_window:'2027-10-01 ~ 2027-10-07'}}:{intent_action:'discuss',reply:'已保留新的时间窗。',brief:{origin:'北京',destination:'阿拉木图',summary:'按新时间窗探索',wishes:[],open_questions:[]},ready:true,confirmed:false,travel:{outbound_window:'2027-10-01 ~ 2027-10-07'},preferences:{},constraints:{},sights:{},draft:null}});
+assert.equal(changed.status,'ok');assert.equal(changed.patch.travel.outbound_window,'2027-10-01 ~ 2027-10-07');
+assert.ok(changedQueries.length && changedQueries.every(q=>q.includes('2027-10-01') && !q.includes('2026-10-20')),'先核对日历意图，再按新窗检索');
+const futureQuestions=[];
+const question=await conversationTurn({text:'明年国庆出发怎么样，先查资料不要改行程',travel:{outbound_window:'2026-10-20 ~ 2026-10-20'}},null,{now,search:async q=>{futureQuestions.push(q);return [];},model:async opts=>opts.kind==='conversation_calendar'?{travel:{},search_window:'2027-10-01 ~ 2027-10-07'}:{intent_action:'question',search_window:'2027-10-01 ~ 2027-10-07',reply:'先按咨询的时间查找资料，原日期保留。',brief:{origin:'北京',destination:'阿拉木图',summary:'北京去阿拉木图',wishes:[],open_questions:[]},ready:true,confirmed:false,travel:{},preferences:{},constraints:{},sights:{},draft:null}});
+assert.equal(question.status,'ok');assert.deepEqual(question.patch.travel,{});assert.ok(futureQuestions.length && futureQuestions.every(q=>q.includes('2027-10-01')),'咨询窗口可改变，已确认旅行日期不被改写');
+console.log('✓ 日期、未来出行、旧文隔离、原文日期、公开读取边界和查询复用回归通过');
+
+const community=await searchTransportSources({from:'伊宁',to:'阿拉木图'},async(q,opts)=>opts.domains?[{title:'Yining to Almaty bus trip',link:'https://www.reddit.com/r/travel/comments/example',content:'Yining bus journey to Almaty: border queue experience',date:'2026-05-01'}]:[],{now,useCache:false,readPage:null});
+assert.equal(community.sources.length,0,'半年前经验不进入近期运营资料');
+assert.equal(community.experiences.length,1,'乘车经验独立按体验用途评估，不因超过九十天删除');
+assert.equal(transportSearchEvidence([community.retrieval_id],{route:['伊宁','阿拉木图'],now,purpose:'experience'}).length,1);
+assert.equal(transportSearchEvidence([community.retrieval_id],{route:['阿拉木图','伊宁'],now,purpose:'experience'}).length,0);

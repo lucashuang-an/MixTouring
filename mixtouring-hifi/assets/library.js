@@ -10,7 +10,7 @@
         '<h2>' + MT.esc(r.title) + '</h2><div class="mt-route-path">' + r.stops.map(MT.esc).join(' → ') + '</div>' +
         '<p class="mt-route-muted">' + r.modes.map(function (m) { return modes[m] || '方式待查'; }).join(' → ') +
         (r.via && r.via.length ? ' · 途经' + r.via.map(MT.esc).join('、') : '') + '</p>' +
-        '<p class="mt-route-muted">值得考虑：' + MT.esc(r.reason) + '</p><p class="mt-route-muted">主要取舍：' + MT.esc(r.tradeoff) + '</p>' +
+        (r.benefits?.length?'<ul class="discovery-benefits">'+r.benefits.map(function(b){return '<li>'+MT.esc(b)+'</li>';}).join('')+'</ul>':'')+'<p class="mt-route-muted">'+(r.stop_days?'停留建议：'+r.stop_days.min+'–'+r.stop_days.max+'天 · '+MT.esc(r.stop_days.basis)+'<br>'+MT.esc(r.cost_label)+'<br>':'')+'值得考虑：' + MT.esc(r.reason) + '</p><p class="mt-route-muted">主要取舍：' + MT.esc(r.tradeoff) + '</p>' +
         '<details><summary>查看路线依据与待查项</summary><p>这是一条可以继续研究的路线。出发与返回日期、每段班次、接驳、费用及停留安排均待重新查询。</p>' +
         r.sources.map(function (s) { return '<p>' + (/^https:\/\//.test(s.link || '') ? '<a href="' + MT.esc(s.link) + '" target="_blank" rel="noopener">' + MT.esc(s.title) + '</a>' : MT.esc(s.title)) +
           (s.date ? ' · 来源日期 ' + MT.esc(s.date) : '') + '</p>'; }).join('') + '</details>' +

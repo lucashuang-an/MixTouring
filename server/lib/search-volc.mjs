@@ -52,14 +52,14 @@ export async function searchVolc(query, { key, model = 'doubao-seed-2-1-lite-260
     if (!res.ok) {
       /* 2026-09-28 实测：429 可能是账号「安全体验模式」用量上限（SetLimitExceeded，模型暂停，
        * 需控制台调整）而非速率限流——记录错误码便于区分，两种都按额度类诚实降级（本轮停止重试）。 */
-      if (res.status === 429) {
-        try { console.error('✗ 火山搜索 429：' + String((await res.json())?.error?.code || '')); } catch { /* body 非预期时只报状态码 */ }
-      }
-      return { status: res.status === 429 ? 'quota_exhausted' : 'error', results: null };
+      let code=null;try{const raw=(await res.json())?.error?.code;if(typeof raw==='string' && /^[A-Za-z0-9_.-]{1,80}$/.test(raw))code=raw;}catch{}
+      if(res.status===429)console.error('✗ 火山搜索 429：'+(code || ''));
+      return { status: res.status === 429 ? 'quota_exhausted' : 'error', results: null,http_status:res.status,reason_code:code || 'http_error' };
     }
-    const results = parseVolcSearch(await res.json(), limit);
-    return { status: results ? 'available' : 'error', results };
+    const body=await res.json(),results = parseVolcSearch(body, limit),safe=v=>Number.isFinite(v) && v>=0?v:null;
+    const usage={input_tokens:safe(body.usage?.input_tokens ?? body.usage?.prompt_tokens),output_tokens:safe(body.usage?.output_tokens ?? body.usage?.completion_tokens),total_tokens:safe(body.usage?.total_tokens),web_search_calls:safe(body.usage?.tool_usage?.web_search)};
+    return { status: results ? 'available' : 'error', results,http_status:res.status,reason_code:results?null:body.status!=='completed'?'incomplete_response':'missing_search_citations',usage };
   } catch (err) {
-    return { status: err?.name === 'TimeoutError' || err?.name === 'AbortError' ? 'timeout' : 'error', results: null };
+    return { status: signal?.aborted?'cancelled':err?.name === 'TimeoutError' || err?.name === 'AbortError' ? 'timeout' : 'error', results: null,reason_code:signal?.aborted?'cancelled':err?.name === 'TimeoutError' || err?.name === 'AbortError'?'timeout':'network_or_invalid_response' };
   }
 }

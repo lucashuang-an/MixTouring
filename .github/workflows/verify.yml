@@ -38,6 +38,29 @@ jobs:
       - name: 对话引导与探索详情回归
         run: |
           node server/check-guide.mjs
+          node server/check-conversation.mjs
+          node server/check-numeric-grounding.mjs
+          node server/check-send-retry.mjs
+          node server/check-context.mjs
+          node server/check-trip-memory.mjs
+          node server/check-preference-memory.mjs
+          node server/check-chat-refresh.mjs
+          node server/check-route-workspace.mjs
+          node server/check-route-comparison.mjs
+          node server/check-discovery-flow.mjs
+          node server/check-route-research.mjs
+          node server/check-draft-research.mjs
+          node server/check-research-tasks.mjs
+          node server/check-save-state.mjs
+          node server/check-my-trips.mjs
+          node server/check-travel-sources.mjs
+          node server/check-source-time.mjs
+          node server/check-source-baseline.mjs
+          node server/check-search-adapters.mjs
+          node server/check-source-tasks.mjs
+          node server/check-evidence-grounding.mjs
+          node server/check-conversation-evidence.mjs
+          node server/check-research-loop.mjs
           node server/check-journey.mjs
           node server/check-progressive.mjs
           node server/check-inspirations.mjs
