@@ -43,6 +43,8 @@ function makeEnv(postImpl) {
     planController: null, planSequence: 0, journeySequence: 0, conversationController: null,
     pendingRestore: null, lastRequest: {}, confirmedPlaces: {}, resultArea: { set innerHTML(v) {} },
     cancelRouteResearch(){sandbox.routeResearch.cancel();},
+    /* R1-C：新输入使旧补查失效；沙箱中补空实现，只验证调用不阻塞发送 */
+    cancelGapResearch(){}, lastEvidenceGaps: [],
     post: postImpl
   };
   sandbox.globalThis = sandbox;

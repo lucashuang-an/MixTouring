@@ -522,7 +522,7 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
     if(action==='chat' && raw.intent_action==='preview' && before.draft && draft && !changedDestination){
       /* M02：预览内的记忆增量随采纳一起提交、丢弃一起删除——候选挂 preview，此处不提交 */
       return {status:'ok',engine:'llm',reply:'先看看这份备选预览，当前安排还未改动。'+str(raw.reply),conversation:{...before,summaries:workingSummaries,preview:{draft,brief:next.brief,patch,requirements:next.requirements,base_revision:before.revision,base_signature:conditionSignature(input),selected_candidate_id:selected?.id || null,memory_candidates:memoryCandidates.accepted,memory_evidence_refs:[...new Set(memoryCandidates.accepted.flatMap(c=>c.evidence_refs))]}},
-        patch:cleanPatch(),sources,historical_sources:historicalSources,evidence_claims:evidenceResult?.claims || [],evidence_inferences:evidenceResult?.inferences || [],numeric_grounding:checkNumbers({reply:raw.reply,draft}).grounded,request_generation:false,selected_candidate_id:null,
+        patch:cleanPatch(),sources,historical_sources:historicalSources,evidence_claims:evidenceResult?.claims || [],evidence_inferences:evidenceResult?.inferences || [],evidence_gaps:evidenceResult?.gaps || [],numeric_grounding:checkNumbers({reply:raw.reply,draft}).grounded,request_generation:false,selected_candidate_id:null,
         preference_memory_upserts:preferenceWrite.upserts,preference_memory_context:preferenceWrite.context,preference_memory_notice:preferenceWrite.notice};
     }
     if (action === 'generate' || (before.draft && draft && !changedDestination)) {
@@ -541,7 +541,7 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
     const sourceNotice=['unavailable','partial'].includes(context.source_relevance?.status)?'部分候选资料尚未完成相关性核对，暂未作为答复依据，可重试核对。':'';
     const finalReply=sourceNotice?sourceNotice+'\n\n'+baseReply:baseReply;
     const finalGrounding=checkNumbers({reply:finalReply,draft}).grounded;
-    return { status:'ok', engine:'llm', source_relevance:context.source_relevance || null, evidence_claims:baseReply===str(raw.reply)?evidenceResult?.claims || []:[], evidence_inferences:baseReply===str(raw.reply)?evidenceResult?.inferences || []:[], numeric_grounding:finalGrounding, preference_memory_upserts:preferenceWrite.upserts, preference_memory_context:preferenceWrite.context,preference_memory_notice:preferenceWrite.notice, reply:finalReply, conversation:next, patch, sources:!evidenceReview || baseReply===str(raw.reply)?sources:[],historical_sources:historicalSources,
+    return { status:'ok', engine:'llm', source_relevance:context.source_relevance || null, evidence_claims:baseReply===str(raw.reply)?evidenceResult?.claims || []:[], evidence_inferences:baseReply===str(raw.reply)?evidenceResult?.inferences || []:[], evidence_gaps:baseReply===str(raw.reply)?evidenceResult?.gaps || []:[], numeric_grounding:finalGrounding, preference_memory_upserts:preferenceWrite.upserts, preference_memory_context:preferenceWrite.context,preference_memory_notice:preferenceWrite.notice, reply:finalReply, conversation:next, patch, sources:!evidenceReview || baseReply===str(raw.reply)?sources:[],historical_sources:historicalSources,
       selected_candidate_id: !questionOnly && next.draft && selected ? selected.id : null,
       clear_selection:!questionOnly && !!draft?.route.length && !selected && !!input.candidate_id && !workspace.matches(draft.route,(plan?.candidates || []).find(c=>c.id===input.candidate_id)),
       request_generation:requestGeneration };

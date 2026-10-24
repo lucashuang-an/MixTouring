@@ -211,6 +211,9 @@
     var comparisonCache=new Map(),comparisonLoading=new Set(),comparisonErrors=new Set();
     var savedDraftId=null,saveFailure=null,researchScope=null,researchTasks=null,researchHydrationKey=null,researchJournalError=false;
     var researchJournal=MTResearchTasks.journal({getItem:function(k){return localStorage.getItem(k);},setItem:function(k,v){localStorage.setItem(k,v);}});
+    /* R1-C 有界补查：从待查清单显式继续核对一个缺口；结果只展示，不改条件、草案或选择。 */
+    var researchLoopState={running:false,record:null,binding:null,error:null,interrupted:false,controller:null};
+    var lastEvidenceGaps=[],restoredGapResearch=null;
     var routeResearch=MTRouteResearch.create({request:function(input,signal){return post(input.kind==='draft'?'/api/anywhere/transport-search-batch':'/api/anywhere/route-research',input,signal);},onChange:function(){renderResearchProgress();renderGuide();}});
 
     /* ---------- 卡 B（v0.44.2）：交通锚点（用户确认事实）与会话级新约束 ----------
@@ -473,7 +476,7 @@
       return {route:route,window:currentSearchWindow(),legs:route.slice(1).map(function(to,i){var from=route[i],anchor=[anchors.outbound,anchors.return].find(function(a){return a?.from_city===from && a?.to_city===to;});return {from:from,to:to,mode:anchor?.mode || currentTransportMode(from,to),exclude_road:guideState.road==='exclude',locked:!!anchor};})};
     }
     function persistResearchTasks(){if(conversation?.preview)return;var scope=taskScope();if(scope && researchTasks)researchJournalError=!researchJournal.save(scope,researchTasks);}
-    function cancelRouteResearch(){researchTasks=MTResearchTasks.interrupt(researchTasks);persistResearchTasks();routeResearch.cancel();transportSearchLoading.clear();}
+    function cancelRouteResearch(){researchTasks=MTResearchTasks.interrupt(researchTasks);persistResearchTasks();routeResearch.cancel();transportSearchLoading.clear();cancelGapResearch();}
     function syncResearchTasks(priority){
       var scope=taskScope();if(!scope){researchTasks=null;return null;}var id=MTResearchTasks.signature(scope);
       if(researchTasks?.scope_key!==id){var stored=researchJournal.load(scope);researchJournalError=!!stored.error;researchTasks=MTResearchTasks.sync(scope,stored.state || researchTasks,{restored:true,priority:priority});}
@@ -507,15 +510,103 @@
       persistResearchTasks();renderTaskPreview();renderGuide();rememberSession();
     }
     function viewTransportTask(leg){showWorkspaceView('route');var group=Array.from(document.querySelectorAll('#taskPreview .transport-reference-group')).find(function(el){return el.querySelector('h4')?.textContent===leg.from+' → '+leg.to;});if(group){document.querySelector('#taskPreview .transport-details').open=true;group.scrollIntoView({behavior:'smooth',block:'start'});}}
+    /* R1-C 有界补查（桌面显式入口）：从待查清单挑一项，服务端在共享预算内完成检索、
+     * 读取、整合与证据核对；这里只发起、取消与展示，不自动选路或采纳任何预览。 */
+    var GAP_STOP_LABELS={completed:'完成',planner_done:'已无可试的新查询或原文',rounds:'到达三轮上限',budget_rounds:'到达三轮上限',budget_searches:'搜索预算已用完',budget_model:'模型预算已用完',deadline:'九十秒时限已到',cancelled:'已取消',no_gain:'连续两轮没有新增有效来源',no_new_query:'没有不重复的新查询',no_new_read:'没有未读过的原文',plan_off_topic:'规划偏离原问题，已拒绝',plan_invalid:'规划无效',plan_unavailable:'规划模型暂不可用，可重试',search_unavailable:'检索通道不可用（含鉴权或额度失败）',relevance_unavailable:'来源相关性核对未完成'};
+    /* 新输入或范围改变时使旧补查结果失效：中断在途请求并丢弃记录，不回填当前界面。 */
+    function cancelGapResearch(){
+      if(researchLoopState.controller)researchLoopState.controller.abort();
+      researchLoopState.running=false;researchLoopState.record=null;researchLoopState.error=null;researchLoopState.interrupted=false;restoredGapResearch=null;
+    }
+    function gapQuestionText(){
+      var lastUser=(guideMessages.filter(function(m){return m.role==='user';}).slice(-1)[0] || {}).text;
+      return String(lastUser || conversation?.brief?.summary || '本次旅行的待查缺口').slice(0,500);
+    }
+    function gapResearchBinding(item){
+      var transportWords=/交通|班次|班期|航班|直飞|机票|航司|列车|火车|高铁|大巴|班车|公路|铁路|口岸|票价|直达|接驳|机场|跨境/;
+      if(transportWords.test(item)){
+        var scope=taskScope();if(!scope)return null;
+        var mentioned=scope.legs.filter(function(l){return item.indexOf(l.from)>=0 && item.indexOf(l.to)>=0;});
+        var leg=mentioned[0] || scope.legs.find(function(l){return !l.locked;});
+        if(!leg)return null;
+        return {gap:String(item).slice(0,500),task_type:'transport',leg:{from:leg.from,to:leg.to,mode:leg.mode,exclude_road:leg.exclude_road===true}};
+      }
+      var route=conversation?.draft?.route;
+      var destination=conversation?.routing?.destination || (Array.isArray(route) && route.length?route[route.length-1]:null);
+      if(!destination)return null;
+      return {gap:String(item).slice(0,500),task_type:'experience',destination:destination};
+    }
+    async function runGapResearch(item){
+      if(researchLoopState.running)return;
+      var extra=gapResearchBinding(item);if(!extra){MT.toast('暂无可补查的交通路段或目的地');return;}
+      var binding=Object.assign({question:gapQuestionText(),window:currentSearchWindow()},extra);
+      var seq=guideSequence,controller=new AbortController();
+      researchLoopState={running:true,record:null,binding:binding,error:null,interrupted:false,controller:controller};
+      restoredGapResearch=null;renderResearchProgress();
+      try{
+        var res=await post('/api/anywhere/research-loop',binding,controller.signal);
+        if(seq!==guideSequence)return;
+        if(res.code!==0 || !res.data)throw Error(res.msg || '补查未完成');
+        researchLoopState.record=res.data;
+        persistGapResearch(binding,res.data);
+      }catch(e){
+        if(controller.signal.aborted){
+          researchLoopState.interrupted=true;
+          /* 取消后按同一任务身份找回服务端保留的部分结果；只读展示，不重启付费任务。 */
+          try{var partial=await post('/api/anywhere/research-loop-status',{task:binding});
+            if(seq===guideSequence && partial.code===0 && partial.data && partial.data.record)researchLoopState.record=partial.data.record;
+          }catch(err){}
+        }else if(seq===guideSequence)researchLoopState.error='补查未完成，已确认条件与草案保留，可重试。';
+      }finally{
+        researchLoopState.running=false;
+        if(seq===guideSequence)renderResearchProgress();
+      }
+    }
+    function persistGapResearch(binding,record){
+      try{sessionStorage.setItem('mt:gap-research',JSON.stringify({binding:binding,task_id:record.task && record.task.id || null,status:record.status,stop_reason:record.stop_reason,reply:record.reply || null,
+        claims:(record.claims || []).map(function(c){return c.sentence;}),sources:(record.evidence_sources || []).map(function(s){return {url:s.url,title:s.title,published_at:s.published_at};}),leads:(record.leads || []).length,at:Date.now()}));}catch(e){}
+    }
+    function gapResearchHtml(disabled,expanded){
+      var record=researchLoopState.record,running=researchLoopState.running;
+      var raw=(conversation?.draft?.pending || []).slice(0,6).concat(lastEvidenceGaps.slice(0,4));
+      var seen={},entries=[];
+      raw.forEach(function(t){if(typeof t==='string' && t.trim() && !seen[t]){seen[t]=1;entries.push(t.slice(0,120));}});
+      if(!entries.length && !running && !record && !restoredGapResearch && !researchLoopState.error)return '';
+      var html='<details class="research-task-list gap-research" '+(expanded?'open':'')+'><summary>继续核对缺口 · 有界补查</summary>';
+      if(running)html+='<p role="status">正在按预算继续核对（最多三轮／八次搜索／九十秒），已有输入与草案保持不变。</p><button type="button" data-gap-cancel '+(disabled?'disabled':'')+'>取消补查</button>';
+      else if(researchLoopState.error)html+='<p role="status">'+MT.esc(researchLoopState.error)+'</p>';
+      if(record){
+        html+='<p role="status">'+(record.claims || []).length+' 条经核对的支持结论 · '+(record.evidence_sources || []).length+' 个当前来源'+((record.leads || []).length?' · '+record.leads.length+' 条历史线索':'')+'；停止原因：'+MT.esc(GAP_STOP_LABELS[record.stop_reason] || record.stop_reason)+'。</p>';
+        (record.claims || []).slice(0,4).forEach(function(c){
+          var links=(c.supports || []).map(function(s){var found=(record.evidence_sources || []).find(function(x){return x.id===s.source_id;});return found?'<a href="'+MT.esc(found.url)+'" target="_blank" rel="noopener">'+MT.esc(found.title || found.url)+'</a>':'';}).filter(Boolean).join('、');
+          html+='<p class="research-scope">'+MT.esc(c.sentence)+(links?'（'+links+'）':'')+'</p>';
+        });
+        if(record.reply)html+='<p class="research-scope">'+MT.esc(record.reply)+'</p>';
+        if(!(record.claims || []).length)html+='<p class="research-scope">本轮没有形成可支持当期结论的新增依据；按停止原因继续人工或官方渠道核实。</p>';
+        html+='<p class="research-scope">补查不改变已确认条件、草案或选择；班期、票价与日期适用性仍未核实。</p>';
+      }else if(restoredGapResearch && !running){
+        var r=restoredGapResearch;
+        html+='<p role="status">上次补查记录（只读）：'+(r.claims || []).length+' 条支持结论 · 停止原因：'+MT.esc(GAP_STOP_LABELS[r.stop_reason] || r.stop_reason || '')+'。</p>'+(r.reply?'<p class="research-scope">'+MT.esc(r.reply)+'</p>':'')+'<p class="research-scope">刷新后不自动重启付费任务；需要继续时从下面清单重新发起。</p>';
+      }
+      if(entries.length && !running)html+='<ul>'+entries.map(function(t){
+        var b=gapResearchBinding(t),sub=b?(b.task_type==='transport'?'交通补查 · '+b.leg.from+' → '+b.leg.to:'体验补查 · '+b.destination):'';
+        return '<li><div><span>'+MT.esc(t)+'</span>'+(sub?'<small>'+MT.esc(sub)+'</small>':'')+'</div><button type="button" data-gap-run="'+encodeURIComponent(t)+'" '+(disabled?'disabled':'')+'>继续核对</button></li>';}).join('')+'</ul>';
+      return html+'</details>';
+    }
     function renderResearchProgress(){
       var box=document.getElementById('routeResearchProgress'),state=routeResearch?.getState();
       if(conversation?.preview){box.hidden=true;return;}var scope=syncResearchTasks();
       if(scope && !conversation?.preview){
         box.hidden=false;var disabled=conversationBusy || planning || routeResearch.isPending();
         var button=function(group,text){return MTResearchTasks.select(researchTasks,group).length?'<button type="button" data-research-group="'+group+'" '+(disabled?'disabled':'')+'>'+text+'</button>':'';};
-        var expanded=box.querySelector('.research-task-list')?.open===true;
-        box.innerHTML='<details class="research-task-list" '+(expanded?'open':'')+'><summary>交通资料 · '+scope.legs.length+' 段</summary><p class="research-scope">'+MT.esc(scope.window?'资料范围 '+scope.window+'，仍需逐段确认实际乘车日。':'日期未定，先找近期走法与乘车线索。')+'</p><ul>'+researchTasks.tasks.map(function(t,i){return '<li><div><span>'+MT.esc(t.leg.from+' → '+t.leg.to)+'</span><small>'+MT.esc(({plane:'航空查询',rail:'铁路查询',road:'公路客运查询',unknown:'方式待查'}[t.leg.mode]))+' · '+MT.esc(MTResearchTasks.label(t))+'</small>'+(t.historical || !t.checked_at || ['failed','interrupted'].includes(t.status)?'':'<small>'+t.sources+' 条连接线索 · '+t.experiences+' 条经验</small>')+'</div><button type="button" data-research-view="'+i+'">查看资料 ↗</button></li>';}).join('')+'</ul><div>'+button('pending','继续待查路段')+button('retry','重试未完成')+button('stale','更新上次资料')+'</div><p class="research-scope">每次最多查两段；查到资料仍不代表当期班次可用。</p>'+(researchJournalError?'<p class="research-scope" role="status">查询记录暂未保存到本机，刷新后可能丢失；行程保存不受影响。</p>':'')+'</details>';
-        box.onclick=function(e){var group=e.target.closest('[data-research-group]'),view=e.target.closest('[data-research-view]');if(group && !disabled)supplementDraftChanges({scope:scope,queries:MTResearchTasks.select(researchTasks,group.dataset.researchGroup)},true);else if(view)viewTransportTask(researchTasks.tasks[Number(view.dataset.researchView)].leg);};return;
+        var expanded=box.querySelector('.research-task-list:not(.gap-research)')?.open===true;
+        var gapExpanded=box.querySelector('.gap-research')?.open===true;
+        box.innerHTML='<details class="research-task-list" '+(expanded?'open':'')+'><summary>交通资料 · '+scope.legs.length+' 段</summary><p class="research-scope">'+MT.esc(scope.window?'资料范围 '+scope.window+'，仍需逐段确认实际乘车日。':'日期未定，先找近期走法与乘车线索。')+'</p><ul>'+researchTasks.tasks.map(function(t,i){return '<li><div><span>'+MT.esc(t.leg.from+' → '+t.leg.to)+'</span><small>'+MT.esc(({plane:'航空查询',rail:'铁路查询',road:'公路客运查询',unknown:'方式待查'}[t.leg.mode]))+' · '+MT.esc(MTResearchTasks.label(t))+'</small>'+(t.historical || !t.checked_at || ['failed','interrupted'].includes(t.status)?'':'<small>'+t.sources+' 条连接线索 · '+t.experiences+' 条经验</small>')+'</div><button type="button" data-research-view="'+i+'">查看资料 ↗</button></li>';}).join('')+'</ul><div>'+button('pending','继续待查路段')+button('retry','重试未完成')+button('stale','更新上次资料')+'</div><p class="research-scope">每次最多查两段；查到资料仍不代表当期班次可用。</p>'+(researchJournalError?'<p class="research-scope" role="status">查询记录暂未保存到本机，刷新后可能丢失；行程保存不受影响。</p>':'')+'</details>'+gapResearchHtml(disabled,gapExpanded);
+        box.onclick=function(e){var gapCancel=e.target.closest('[data-gap-cancel]'),gapRun=e.target.closest('[data-gap-run]'),group=e.target.closest('[data-research-group]'),view=e.target.closest('[data-research-view]');
+          if(gapCancel && !disabled && researchLoopState.controller)researchLoopState.controller.abort();
+          else if(gapRun && !disabled)runGapResearch(decodeURIComponent(gapRun.dataset.gapRun));
+          else if(group && !disabled)supplementDraftChanges({scope:scope,queries:MTResearchTasks.select(researchTasks,group.dataset.researchGroup)},true);
+          else if(view)viewTransportTask(researchTasks.tasks[Number(view.dataset.researchView)].leg);};return;
       }
       var batch=state?.input.kind==='draft';
       box.hidden=!state || state.input.plan_id!==activePlan?.plan_id || state.input.window!==currentSearchWindow() || batch && JSON.stringify(state.input.route)!==JSON.stringify(conversation?.draft?.route);if(box.hidden)return;
@@ -662,7 +753,8 @@
       });
     }
     function resetGuide(text) {
-      cancelRouteResearch();savedDraftId=null;saveFailure=null;researchScope=null;researchTasks=null;researchHydrationKey=null;
+      cancelRouteResearch();savedDraftId=null;saveFailure=null;researchScope=null;researchTasks=null;researchHydrationKey=null;lastEvidenceGaps=[];
+      try{sessionStorage.removeItem('mt:gap-research');}catch(e){}
       conversation = null; conversationBusy = false; conversationError = null;
       guideSequence++; journeySequence++;
       guideState = MTGuide.clean(MTGuide.parse(text).patch);
@@ -813,6 +905,7 @@
       text=String(text || '').trim();action=action || 'chat';
       if(conversationBusy || planning || (typeof routeResearch!=='undefined' && routeResearch.isPending(true)) || (!text && action==='chat'))return;
       if(typeof routeResearch!=='undefined' && routeResearch.getState()?.input.kind==='draft')cancelRouteResearch();
+      cancelGapResearch();/* 新输入使旧补查结果失效，旧响应不得回填新状态 */
       if(!conversation)conversation={stage:'draft',brief:{origin:activePlan && activePlan.intent.origin || '',destination:activePlan && activePlan.intent.destination || '',summary:'',wishes:[],open_questions:[]},draft:null,revision:0};
       var previous=guideSnapshot(),seq=++guideSequence;
       /* #28：用户消息带提交身份（sendAction+pending）——同一失败发送的重试（含普通路径再提交同一输入）
@@ -879,6 +972,7 @@
         if(data.research_update){researchScope=data.research_update.scope;pruneTransportResults(researchScope);}
         var newDraft=conversation.preview?.draft || conversation.draft;
         var hasNewVersion=newDraft && (JSON.stringify(conversation.preview)!==JSON.stringify(previous.conversation?.preview || null) || conversation.revision!==previous.conversation?.revision);
+        lastEvidenceGaps=Array.isArray(data.evidence_gaps)?data.evidence_gaps.slice(0,4):[];
         guideMessages.push({role:'assistant',text:data.reply,sources:data.sources || [],historical_sources:data.historical_sources || [],evidence_claims:data.evidence_claims || [],evidence_inferences:data.evidence_inferences || [],version:hasNewVersion?{revision:conversation.revision,preview:!!conversation.preview,draft:newDraft,changes:MTRouteWorkspace.changes(previous.conversation?.draft,newDraft)}:null});
         var routing=conversation.routing || {};
         var oldOrigin=previous.conversation && previous.conversation.routing && previous.conversation.routing.origin || previous.request.origin;
@@ -1688,6 +1782,8 @@
         if (session && session.request && typeof session.request === 'object') restoreGuideSnapshot(session, true);
       } catch (e) { /* 旧会话损坏时正常显示空入口。 */ }
     }
+    /* R1-C：恢复上次补查为只读记录；不自动重启付费任务。 */
+    try { restoredGapResearch = JSON.parse(sessionStorage.getItem('mt:gap-research') || 'null'); } catch (e) { restoredGapResearch = null; }
 
   })();  </script>
 </body>

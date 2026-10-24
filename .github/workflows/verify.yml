@@ -60,6 +60,7 @@ jobs:
           node server/check-source-tasks.mjs
           node server/check-evidence-grounding.mjs
           node server/check-conversation-evidence.mjs
+          node server/check-research-loop.mjs
           node server/check-journey.mjs
           node server/check-progressive.mjs
           node server/check-inspirations.mjs

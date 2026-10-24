@@ -28,6 +28,7 @@ import { draftResearchChanges,searchDraftChanges } from './lib/draft-research.mj
 import { createRequestSignal } from './lib/request-signal.mjs';
 import { routeTransportReferences } from './lib/transport-references.mjs';
 import { searchTransportSources,resolveTransportSearch } from './lib/transport-search.mjs';
+import { runResearchLoop,resolveResearchLoop } from './lib/research-loop.mjs';
 import {searchWeb} from './lib/llm.mjs';
 import planningGuide from '../mixtouring-hifi/assets/trip-guide.js';
 import { sightCatalog, compareSights } from './lib/sights.mjs';
@@ -400,6 +401,19 @@ app.use(async (ctx, next) => {
   if (path === '/api/anywhere/transport-search-batch' && ctx.method === 'POST') {
     const signal=createRequestSignal(ctx.req,ctx.res),body=await readBody(ctx) || {};
     try{ctx.body={code:0,data:await searchDraftChanges(body,searchWeb,{signal})};}
+    catch(error){ctx.body={code:1,msg:error.message};}
+    return;
+  }
+  /* R1-C 有界补查：单个任务在共享预算内完成检索、读取、整合与证据核对后一次返回。 */
+  if (path === '/api/anywhere/research-loop' && ctx.method === 'POST') {
+    const signal=createRequestSignal(ctx.req,ctx.res),body=await readBody(ctx) || {};
+    try{ctx.body={code:0,data:await runResearchLoop(body,searchWeb,{signal})};}
+    catch(error){ctx.body={code:1,msg:error.message};}
+    return;
+  }
+  if (path === '/api/anywhere/research-loop-status' && ctx.method === 'POST') {
+    const body=await readBody(ctx) || {};
+    try{ctx.body={code:0,data:resolveResearchLoop({task_id:body.task_id,task:body.task})};}
     catch(error){ctx.body={code:1,msg:error.message};}
     return;
   }

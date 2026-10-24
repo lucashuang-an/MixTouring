@@ -49,6 +49,7 @@ assert.equal(refreshed.tasks[2].status,'sources');assert.equal(refreshed.tasks[2
 const html=readFileSync(new URL('../mixtouring-hifi/pages/trip.html',import.meta.url),'utf8');
 const part=html.slice(html.indexOf('function taskScope()'),html.indexOf('function renderResearchProgress()'));
 const env={console,JSON,Date,MTResearchTasks:tasks,conversation:{draft:{route:scope.route}},researchScope:scope,researchTasks:null,researchHydrationKey:null,researchJournalError:false,researchJournal:tasks.journal({getItem:()=>null,setItem(){}}),
+ researchLoopState:{running:false,record:null,binding:null,error:null,interrupted:false,controller:null},restoredGapResearch:null,lastEvidenceGaps:[],
  guideState:{},anchors:{},guideSequence:1,activePlan:{plan_id:'test'},transportSearchCache:new Map(),transportSearchLoading:new Set(),transportSearchErrors:new Set(),currentSearchWindow:()=>null,currentTransportMode:()=> 'unknown',liveTransportKey:(a,b,m)=>JSON.stringify([a,b,m]),sourceToday:()=> '2026-10-18',renderTaskPreview(){},renderGuide(){},rememberSession(){},currentCandidate:()=>null};
 let pendingResolve,requested;env.routeResearch={isPending:()=>false,cancel(){},run:async input=>{requested=input;return new Promise(r=>{pendingResolve=r;});}};
 vm.createContext(env);vm.runInContext(part,env);const running=env.supplementDraftChanges({scope,queries:[legs[2]]},true);
