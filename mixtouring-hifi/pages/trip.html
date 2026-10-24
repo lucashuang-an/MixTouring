@@ -516,9 +516,11 @@
     var researchLoopRunSeq=0;
     /* 新输入或范围改变时使旧补查结果失效：中断在途请求并丢弃记录，不回填当前界面。 */
     function cancelGapResearch(){
-      researchLoopRunSeq++;/* 旧任务的异步回写从此全部失效 */
-      if(researchLoopState.controller)researchLoopState.controller.abort();
-      researchLoopState.running=false;researchLoopState.record=null;researchLoopState.error=null;researchLoopState.interrupted=false;restoredGapResearch=null;
+      var oldController=researchLoopState.controller;
+      var invalidToken=++researchLoopRunSeq;
+      researchLoopState={running:false,record:null,binding:null,error:null,interrupted:false,controller:null,runToken:invalidToken};
+      restoredGapResearch=null;
+      if(oldController)oldController.abort();
     }
     function gapQuestionText(){
       var lastUser=(guideMessages.filter(function(m){return m.role==='user';}).slice(-1)[0] || {}).text;
@@ -530,50 +532,60 @@
        * 明确两端的是交通；开放/门票/闭馆等场馆运营是体验；其余按交通/体验信号，再退目的地。 */
       var attractionOps=/开放时间|开放状态|闭馆|营业|门票|售票|免票|展览|参观/;
       var transportOps=/班次|班期|时刻|车次|航班|机票|车票|乘车|接驳|口岸|跨境|直达|交通方式|交通/;
+      var transportSale=/车票|列车|车次|火车|高铁|航班|机票|大巴|班车/.test(item) && /售票|预售|起售|开售/.test(item) && !/博物馆|展馆|景区|公园/.test(item);
       if(scope){
         var mentioned=scope.legs.filter(function(l){return item.indexOf(l.from)>=0 && item.indexOf(l.to)>=0;});
-        if(mentioned.length && !attractionOps.test(item)){
+        if(mentioned.length && (!attractionOps.test(item) || transportSale)){
           var leg=mentioned[0];
           return {gap:String(item).slice(0,500),task_type:'transport',leg:{from:leg.from,to:leg.to,mode:leg.mode,exclude_road:leg.exclude_road===true}};
         }
       }
-      var destination=conversation?.routing?.destination || (Array.isArray(conversation?.draft?.route) && conversation.draft.route.length?conversation.draft.route[conversation.draft.route.length-1]:null);
-      if(attractionOps.test(item)){
+      var route=Array.isArray(conversation?.draft?.route)?conversation.draft.route:[];
+      var places=route.concat(scope?scope.legs.flatMap(function(l){return [l.from,l.to];}):[],[conversation?.routing?.origin,conversation?.routing?.destination]);
+      places=places.filter(function(p,i,a){return typeof p==='string' && p && a.indexOf(p)===i;});
+      var named=places.filter(function(p){return item.indexOf(p)>=0;}).filter(function(p,i,a){return !a.some(function(other){return other!==p && other.indexOf(p)>=0;});});
+      // 缺口提到途中城市时绑定该城市；多地点的体验缺口须先拆分，不能擅自改成终点。
+      if(named.length>1 && attractionOps.test(item) && !transportSale)return null;
+      var destination=named[0] || conversation?.routing?.destination || route[route.length-1] || null;
+      if(attractionOps.test(item) && !transportSale){
         return destination?{gap:String(item).slice(0,500),task_type:'experience',destination:destination}:null;
       }
       if(transportOps.test(item)){
-        var legAny=scope && scope.legs.find(function(l){return !l.locked;});
+        var available=scope?scope.legs.filter(function(l){return !l.locked && (!named.length || named.some(function(p){return p===l.from || p===l.to;}));}):[];
+        var legAny=available.length===1?available[0]:null;
         if(legAny)return {gap:String(item).slice(0,500),task_type:'transport',leg:{from:legAny.from,to:legAny.to,mode:legAny.mode,exclude_road:legAny.exclude_road===true}};
+        return null;
       }
       return destination?{gap:String(item).slice(0,500),task_type:'experience',destination:destination}:null;
     }
     async function runGapResearch(item){
       if(researchLoopState.running)return;
-      var extra=gapResearchBinding(item);if(!extra){MT.toast('暂无可补查的交通路段或目的地');return;}
+      var extra=gapResearchBinding(item);if(!extra){MT.toast('请先明确这个缺口要核对的地点或路段');return;}
       var binding=Object.assign({question:gapQuestionText(),window:currentSearchWindow()},extra);
       var seq=guideSequence,controller=new AbortController();
       /* 复审 P2-7：每次运行带身份令牌；取消/新输入递增序号后，旧请求的回写一律失效，
        * 不能把新任务的 running 改回 false 或误标 interrupted。 */
       var runToken=++researchLoopRunSeq;
       researchLoopState={running:true,record:null,binding:binding,error:null,interrupted:false,controller:controller,runToken:runToken};
+      var isCurrent=function(){return seq===guideSequence && researchLoopRunSeq===runToken && researchLoopState.runToken===runToken;};
       restoredGapResearch=null;renderResearchProgress();
       try{
         var res=await post('/api/anywhere/research-loop',binding,controller.signal);
-        if(researchLoopState.runToken!==runToken)return;
+        if(!isCurrent())return;
         if(res.code!==0 || !res.data)throw Error(res.msg || '补查未完成');
         researchLoopState.record=res.data;
         persistGapResearch(binding,res.data);
       }catch(e){
-        if(researchLoopState.runToken!==runToken)return;
+        if(!isCurrent())return;
         if(controller.signal.aborted){
           researchLoopState.interrupted=true;
           /* 取消后按同一任务身份找回服务端保留的部分结果；只读展示，不重启付费任务。 */
           try{var partial=await post('/api/anywhere/research-loop-status',{task:binding});
-            if(researchLoopState.runToken===runToken && seq===guideSequence && partial.code===0 && partial.data && partial.data.record)researchLoopState.record=partial.data.record;
+            if(isCurrent() && partial.code===0 && partial.data && partial.data.record)researchLoopState.record=partial.data.record;
           }catch(err){}
         }else if(seq===guideSequence)researchLoopState.error='补查未完成，已确认条件与草案保留，可重试。';
       }finally{
-        if(researchLoopState.runToken!==runToken)return;
+        if(!isCurrent())return;
         researchLoopState.running=false;
         if(seq===guideSequence)renderResearchProgress();
       }
@@ -605,8 +617,8 @@
         html+='<p role="status">上次补查记录（只读）：'+(r.claims || []).length+' 条支持结论 · 停止原因：'+MT.esc(GAP_STOP_LABELS[r.stop_reason] || r.stop_reason || '')+'。</p>'+(r.reply?'<p class="research-scope">'+MT.esc(r.reply)+'</p>':'')+'<p class="research-scope">刷新后不自动重启付费任务；需要继续时从下面清单重新发起。</p>';
       }
       if(entries.length && !running)html+='<ul>'+entries.map(function(t){
-        var b=gapResearchBinding(t),sub=b?(b.task_type==='transport'?'交通补查 · '+b.leg.from+' → '+b.leg.to:'体验补查 · '+b.destination):'';
-        return '<li><div><span>'+MT.esc(t)+'</span>'+(sub?'<small>'+MT.esc(sub)+'</small>':'')+'</div><button type="button" data-gap-run="'+encodeURIComponent(t)+'" '+(disabled?'disabled':'')+'>继续核对</button></li>';}).join('')+'</ul>';
+        var b=gapResearchBinding(t),sub=b?(b.task_type==='transport'?'交通补查 · '+b.leg.from+' → '+b.leg.to:'体验补查 · '+b.destination):'请先在对话中明确地点或路段';
+        return '<li><div><span>'+MT.esc(t)+'</span><small>'+MT.esc(sub)+'</small></div><button type="button" data-gap-run="'+encodeURIComponent(t)+'" '+(disabled || !b?'disabled':'')+'>继续核对</button></li>';}).join('')+'</ul>';
       return html+'</details>';
     }
     function renderResearchProgress(){

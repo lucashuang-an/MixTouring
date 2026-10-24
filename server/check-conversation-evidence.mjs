@@ -109,4 +109,12 @@ const pronoun=await groundConversationOutput({reply:'这条路线可执行。\n'
 }});
 assert.match(pronoun.reply,/资料参考（example.gov.cn）：\n它要求/,'删掉先行句后由实际出处补回主语');
 assert.equal(pronoun.claims[0].sentence,pronounFact,'补归属不改已经核对的事实原句');assert.equal(pronoun.sources.length,1);
+const wideCatalog=buildEvidenceCatalog({sources:Array.from({length:8},(_,i)=>({url:'https://view'+i+'.gov.cn/article',title:'旅行背景资料',excerpt:'北京到阿拉木图的旅行背景资料。'.repeat(180),published_at:'2026-10-20',kind:'guide'})),now});
+let extractionView;
+const narrowed=await groundConversationOutput({reply:'你更关注交通还是体验？',catalog:wideCatalog,budgetChars:16000,model:async opts=>{
+  assert.equal(opts.kind,'conversation_evidence_extract');const payload=JSON.parse(opts.user);extractionView=payload.evidence_catalog;
+  return {items:payload.fields.map(f=>({id:f.id,text:f.text,needs_source:false,allowed_use:null,supports:[]}))};
+}});
+assert.ok(extractionView.entries.length<wideCatalog.entries.length,'夹具确实触发抽取目录裁剪');
+assert.deepEqual(narrowed.visible_catalog,extractionView,'后续数字校验拿到实际抽取视图，不能重增被裁剪内容');
 console.log('✓ 主对话、最终答复、生成草案、来源与引用一致、失败保留通过');

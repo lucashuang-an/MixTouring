@@ -5,18 +5,18 @@ import {resolvePlace} from './anywhere.mjs';
 import {collectTravelSources,articleIdentity} from './travel-sources.mjs';
 import {readPublicPage} from './public-reader.mjs';
 import {composeJson,searchWeb} from './llm.mjs';
-import {retrievalContext,sourceWindow,sourceDay} from './source-time.mjs';
+import {retrievalContext,sourceWindow,sourceDay,partitionTimedSources} from './source-time.mjs';
 import {buildEvidenceCatalog} from './evidence-grounding.mjs';
 import {buildNumericCatalog,validateNumericClaims} from './numeric-grounding.mjs';
 import {groundConversationOutput} from './conversation-evidence.mjs';
-import {relevanceReviewer,RELEVANCE_VERSION} from './source-relevance.mjs';
+import {relevanceReviewer,sourceId,sourceRule,RELEVANCE_VERSION} from './source-relevance.mjs';
 
-export const RESEARCH_LOOP_VERSION='research-loop-0.61.1';
+export const RESEARCH_LOOP_VERSION='research-loop-0.61.2';
 /* 初始硬上限（v0.60.28 校准）：三轮、八次搜索、四次公开读取、九十秒；
  * 研究模型调用自 8 校准为 12——逐轮相关性核对入账后仍须保住三轮与终验预留（开发卡允许校准）。 */
 export const RESEARCH_LOOP_LIMITS={rounds:3,searches:8,reads:4,model_calls:12,task_ms:90000};
-/* 终验预留：整合回答、结论抽取、语义核对与一次修复；轮内相关性核对按实际调用另计。 */
-const FINAL_MODEL_RESERVE=4,TASK_TTL=900000,REGISTRY_MAX=50;
+/* 终验至少需要整合、抽取、语义核对三次；完整修复另需三次，有富余时才启用。 */
+const FINAL_MODEL_RESERVE=3,TASK_TTL=900000,REGISTRY_MAX=50;
 const str=(v,max)=>typeof v==='string'?v.trim().slice(0,max):'';
 
 export function researchLoopTask(raw={},now=Date.now()){
@@ -56,7 +56,7 @@ export function createResearchBudget({limits=RESEARCH_LOOP_LIMITS,now=Date.now()
   const used={rounds:0,searches:0,reads:0,model_calls:0};
   const tick=typeof clock==='function'?clock:()=>now;
   const state={limits,used,deadline:tick()+limits.task_ms};
-  const guard=()=>signal.aborted?'cancelled':tick()>state.deadline?'deadline':null;
+  const guard=()=>signal?.aborted?'cancelled':tick()>state.deadline?'deadline':null;
   return {
     used,limits:state.limits,
     remaining(kind){return state.limits[kind]-used[kind];},
@@ -67,7 +67,8 @@ export function createResearchBudget({limits=RESEARCH_LOOP_LIMITS,now=Date.now()
       const stop=guard();if(stop)return stop;
       if(used.rounds+1>state.limits.rounds)return 'rounds';
       /* 搜索额度由 search 包装器在真实调用前拦截；读原文轮不消耗搜索。 */
-      if(this.remaining('model_calls')<1+FINAL_MODEL_RESERVE)return 'budget_model';
+      // 一轮至少预留规划与来源核对；补试还须在每次真实调用前保住终验额度。
+      if(this.remaining('model_calls')<2+FINAL_MODEL_RESERVE)return 'budget_model';
       return null;
     },
     canFinalize(){const stop=guard();if(stop)return stop;return this.remaining('model_calls')>=FINAL_MODEL_RESERVE?null:'budget_model';}
@@ -122,9 +123,14 @@ export async function runResearchLoop(raw,deps={}){
   const budget=createResearchBudget({limits,now:clock(),clock,signal});
   const modelAttempts=[],searchCalls=[];
   const seenQueries=new Set();
+  let finalizing=false,modelStop=null;
   const model=async opts=>{
+    if(!finalizing && budget.remaining('model_calls')<=FINAL_MODEL_RESERVE){
+      modelStop='budget_model';
+      throw Object.assign(Error('已预留最终核对额度'),{loop_stop:modelStop});
+    }
     const stop=budget.take('model_calls');
-    if(stop)return Promise.reject(Object.assign(Error('研究模型预算已用完'),{loop_stop:stop}));
+    if(stop){modelStop=stop==='budget_model_calls'?'budget_model':stop;throw Object.assign(Error('研究模型预算已用完'),{loop_stop:modelStop});}
     modelAttempts.push(opts.kind);
     return (deps.model || composeJson)({...opts,signal,onUsage:deps.onModelUsage});
   };
@@ -142,14 +148,25 @@ export async function runResearchLoop(raw,deps={}){
     outcome.result_count=Array.isArray(results)?results.length:null;
     return results;
   };
+  const pageReads=new Map();
   const readPage=async(url,opts={})=>{
-    /* 读取额度用尽时不再启动新读取，保留搜索摘要，不伪造正文。 */
+    if(budget.guard())return null;
+    const {retryFailed=false,...readerOptions}=opts;
+    const key=articleIdentity(url),cached=pageReads.get(key);
+    // 自动读取复用成功、失败与在途结果；只有显式补读轮可有界重试失败读取。
+    if(cached && !(retryFailed && cached.status==='failed'))return structuredClone(await cached.promise);
     if(budget.remaining('reads')<=0)return null;
     const stop=budget.take('reads');
     if(stop)return null;
-    return (deps.readPage || readPublicPage)(url,{...opts,signal});
+    const entry={status:'pending',promise:null};
+    entry.promise=Promise.resolve().then(()=>(deps.readPage || readPublicPage)(url,{...readerOptions,signal})).then(page=>{
+      entry.status=page?.read_status==='page_excerpt' && (!page.url || articleIdentity(page.url)===key)?'complete':'failed';
+      return page==null?null:structuredClone(page);
+    },()=>{entry.status='failed';return null;});
+    pageReads.set(key,entry);
+    return structuredClone(await entry.promise);
   };
-  const state={sources:[],experiences:[],leads:[]};
+  const state={sources:[],experiences:[],leads:[],unreviewed:[]};
   const rounds=[];const triedQueries=new Set(),readUrls=new Set();
   let stop_reason=null;
   const started=Date.now();
@@ -165,8 +182,8 @@ export async function runResearchLoop(raw,deps={}){
             tried_queries:[...triedQueries],read_urls:[...readUrls],
             kept_sources:state.sources.concat(state.experiences).map(s=>({title:s.title,url:s.url,kind:s.kind,published_at:s.published_at,read_status:s.read_status})),
             historical_leads:state.leads.slice(0,8).map(s=>({title:s.title,url:s.url,published_at:s.published_at}))})});
-      }catch(error){stop_reason=cancelReason() || 'plan_unavailable';break;}
-      if(!plan){stop_reason=cancelReason() || 'plan_unavailable';break;}
+      }catch(error){stop_reason=cancelReason() || modelStop || 'plan_unavailable';break;}
+      if(!plan){stop_reason=cancelReason() || modelStop || 'plan_unavailable';break;}
       if(plan.done===true){stop_reason='planner_done';break;}
       const query=str(plan.query,100),foreignQuery=str(plan.foreign_query,100),readUrl=str(plan.read_url,300);
       if(!query && !foreignQuery && !readUrl){stop_reason='plan_invalid';break;}
@@ -174,21 +191,47 @@ export async function runResearchLoop(raw,deps={}){
         /* 读原文轮：只针对已过时效守门的当前来源；历史线索重读不续期、不升级为当期证据。
          * 读到正文不等于新增可支持依据，不计入增益（复审 P1-3）。 */
         const target=state.sources.concat(state.experiences).find(s=>s.url===readUrl);
-        if(!target || readUrls.has(readUrl)){stop_reason='no_new_read';break;}
+        if(!target || [...readUrls].some(url=>articleIdentity(url)===articleIdentity(readUrl))){stop_reason='no_new_read';break;}
         readUrls.add(readUrl);
         budget.take('rounds');
         const roundStart=Date.now();
         let page=null;
-        try{page=await readPage(readUrl,{timeoutMs:5500,signal});}catch{page=null;}
+        const readsBefore=budget.used.reads;
+        try{page=await readPage(readUrl,{timeoutMs:5500,signal,retryFailed:true});}catch{page=null;}
         const cancelled=cancelReason();
         if(cancelled){stop_reason=cancelled;break;}
+        let reviewStatus=null,readDecision=null,newLeads=0;
         if(page?.read_status==='page_excerpt' && (!page.url || articleIdentity(page.url)===articleIdentity(target.url))){
-          target.excerpt=String(page.excerpt || target.excerpt).slice(0,3500);target.read_status='page_excerpt';
-          if(page.title)target.title=String(page.title).slice(0,160);
-          if(page.published_at){target.published_at=sourceDay(page.published_at);target.date_basis='page_metadata';}
+          const updated={...target,excerpt:String(page.excerpt || target.excerpt).slice(0,3500),read_status:'page_excerpt',relevance:null};
+          if(page.title)updated.title=String(page.title).slice(0,160);
+          if(page.published_at){updated.published_at=sourceDay(page.published_at);updated.date_basis='page_metadata';}
+          // 正文或标题已经变更，原摘要的 keep 立即失效，不能留在可用池兜底。
+          for(const bucket of ['sources','experiences','leads'])state[bucket]=state[bucket].filter(s=>articleIdentity(s.url)!==articleIdentity(target.url));
+          const reviewTask={destination:task.destination || task.leg?.to,question:task.question+' '+task.gap,purpose:task.task_type,query:'',foreignQuery:'',international:task.international};
+          const rule=sourceRule(reviewTask,updated);
+          if(rule?.kind){updated.kind=rule.kind;updated.allowed_use=rule.reason;}
+          if(rule?.decision==='reject'){reviewStatus='completed';readDecision='reject';}
+          else{
+            const review=await relevanceReviewer(model)(reviewTask,[updated],{signal});
+            reviewStatus=review.status;
+            updated.relevance=review.items.find(item=>item.id===sourceId(updated)) || {decision:'uncertain'};
+            readDecision=updated.relevance.decision;
+            if(review.status!=='completed' || readDecision==='uncertain'){
+              state.unreviewed.push(updated);
+              if(review.status==='completed')reviewStatus='partial';
+            }
+            else if(readDecision==='keep'){
+              const timed=partitionTimedSources([updated],retrievalContext({window:task.window,purpose:updated.kind==='experience'?'experience':task.task_type,now:clock()}));
+              if(timed.current.length)state[updated.kind==='experience'?'experiences':'sources'].push(...timed.current);
+              state.leads.push(...timed.archive);newLeads=timed.archive.length;
+            }
+          }
         }
         rounds.push({round:rounds.length+1,query:'',foreign_query:'',read_url:readUrl,rationale:str(plan.rationale,200),channels:[],
-          new_sources:0,new_experiences:0,new_leads:0,gain:0,reads:1,relevance:null,elapsed_ms:Date.now()-roundStart});
+          new_sources:0,new_experiences:0,new_leads:newLeads,gain:0,reads:budget.used.reads-readsBefore,relevance:reviewStatus,read_decision:readDecision,elapsed_ms:Date.now()-roundStart});
+        if(cancelReason()){stop_reason=cancelReason();break;}
+        if(modelStop){stop_reason=modelStop;break;}
+        if(reviewStatus && reviewStatus!=='completed'){stop_reason='relevance_unavailable';break;}
         const recentGains=rounds.slice(-2).map(r=>r.gain);
         if(recentGains.length===2 && recentGains.every(g=>g===0)){stop_reason='no_gain';break;}
         continue;
@@ -212,9 +255,9 @@ export async function runResearchLoop(raw,deps={}){
       if(collected?.cancelled || cancelled){stop_reason=cancelled || 'cancelled';break;}
       if(!collected){stop_reason='search_unavailable';break;}
       (collected.sources || []).concat(collected.experiences || [],collected.archive || []).forEach(s=>{if(s?.read_status==='page_excerpt')readUrls.add(s.url);});
-      const known=new Set(state.sources.concat(state.experiences,state.leads).map(s=>s.url));
-      const fresh=list=>(list || []).filter(s=>!known.has(s.url));
-      const newSources=fresh(collected.sources),newExperiences=fresh(collected.experiences),newLeads=fresh(collected.archive);
+      const known=new Set(state.sources.concat(state.experiences,state.leads).map(s=>articleIdentity(s.url)));
+      const fresh=list=>(list || []).filter(s=>{const key=articleIdentity(s.url);if(known.has(key))return false;known.add(key);return true;});
+      const newExperiences=fresh(collected.experiences),newSources=fresh((collected.sources || []).filter(s=>s.kind!=='experience')),newLeads=fresh(collected.archive);
       state.sources.push(...newSources);state.experiences.push(...newExperiences);state.leads.push(...newLeads);
       const gain=newSources.length+newExperiences.length;
       rounds.push({round:rounds.length+1,query,foreign_query:foreignQuery,rationale:str(plan.rationale,200),
@@ -222,6 +265,7 @@ export async function runResearchLoop(raw,deps={}){
         new_sources:newSources.length,new_experiences:newExperiences.length,new_leads:newLeads.length,gain,
         relevance:collected.relevance?.status || null,elapsed_ms:Date.now()-roundStart});
       /* 相关性核对未完成时诚实停止：不能把未核对来源记为增益后继续。 */
+      if(modelStop){stop_reason=modelStop;break;}
       if(collected.relevance?.status==='unavailable'){stop_reason='relevance_unavailable';break;}
       /* 通道全部不可用（含鉴权／额度失败）时停止追加搜索，不重试消耗。 */
       if(collected.status==='unavailable' && (collected.channels || []).length && collected.channels.every(c=>c.status==='unavailable')){stop_reason='search_unavailable';break;}
@@ -236,6 +280,7 @@ export async function runResearchLoop(raw,deps={}){
     const cancellable=['cancelled','deadline'];
     const finalizeStop=budget.canFinalize();
     if(!cancellable.includes(stop_reason) && pool.length && !finalizeStop){
+      finalizing=true;
       const catalog=buildEvidenceCatalog({sources:pool,routing:task.leg?{origin:task.leg.from,destination:task.leg.to}:{origin:null,destination:task.destination},
         retrieval:retrievalContext({window:task.window,purpose:task.task_type,now:clock()}),now:clock()});
       let answer=null;
@@ -245,7 +290,7 @@ export async function runResearchLoop(raw,deps={}){
           user:JSON.stringify({question:task.question,gap:task.gap,task_type:task.task_type,leg:task.leg,window:task.window,evidence_catalog:catalog})});
       }catch(error){if(cancelReason())stop_reason=cancelReason();}
       if(answer && typeof answer.reply==='string' && answer.reply.trim()){
-        const grounded=await groundConversationOutput({reply:answer.reply,catalog,model,signal,budgetChars:deps.contextBudgetChars,
+        const grounded=await groundConversationOutput({reply:answer.reply,catalog,model,signal,budgetChars:deps.contextBudgetChars,allowRepair:budget.remaining('model_calls')>=5,
           conditions:{text:task.question,route:task.leg?[task.leg.from,task.leg.to]:null}});
         if(grounded.status==='unavailable'){
           verify_status='unavailable:'+grounded.reason;
@@ -253,8 +298,12 @@ export async function runResearchLoop(raw,deps={}){
         }else{
           /* 复审 P1-2：最终回复的数字与结论同样过数字守门——字段、对象、方向与收费口径
            * 必须与同一可见目录一致；语义核对误判也不能把行李费发布成票价。 */
-          const numericCatalog=buildNumericCatalog({sources:pool,retrieval:catalog.retrieval,now:clock()});
+          const visible=grounded.visible_catalog || {entries:[],retrieval:catalog.retrieval};
+          const numericCatalog=buildNumericCatalog({sources:visible.entries.map(e=>({...e,temporal:{state:e.temporal_state}})),retrieval:visible.retrieval,now:clock()});
           const numericCheck=validateNumericClaims({reply:grounded.reply},{catalog:numericCatalog,text:task.question});
+          // 已核对数字也须能连回最终显示的来源；抽取漏标不能产生没有出处的价格答复。
+          for(const fact of numericCheck.grounded)if(fact.source_url && !grounded.sources.some(s=>s.url===fact.source_url && [s.title,s.excerpt].some(t=>t?.includes(fact.evidence_quote))))
+            numericCheck.rejected.push({text:String(fact.value),reason:'数字未关联最终显示的支持来源'});
           if(numericCheck.rejected.length){
             verify_status='numeric_rejected';
             reply=null;claims=[];evidenceSources=[];
@@ -266,11 +315,12 @@ export async function runResearchLoop(raw,deps={}){
           }
         }
       }else if(!cancellable.includes(stop_reason))verify_status='unavailable:'+(cancelReason() || 'answer_failed');
-    }
+    }else if(finalizeStop && !cancellable.includes(stop_reason) && pool.length)stop_reason=finalizeStop;
     const status=reply!=null?'ok':rounds.length || pool.length || state.leads.length?'partial':'unavailable';
     const record={status,task,stop_reason:stop_reason || 'completed',rounds,
       sources:state.sources.map(slimSource),experiences:state.experiences.map(slimSource),
       leads:state.leads.map(s=>({url:s.url,title:s.title,kind:s.kind,published_at:s.published_at,read_status:s.read_status,temporal_state:s.temporal?.state || null})),
+      unreviewed_sources:state.unreviewed.map(slimSource),
       reply,claims,evidence_sources:evidenceSources,evidence_gaps:gaps,verify_status,
       usage:{rounds:rounds.length,searches:budget.used.searches,reads:budget.used.reads,model_calls:budget.used.model_calls,model_attempts:modelAttempts,
         search_calls:searchCalls.filter(c=>c.status!=='dedup').length,dedup_searches:searchCalls.filter(c=>c.status==='dedup').length,
