@@ -12,7 +12,7 @@ const start={text:'北京到阿拉木图交通资料怎样？',conversation:{sta
 const execute=async({page=source,answer=statement,assessment='supported',extract=null,draft=null,action='chat',reviewFailure=false,reviewSources=false,searchFailure=false,omitSearchQuery=false,repairReply=null,withDraft=false,contextBudgetChars,text='北京到阿拉木图交通资料怎样？'}={})=>{
   const calls=[],queries=[],collections=[],views=[];const model=async opts=>{
     calls.push(opts.kind);
-    if(['conversation','conversation_review','conversation_evidence_extract'].includes(opts.kind))views.push({...JSON.parse(opts.user),model_kind:opts.kind});
+    if(['conversation','conversation_review','conversation_evidence_extract','conversation_evidence_repair'].includes(opts.kind))views.push({...JSON.parse(opts.user),model_kind:opts.kind});
     if(opts.kind==='conversation')return {...base,reply:answer,intent_action:draft?'revise':'question',draft,search_query:omitSearchQuery?'':'北京到阿拉木图航班'};
     if(opts.kind==='conversation_review')return {reply:answer,draft,changes:[]};
     if(opts.kind==='conversation_evidence_repair')return repairReply?{reply:repairReply}:null;
@@ -49,6 +49,11 @@ const unsupported=await execute({assessment:'unsupported'});
 assert.equal(unsupported.result.status,'ok');assert.match(unsupported.result.reply,/待核实/);assert.equal(unsupported.result.sources.length,0);assert.equal(unsupported.result.evidence_claims.length,0);
 const repaired=await execute({assessment:'unsupported',repairReply:'可以先比较航班和铁路的查询入口，再分别核实日期与衔接；你更看重少换乘还是沿途体验？'});
 assert.equal(repaired.result.status,'ok');assert.match(repaired.result.reply,/少换乘/);assert.doesNotMatch(repaired.result.reply,/开通直飞/);assert.equal(repaired.result.sources.length,0);
+const repairView=repaired.views.find(v=>v.model_kind==='conversation_evidence_repair');
+assert.equal(repairView.text,start.text);assert.deepEqual(repairView.assistant_draft.unsupported_statements,[statement]);
+assert.ok(!Object.hasOwn(repairView,'rejected'),'助手未支持草稿与用户输入分开，不把其作为用户说法');
+const disclosed=await execute({assessment:'unsupported',repairReply:'你给出的说法已被标记为不可用，不能作为取舍依据。待查项：班期。'});
+assert.equal(disclosed.result.status,'ok');assert.doesNotMatch(disclosed.result.reply,/你给出|标记为不可用/);assert.match(disclosed.result.reply,/待核实/);
 const brokenLong=await execute({answer:statement+'\n\n这两处都能无车直达，适合安排为固定的当地一日游。\n\n因此它们比其他走法更合适，应当把它们安排进每天的行程。',assessment:'unsupported',
   repairReply:'如果能核实少换乘的连接，可以优先比较；也可以把沿途停留作为备选，先分别查证交通。'});
 assert.ok(brokenLong.calls.includes('conversation_evidence_repair'),'长回复删句后也必须尝试一次完整重组');
@@ -83,6 +88,10 @@ const mixedFact=await execute({answer:'伊宁公交比较轻松，去草原通�
 assert.equal(mixedFact.result.status,'ok');assert.doesNotMatch(mixedFact.result.reply,/公交比较轻松/,'建议中的客观事实不能因模型漏分类而直接放行');
 const shinkansen=await execute({answer:'可以先比较新干线直达省心、换乘少，还是沿途停一站。',page:null});
 assert.equal(shinkansen.result.status,'ok');assert.doesNotMatch(shinkansen.result.reply,/新干线直达/,'即使抽取模型漏交事实，真实编排也必须移除无来源直达承诺');
+const corridor=await execute({answer:'这轮没有可引用资料。方向上可以先讨论取舍：新干线是直达走廊，适合把跨城压缩成一段；但具体日期仍待核实。',page:null});
+assert.equal(corridor.result.status,'ok');assert.doesNotMatch(corridor.result.reply,/新干线是直达走廊/,'资料不足前缀及日期待核实后缀不替连接断言免责');
+const conditionalCorridor=await execute({answer:'如果能核实新干线是直达走廊，可以优先比较少换乘；你更在意停留还是少换乘？',page:null});
+assert.equal(conditionalCorridor.result.status,'ok');assert.match(conditionalCorridor.result.reply,/如果能核实/);
 const conflictSources=[{title:'正向报道',url:'https://example.gov.cn/yes',excerpt:'北京到阿拉木图班车已经开通。',published_at:'2026-10-20',kind:'official'},
   {title:'反向公告',url:'https://example.gov.cn/no',excerpt:'北京到阿拉木图班车尚未开通。',published_at:'2026-10-20',kind:'official'}];
 const conflictCatalog=buildEvidenceCatalog({sources:conflictSources,now,routing:{origin:'北京',destination:'阿拉木图'},retrieval:{purpose:'transport'}});
