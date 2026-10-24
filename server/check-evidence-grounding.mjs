@@ -12,6 +12,10 @@ const supported=async({user})=>({items:JSON.parse(user).claims.map(c=>({id:c.id,
 const check=async(catalog,text=reply,claims=[claim(catalog,text)],model=supported)=>validateEvidenceClaims(text,catalog,{claims,assessment:await assessEvidenceClaims(text,catalog,claims,model)});
 assert.equal(cat.entries[0].id,sourceId(row(quote)));
 assert.equal((await check(cat)).grounded.length,1);
+const naturalPending='来源记载北京到阿拉木图开通直飞，具体班次和适用日期需另行核实。';
+assert.equal((await check(cat,naturalPending,[claim(cat,naturalPending)])).grounded.length,1,'自然等价的日期待核表达不能误删');
+const pricePending='来源记载北京到阿拉木图开通直飞，票价仍待核实。';
+assert.equal((await check(cat,pricePending,[claim(cat,pricePending)])).grounded.length,0,'仅票价待核不代表本次班次日期已经核实');
 const overcount='这两份资料记载北京到阿拉木图开通直飞，本次日期仍待确认。';
 assert.equal((await check(cat,overcount,[claim(cat,overcount)])).grounded.length,0,'一份来源不能写成两份资料');
 assert.equal(validateEvidenceClaims(reply,cat,{claims:[claim()]}).grounded.length,0,'引用及原句存在不等于语义已核对');
@@ -84,6 +88,8 @@ console.log('✓ 交通复核期、历史窗、估计日期和原状态不可升
 
 for(const text of ['目前无法确认是否有直飞，班车也仍待核实。','没有直飞，班车尚未恢复运行。','如果开通直飞，可以再比较。','Are there direct flights?','Direct flights are unconfirmed.','可以先探索市区，再确认交通。'])assert.equal(validateEvidenceClaims(text,{entries:[]}).rejected.length,0,text);
 for(const text of ['无法确认票价，但北京到阿拉木图有直飞。','是否有直飞？北京到阿拉木图每天发车。'])assert.ok(validateEvidenceClaims(text,{entries:[]}).rejected.length);
+for(const text of ['你更想先查直飞方向，还是把中转方向一起列入待查？','是否值得继续探索，取决于你更看重省心直飞，还是愿意比较中转。'])assert.equal(validateEvidenceClaims(text,{entries:[]}).rejected.length,0,'偏好问句不能因逗号丢失提问范围');
+for(const text of ['北京到阿拉木图有直飞，你想比较吗？','你更想搭已经开通的北京到阿拉木图直飞，还是中转？'])assert.ok(validateEvidenceClaims(text,{entries:[]}).rejected.length,'问句不能替其预设的运营事实免责');
 for(const text of ['北京到阿拉木图有航班。','北京到阿拉木图每天都有航班。','北京到阿拉木图有直达列车。','北京到阿拉木图有直飞但班车未确认。','北京到阿拉木图有航班但是列车待查。','北京到阿拉木图未开通直飞但有航班。']){
   assert.equal(operationalAssertions(text).length,1,text);
   assert.ok(validateEvidenceClaims(text,{entries:[]}).rejected.length,'未交结构化支持也必须拦截：'+text);

@@ -18,9 +18,12 @@ const affirmative=text=>OPERATIONAL.test(text) && !QUESTION.test(text) && !UNCER
 const execution=text=>/可执行|确定可达|确定可行|保证可达|(?:保证|确保).{0,10}(?:到达|抵达|衔接|可行)|可行的(?:路线|走法|行程|方案)|(?:确定|保证|一定)省钱/.test(text) &&
   /路线|走法|行程|方案|安排|交通|可达|到达|抵达|衔接|省钱/.test(text) && !QUESTION.test(text) &&
   !UNCERTAIN.test(text.replace(/可以考虑|可探索|值得探索|建议先查询/g,'')) && !/不是|并非|不代表|不等于/.test(text);
+const preferenceOnly=text=>(/^(?:你|您).{0,12}(?:更想|更倾向|更看重|更在意|愿意|想先|希望|计划)/.test(text) && /[?？]$/.test(text) ||
+  /^是否值得(?:继续)?(?:探索|比较)/.test(text) && /取决于你/.test(text)) &&
+  !/已经|已开通|目前有|现在有|有直飞|有航班|保证|可执行|每天发车/.test(text);
 export const isPendingChecklist=text=>/^(?:[-*]\s*)?(?:待查(?:项|清单)?(?:包括)?[：:]|待核实(?:项)?[：:]|(?:需要|需|仍需)(?:核实|查证)的(?:具体)?(?:项|信息|内容)(?:包括|有)?[：:])/.test(text) &&
   !/\d|已经|已(?:确认|确定|运行|开通|恢复|运营)|证实|保证|肯定|必定|无需|每天|运营中|但是|然而|不过|可是|但|却/.test(text);
-export const operationalAssertions=text=>sentences(text).filter(s=>!isPendingChecklist(s) && clauses(s).some(t=>affirmative(t) || execution(t)));
+export const operationalAssertions=text=>sentences(text).filter(s=>!isPendingChecklist(s) && !preferenceOnly(s) && clauses(s).some(t=>affirmative(t) || execution(t)));
 
 /** 仅为保守句法提示；问答混合仍须由结论级语义核对逐条验证。 */
 export function isQuestionSource(source){
@@ -119,7 +122,10 @@ function prepare(reply,catalog,claims=[]){
     }
     if([...sentence.matchAll(/\[((?:src_[a-f0-9]+)|(?:ev_\d+))\]/g)].some(m=>!ids.has(m[1]))){fail('正文引用与结构化支持来源不一致');continue;}
     // 资料摘录仅支持来源层面的参考；近期发表不授予当前可售或未来可执行性。
-    if(operational && claim.allowed_use!=='conflict' && !(/资料|来源|公告|\bsource\b/i.test(sentence) && /待确认|待核实|待查|仅供参考|\bunconfirmed\b/i.test(sentence))){fail('运营资料须保留来源参考及日期待核实边界');continue;}
+    const datePending=clauses(sentence).some(part=>/班次|班期|运行日|运营|适用日期|日期适用|出行日期|本次日期|本次(?:出行|行程|适用)|可用性/.test(part) &&
+      /待(?:确认|核实|查)|(?:需|要)(?:要|另行|重新|再)?(?:确认|核实|查证|查询)|尚未(?:确认|核实)|无法(?:确认|判断|核实)|不能(?:确认|据此判断)|未(?:核实|确认)/.test(part));
+    if(operational && claim.allowed_use!=='conflict' && !(/资料|来源|公告|\bsource\b/i.test(sentence) &&
+      (/仅供参考|\bunconfirmed\b/i.test(sentence) || datePending))){fail('运营资料须保留来源参考及日期待核实边界');continue;}
     const scope={routing:catalog.routing || null,retrieval:catalog.retrieval || null};
     pending.push({id:signature(claim,cited,scope),claim:structuredClone(claim),sources:structuredClone(cited),scope});
   }
