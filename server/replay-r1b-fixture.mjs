@@ -4,6 +4,7 @@ import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {execFileSync} from 'node:child_process';
 import {conversationTurn} from './lib/conversation.mjs';
+import {composeJson} from './lib/llm.mjs';
 const output=process.env.R1B_FIXTURE_OUT || join(tmpdir(),'mixtouring-r1b-fixture.json');
 const now=Date.parse('2026-10-22T02:00:00Z');
 const scenarios=[
@@ -16,14 +17,15 @@ const report={fixture:true,code_sha:execFileSync('git',['rev-parse','HEAD'],{enc
 for(const scenario of scenarios.filter(s=>!process.env.R1B_FIXTURE_CASES || process.env.R1B_FIXTURE_CASES.split(',').includes(s.name))){
   const brief={origin:scenario.origin,destination:scenario.destination,summary:scenario.question},route=[scenario.origin,scenario.destination];
   const conversation={stage:'draft',brief,routing:{origin:scenario.origin,destination:scenario.destination},draft:{title:'合成体验草案',overview:'交通待查。',route,cards:[{id:'place',place:scenario.destination,label:'目的地阶段',title:'自由安排',content:'活动待讨论。'}],sections:[],pending:['交通待核实。']}};
-  const usage=[],started=Date.now();
+  const usage=[],stages=[],started=Date.now();
   const result=await conversationTurn({text:scenario.question,conversation},null,{now,budgetMs:110000,sourceReview:true,evidenceReview:true,
     search:async()=>[scenario.source],readPage:async url=>({url,read_status:'page_excerpt',title:scenario.source.title,excerpt:scenario.source.content,published_at:scenario.source.date}),
+    model:async opts=>{const value=await composeJson(opts);if(process.env.R1B_CAPTURE_MODEL)stages.push({kind:opts.kind,input:JSON.parse(opts.user),output:value});return value;},
     onModelUsage:u=>usage.push(u)});
   const expected_use=scenario.name==='旅行者经验'?'travel_experience':'source_reference';
   const passed=result.status==='ok' && result.sources?.length>0 && result.evidence_claims?.some(c=>c.allowed_use===expected_use) &&
     result.sources.every(s=>s.url===scenario.source.link) && result.evidence_claims.every(c=>result.reply.includes(c.sentence) && c.supports.every(s=>result.sources.some(source=>source.id===s.source_id)));
-  report.cases.push({name:scenario.name,status:result.status,passed,expected_use,reply:result.reply,sources:result.sources || [],claims:result.evidence_claims || [],inferences:result.evidence_inferences || [],relevance:result.source_relevance,usage,elapsed_ms:Date.now()-started});
+  report.cases.push({name:scenario.name,status:result.status,passed,expected_use,reply:result.reply,sources:result.sources || [],claims:result.evidence_claims || [],inferences:result.evidence_inferences || [],relevance:result.source_relevance,usage,...(process.env.R1B_CAPTURE_MODEL?{stages}:{}),elapsed_ms:Date.now()-started});
   writeFileSync(output,JSON.stringify(report,null,2)+'\n');
   console.log(`${scenario.name}：${result.status}；来源${result.sources?.length || 0}；证据结论${result.evidence_claims?.length || 0}`);
 }
