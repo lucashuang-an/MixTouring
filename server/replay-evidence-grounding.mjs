@@ -8,6 +8,8 @@ const now=Date.parse('2026-10-22T00:00:00Z');
 const reply='来源记载北京到阿拉木图开通直飞，本次日期仍待确认。';
 const cases=[
   ['正向资料参考','北京到阿拉木图开通直飞。',true],
+  ['问答攻略中的实际回答','清迈古城适合步行吗？古城区景点集中，建议步行游览。',true,'这份资料建议步行游览古城。'],
+  ['提问截去问号仍不是答案','清迈古城适合步行吗？有人知道吗？',false,'资料记载清迈古城适合步行。','清迈古城适合步行'],
   ['反向不能替代正向','阿拉木图到北京开通直飞。',false],
   ['城市首现不等于方向','北京旅客注意：从阿拉木图出发、抵达北京的直飞已开通。',false],
   ['铁路不能变为航空','北京到阿拉木图开通铁路服务。',false],
@@ -24,9 +26,9 @@ const cases=[
 ];
 const report={sampled_at:new Date().toISOString(),fixture:true,model:process.env.VOLC_COMPOSE_MODEL || process.env.LLM_MODEL,cases:[]};
 const output=process.env.EVIDENCE_REPLAY_OUT || join(tmpdir(),'mixtouring-evidence-replay.json');
-for(const [name,excerpt,expected,statement=reply] of cases){
+for(const [name,excerpt,expected,statement=reply,supportQuote=excerpt] of cases){
   const catalog=buildEvidenceCatalog({sources:[{url:'https://example.gov.cn/fixture',title:'合成交通资料',excerpt,published_at:'2026-10-20',kind:'official'}],now,retrieval:{purpose:'transport'}});
-  const claims=[{text:statement,allowed_use:'source_reference',supports:[{source_id:catalog.entries[0].id,quote:excerpt}]}];
+  const claims=[{text:statement,allowed_use:'source_reference',supports:[{source_id:catalog.entries[0].id,quote:supportQuote}]}];
   const usage=[],realModel=opts=>composeJson({...opts,onUsage:u=>usage.push(u)});
   const start=Date.now(),assessment=await assessEvidenceClaims(statement,catalog,claims,realModel,{signal:AbortSignal.timeout(20000)});
   const result=validateEvidenceClaims(statement,catalog,{claims,assessment});

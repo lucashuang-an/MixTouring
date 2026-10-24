@@ -28,6 +28,15 @@ const question={title:'北京到阿拉木图有直飞吗',excerpt:'请问怎么�
 assert.equal(isQuestionSource(question),true);
 assert.equal(isQuestionSource({...question,excerpt:'答：北京到阿拉木图开通直飞。'}),false);
 assert.equal((await check(make([row(quote,{title:question.title})]))).grounded.length,1,'问答混合须核对具体回答');
+const faqGuide=make([row('清邁古城適合步行嗎？古城區景點集中，建議以步行或租借自行車方式遊覽。',{title:'清邁自由行常見問題',kind:'guide'})],{retrieval:{purpose:'experience'}});
+assert.equal(faqGuide.entries[0].question_like,true,'夹具确实触发整页提问提示');
+const faqText='这份资料建议步行或租自行车游览古城。';let faqCalls=0;
+assert.equal((await check(faqGuide,faqText,[claim(faqGuide,faqText,'古城區景點集中，建議以步行或租借自行車方式遊覽。')],async p=>{faqCalls++;return supported(p);})).grounded.length,1,'问答攻略中的明确答案进入语义核对');assert.equal(faqCalls,1);
+const faqExperience=make([row('一個人自由行安全嗎？城市不大、景點集中、步調緩慢。',{title:'作者的清邁旅行记录',kind:'experience'})],{retrieval:{purpose:'experience'}});
+const faqPersonal='作者当时记录了城市不大、景点集中的感受。';
+assert.equal((await check(faqExperience,faqPersonal,[{...claim(faqExperience,faqPersonal,'城市不大、景點集中、步調緩慢。'),allowed_use:'travel_experience'}])).grounded.length,1,'个人经验中的问题标题不删除其真实回答');
+const questionFragment=make([row('清邁古城區景點集中嗎？有人能回答嗎？',{title:'清邁問題',kind:'guide'})],{retrieval:{purpose:'experience'}}),questionFact='资料记载清邁古城區景點集中。';let questionCalls=0;
+assert.equal((await check(questionFragment,questionFact,[claim(questionFragment,questionFact,'清邁古城區景點集中')],async p=>{questionCalls++;return supported(p);})).grounded.length,0,'截去问号的片段仍按其原句提问语境拒绝');assert.equal(questionCalls,0);
 const reverse=make([row('阿拉木图到北京开通直飞。')]);
 const denied=await check(reverse,reply,[claim(reverse)],async({user})=>({items:JSON.parse(user).claims.map(c=>({id:c.id,decision:'unsupported',reason:'反向航线不能支持正向'}))}));
 assert.equal(denied.grounded.length,0,'方向由语义核对，不靠城市首现顺序证明方向');

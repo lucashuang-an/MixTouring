@@ -105,7 +105,9 @@ function prepare(reply,catalog,claims=[]){
       if(entry.relevance && entry.relevance!=='keep'){reason='来源尚未通过相关性核对';break;}
       if(!['recent','window_reference'].includes(entry.temporal_state)){reason='来源时效不足以支持本次结论';break;}
       if(operational && !['recent','window_reference'].includes(entry.operational_temporal_state)){reason='交通资料超过运营复核期';break;}
-      if(entry.question_like){reason='提问帖不是已获答案';break;}
+      // 提问标题或目录不使整篇攻略失效；引用所在的原句若仍是问题，不能截去问词伪作答案。
+      const quoteContexts=[entry.title,...sentences(entry.excerpt)].filter(t=>t.includes(quote));
+      if(entry.question_like && (quoteContexts.length?quoteContexts.every(t=>isQuestionSource({excerpt:t})):isQuestionSource({excerpt:quote}))){reason='引用语境仍是提问，不是已获答案';break;}
       const personal=entry.kind==='experience' || entry.allowed_use==='travel_experience' || /(?:作者|旅行者|发帖者|该用户).{0,8}(?:当时|记录|提到|写到|认为|观察|探访|分享)|亲历|游记/.test(sentence);
       if(personal && claim.allowed_use!=='conflict' &&
         (claim.allowed_use!=='travel_experience' || !/作者|旅行者|发帖者|该用户|亲历|记录|游记/.test(sentence))){reason='个人经历须按旅行者经验归因，不能作为普遍资料事实';break;}
