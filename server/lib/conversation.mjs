@@ -1,14 +1,12 @@
 /* AI 主导的旅行讨论。模型理解语言；代码处理状态、确认、字段及来源边界。 */
-import { readFileSync } from 'node:fs';
 import { composeJson, searchWeb } from './llm.mjs';
-import { sanitizeConstraints, sanitizeIntentFields, resolvePlace } from './anywhere.mjs';
+import { sanitizeConstraints, sanitizeIntentFields } from './anywhere.mjs';
 import guide from '../../mixtouring-hifi/assets/trip-guide.js';
-import { sightCatalog, normalizeSightState } from './sights.mjs';
+import { normalizeSightState } from './sights.mjs';
 import { countryScope } from './place-scope.mjs';
 import { collectTravelSources, classifyTravelSource } from './travel-sources.mjs';
 import { resolveConversationRouting, routingSnapshot,verifyRoutingChange } from './conversation-routing.mjs';
 import workspace from '../../mixtouring-hifi/assets/route-workspace.js';
-import {routeTransportReferences} from './transport-references.mjs';
 import {retrievalContext,partitionTimedSources,sourceWindow} from './source-time.mjs';
 import {readPublicPage} from './public-reader.mjs';
 import {transportSearchEvidence} from './transport-search.mjs';
@@ -21,16 +19,9 @@ import {relevanceReviewer} from './source-relevance.mjs';
 import {buildEvidenceCatalog} from './evidence-grounding.mjs';
 import {groundConversationOutput} from './conversation-evidence.mjs';
 
-const guides = JSON.parse(readFileSync(new URL('../../pipeline/data/destination-guides.json', import.meta.url))).destinations;
 const str = (v, n = 1600) => typeof v === 'string' ? v.trim().slice(0, n) : '';
 const strings = (v, n = 12) => Array.isArray(v) ? v.map(x => str(x, 400)).filter(Boolean).slice(0, n) : [];
 const object = v => v && typeof v === 'object' && !Array.isArray(v) ? v : {};
-function transportMaterial(routes,now=Date.now(),window=null) {
-  const seen=new Set();
-  return routes.filter(r=>r?.length>1).flatMap(route=>routeTransportReferences(route,now,window)).filter(s=>{
-    const key=s.from+'|'+s.to;if(seen.has(key) || !s.options.length && !s.directions.length)return false;seen.add(key);return true;
-  }).slice(0,16).map(({from,to,options,directions})=>({from,to,options,directions}));
-}
 
 function cleanRequirements(raw = {}) {
   return {required_stops:[...new Set(strings(raw.required_stops).map(s=>s.slice(0,80)))],
@@ -233,8 +224,7 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
       const shown=Array.isArray(input.displayed_candidate_ids)?[...new Set(input.displayed_candidate_ids)].map(id=>ranked.find(c=>c.id===id)).filter(Boolean):[];
       return (shown.length?shown:ranked).slice(0,8);})().map(c => ({ id:c.id, kind:c.kind, legs:c.legs,
       explanation:c.explanation, basis:c.basis })),
-    destination_material: guides[destination] || null,
-    sight_material: /伊宁|伊犁/.test(destination || '') ? sightCatalog() : null };
+    destination_material:null,sight_material:null };
   function numericCatalog(){
     const catalog=buildNumericCatalog({sources:[...context.search_results || [],...context.visible_search_results || []],
       transport:context.transport_references || [],retrieval:context.retrieval || retrievalContext({travel:context.current.travel,now:deps.now || Date.now()}),now:deps.now || Date.now()});
@@ -276,7 +266,7 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
   const explicitChoice=action==='generate'?(plan?.candidates || []).find(c=>c.id===input.requested_candidate_id):null;
   const requestedChoice=(plan?.candidates || []).find(c=>c.id===input.requested_candidate_id);
   if(explicitChoice)context.output_contract.selected_route=workspace.routeFor(null,explicitChoice);
-  context.transport_references=transportMaterial(before.draft?.route?.length?[before.draft.route]:context.routes.map(c=>workspace.routeFor(null,c)).concat([[before.routing.origin,before.routing.destination].filter(Boolean)]),deps.now || Date.now());
+  context.transport_references=[];
   const evidenceRoute=requestedChoice?workspace.routeFor(null,requestedChoice):before.draft?.route || [];
   const evidenceCandidate=requestedChoice || (plan?.candidates || []).find(c=>workspace.matches(evidenceRoute,c));
   let evidenceLegs=draftQueryScope({route:evidenceRoute,candidate:evidenceCandidate,preferences:input.preferences,previous:input.research_scope,anchors:input.anchors,travel:input.travel},deps.now || Date.now()).legs.map(l=>({...l,mode_guess:l.mode}));
@@ -328,8 +318,9 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
     if(action==='chat' && before.draft){
       const checked=await verifyRoutingChange({before,proposed:routeResult.routing,text:context.text,messages},model);
       if(JSON.stringify(checked)!==JSON.stringify(routeResult.routing)){
+        const proposed=routeResult.routing;
         routeResult.routing=checked;
-        raw.brief={...raw.brief,origin:!raw.brief?.origin || resolvePlace(raw.brief.origin)?checked.origin:raw.brief.origin,destination:!raw.brief?.destination || resolvePlace(raw.brief.destination)?checked.destination:raw.brief.destination};
+        raw.brief={...raw.brief,origin:!raw.brief?.origin || raw.brief.origin===proposed.origin?checked.origin:raw.brief.origin,destination:!raw.brief?.destination || raw.brief.destination===proposed.destination?checked.destination:raw.brief.destination};
         understanding.brief=raw.brief;
       }
     }
@@ -354,23 +345,20 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
     context.retrieval=retrievalContext({travel:retrievalTravel,window:approvedSearchWindow,purpose:'experience',now:deps.now || Date.now()});
     visibleEvidence=transportSearchEvidence(input.retrieval_ids,{route:evidenceRoute,legs:evidenceLegs,window:context.retrieval.target_window,now:deps.now || Date.now()});context.visible_search_results=visibleEvidence;
     context.visible_experiences=transportSearchEvidence(input.retrieval_ids,{route:evidenceRoute,legs:evidenceLegs,window:context.retrieval.target_window,now:deps.now || Date.now(),purpose:'experience'});
-    context.transport_references=transportMaterial([requestedChoice?evidenceRoute:cleanDraft(raw.draft,before.draft)?.route?.length?cleanDraft(raw.draft,before.draft).route:before.draft?.route?.length?before.draft.route:[routeResult.routing.origin,routeResult.routing.destination].filter(Boolean)],deps.now || Date.now(),retrievalTravel.outbound_window);
+    context.transport_references=[];
     const resolvedDestination = routeResult.routing.destination || str(raw?.brief?.destination,80) || destination;
-    const curated = guides[resolvedDestination];
-    let sources = Object.values(curated?.nature || {}).map(x => x.source).filter(Boolean).map(s=>({...s,...classifyTravelSource(s.url)}));
+    let sources=[];
     let historicalSources=[];
-    const transportSources=context.transport_references.flatMap(s=>s.options.flatMap(r=>[r.source,...r.supplementary_sources || []])).map(s=>({...s,...classifyTravelSource(s.url),kind:s.kind || classifyTravelSource(s.url)?.kind,published_at:s.published_at,checked_at:s.sampled_at}));
-    const scopedSources=partitionTimedSources(sources.concat(transportSources),context.retrieval);
-    sources=partitionTimedSources(visibleEvidence.concat(scopedSources.current),context.retrieval).current.slice(0,6);
+    sources=partitionTimedSources(visibleEvidence,context.retrieval).current.slice(0,6);
     context.evidence_catalog=buildEvidenceCatalog({sources,routing:routeResult.routing,retrieval:context.retrieval,travel:retrievalTravel,now:deps.now || Date.now()});
-    context.background_only='既有目的地目录仅用于地理与体验灵感，发布日期不明，不证明现时开放、交通或价格。';
+    context.background_only='本轮仅使用任务内检索资料；旧地点与攻略目录不参与规划。';
     const needsMaterial = resolvedDestination && !context.destination_material && !context.sight_material;
     const explicitResearch=action==='chat' && /请.{0,12}(?:查|核对)|(?:查找|搜索|查询)(?:一下|资料|攻略|原帖)|有(?:没有|哪些).{0,5}(?:资料|来源)/.test(context.text);
     const searchQuery=str(raw?.search_query,100) || (explicitResearch?str(context.text,100):'');
     if (searchQuery || needsMaterial || (action==='generate' && resolvedDestination) || approvedSearchWindow || Object.keys(calendarCandidate.travel).some(k=>k.endsWith('_window'))) {
-      const country=resolvePlace(resolvedDestination)?.country || countryScope(resolvedDestination)?.code || raw?.destination_country;
+      const country=countryScope(resolvedDestination)?.code || raw?.destination_country;
       const collected=await collectTravelSources({destination:resolvedDestination,query:searchQuery,question:context.text,
-        international:country?country!=='CN':!!raw?.search_query_en,foreignQuery:str(raw?.search_query_en,100),travel:retrievalTravel,window:approvedSearchWindow,
+        international:country?country!=='CN':true,foreignQuery:str(raw?.search_query_en,100),travel:retrievalTravel,window:approvedSearchWindow,
         purpose:['transport','experience','guide'].includes(raw.search_purpose)?raw.search_purpose:/交通|班车|巴士|航班|口岸|开放|票价/.test(str(raw?.search_query)+context.text)?'transport':'experience'},search,{useCache:!deps.search,now:deps.now || Date.now(),readPage:deps.readPage || (!deps.search?readPublicPage:null),signal,
           // 纯搜索桩不隐式增加真实模型调用；回放可显式启用，生产路径共用模型预算与取消。
           assessSources:!deps.search || deps.sourceReview===true?relevanceReviewer(model):null});
@@ -380,7 +368,7 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
       historicalSources=collected.archive.filter(s=>s.relevance?.decision==='keep').slice(0,4);
       if(evidenceReview && (collected.relevance?.status==='unavailable' || collected.status==='unavailable'))
         return {status:'unavailable',engine:'unavailable',reply:'检索或候选资料核对尚未完成，当前不能据此判断是否有匹配资料。原输入和安排已保留，请重试。',conversation:before,sources:[],source_relevance:collected.relevance};
-      context.destination_material = curated || null;
+      context.destination_material = null;
       context.search_results = (results || []).concat(visibleEvidence.map(s=>({title:s.title,link:s.url,content:s.excerpt,date:s.published_at,temporal:s.temporal})));
       context.experience_results=collected.experiences;
       context.source_channels=collected.channels;
@@ -436,7 +424,7 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
         user:JSON.stringify({action:context.action,text:context.text,user_messages:messages.filter(m=>m.role==='user'),
           current:context.current,routing:before.routing,requirements:next.requirements,output_contract:context.output_contract,original_route:before.draft?.route || [],displayed_routes:context.routes,selection_request:context.selection_request,proposed_candidate_id:raw.selected_candidate_id,updated_brief:next.brief,patch,destination_material:evidenceReview?null:context.destination_material,
           evidence_catalog:context.evidence_catalog,source_boundary:'外部事实只用证据目录可见原句，每句只表达一个有支持的事实；旧草案及目录外资料不是现时事实依据。',
-          search_results:evidenceReview?[]:context.search_results,transport_references:evidenceReview?[]:transportMaterial([draft.route],deps.now || Date.now(),retrievalTravel.outbound_window),proposed:{draft}})});
+          search_results:evidenceReview?[]:context.search_results,transport_references:[],proposed:{draft}})});
       const checked=cleanDraft(reviewed?.draft,before.draft);
       if(!checked || unsupportedNumbers(reviewed).length)throw new Error('草案一致性检查未完成');
       /* 校对可改内容，不可悄悄丢掉模型已提供的结构。 */

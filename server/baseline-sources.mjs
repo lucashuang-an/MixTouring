@@ -7,7 +7,7 @@ import {searchWebDetailed} from './lib/llm.mjs';
 import {readPublicPage} from './lib/public-reader.mjs';
 import {tavilyConfigured} from './lib/search-tavily.mjs';
 import {compareSourceBaselines,diagnoseBaselineReads} from './lib/source-comparison.mjs';
-const args=process.argv.slice(2),dataset=JSON.parse(readFileSync(new URL('../pipeline/data/source-baseline-tasks.json',import.meta.url),'utf8'));
+const args=process.argv.slice(2),dataset=JSON.parse(readFileSync(new URL('./fixtures/source-baseline-tasks.json',import.meta.url),'utf8'));
 const output=resolve(process.env.SOURCE_BASELINE_OUT || join(tmpdir(),args[0]==='--diagnose-reads'?'mixtouring-reader-diagnostics.json':args[0]==='--compare'?'mixtouring-source-comparison.json':args[0]==='--live' && args[2]==='tavily'?'mixtouring-source-baseline-tavily.json':'mixtouring-source-baseline.json'));
 const samePath=(a,b)=>{const path=resolve(a),other=resolve(b);return process.platform==='win32'?path.toLowerCase()===other.toLowerCase():path===other;};
 const save=report=>{mkdirSync(dirname(output),{recursive:true});writeFileSync(output+'.tmp',JSON.stringify(report,null,2)+'\n');renameSync(output+'.tmp',output);};

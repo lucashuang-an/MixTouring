@@ -176,4 +176,8 @@ for(const reply of ordinary){
   else assert.ok(r.numeric_grounding.some(f=>f.path==='draft.cards.0.content' && f.source_url===fare.url));
  }
 }
+const arbitrary=buildNumericCatalog({sources:[source('库外起点甲到库外终点乙航班票价1200元')],now});
+assert.equal(arbitrary.length,1,'删除城市词典后任意端点仍能绑定具体数字对象');
+assert.equal(validateNumericClaims({reply:'来源显示库外起点甲到库外终点乙航班票价1200元，仅供参考，本次日期仍待确认。'},{catalog:arbitrary}).rejected.length,0);
+assert.equal(validateNumericClaims({reply:'来源显示库外终点乙到库外起点甲航班票价1200元，仅供参考，本次日期仍待确认。'},{catalog:arbitrary}).rejected.length,1);
 console.log('✓ 数字事实对象／方向／方式／单位／用途／日期隔离、原始反例及合法预算实际编排通过');

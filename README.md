@@ -63,11 +63,13 @@ npm start
 LLM_API_KEY=你的模型密钥
 LLM_BASE_URL=https://api.openai.com/v1
 LLM_MODEL=你的模型ID
+TRAVEL_SEARCH_PROVIDER=tavily
+TAVILY_API_KEY=你的Tavily密钥
 ```
 
 火山通道使用 `VOLC_SEARCH_API_KEY`，可通过 `VOLC_COMPOSE_MODEL` 与 `VOLC_SEARCH_MODEL` 分别指定组合和搜索模型。通道实现见 [server/lib/llm.mjs](server/lib/llm.mjs)，修改配置后重启服务。
 
-主规划 AI 对话需要可用模型；未配置或调用失败时，AI 能力不完整。旧方案库与部分规则接口可以独立运行。密钥仅保存在服务端，`.env` 已被 Git 忽略。
+主规划 AI 对话需要可用模型；未配置或调用失败时，AI 能力不完整。产品不预置地点或方案，模型或检索不可用时保留输入并提示重试。密钥仅保存在服务端，`.env` 已被 Git 忽略。
 
 ### 分支与开发进展
 
@@ -77,12 +79,12 @@ LLM_MODEL=你的模型ID
 
 ## 技术与数据
 
-原生 HTML / CSS / JavaScript 构成前端，Node.js ESM 与 Koa 提供服务。路线数据由现有规则派生；模型调用统一经过服务端出口。
+原生 HTML / CSS / JavaScript 构成前端，Node.js ESM 与 Koa 提供服务。路线由本次搜索与AI整合产生，不预置地点、攻略、枢纽或方案；模型调用统一经过服务端出口。
 
 ```text
 mixtouring-hifi/       页面、交互与设计样式
 server/               Koa API、规划服务与回归检查
-pipeline/             方案数据、派生规则与离线管道
+pipeline/             网页静态检查与历史验证记录（不参与规划）
 .github/workflows/    自动化工程验证
 ```
 
@@ -93,7 +95,7 @@ pipeline/             方案数据、派生规则与离线管道
 ```bash
 # 在仓库根目录执行
 node pipeline/check-pages.mjs
-node pipeline/check-geo.mjs
+node server/check-no-preloads.mjs
 
 # 另一个终端已有服务运行时
 node server/verify.mjs

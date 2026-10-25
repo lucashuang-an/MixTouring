@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import workspace from '../mixtouring-hifi/assets/route-workspace.js';
 import {conversationTurn} from './lib/conversation.mjs';
-import {routeTransportReferences,validTransportReference} from './lib/transport-references.mjs';
+
 const brief={origin:'北京',destination:'阿拉木图',summary:'十天独行，自然与文化，预算8000元，允许巴士',wishes:['自然','本地文化','愿意坐长途巴士'],open_questions:[]};
 const draft={title:'经伊宁的探索安排',overview:'沿途留一站，继续前往阿拉木图',route:['北京','伊宁','阿拉木图'],
   cards:[{id:'',place:'伊宁',label:'沿途停留',title:'伊宁慢游',content:'保留城市漫步时间，接驳待查。'},
@@ -105,18 +105,6 @@ const scopedPatch=await conversationTurn({text:'最后一天只散步',conversat
 assert.equal(scopedPatch.status,'ok');assert.equal(scopedPatch.conversation.draft.cards[0].title,'自由散步');assert.deepEqual(scopedPatch.conversation.draft.cards[1],original.draft.cards[1],'卡片修改指令不能改到范围外的卡片');
 const scheduleWithReturn=await conversationTurn({action:'generate',conversation:{...locked,stage:'ready',requirements:{...locked.requirements,trip_days:3}}},null,{search:async()=>[],model:async opts=>response({draft:opts.kind==='conversation_schedule'?{...completed,cards:completed.cards.map((c,i)=>i===2?{...c,title:'当天返程'}:c)}:shortDraft})});
 assert.equal(scheduleWithReturn.status,'unavailable','日序补齐也不能重新引入未确认返程');
-const references=routeTransportReferences(['北京','乌鲁木齐','伊宁','阿拉木图'],Date.parse('2026-10-15T02:00:00Z'));
-const yining=references.find(s=>s.from==='伊宁' && s.to==='阿拉木图'), khorgos=yining.archive.find(r=>r.id==='yin-ala-khorgos-road');
-assert.deepEqual(khorgos.route_nodes,['伊宁','霍尔果斯','阿拉木图']);assert.equal(khorgos.evidence_state,'historical');assert.equal(khorgos.duration_minutes,null);
-assert.ok(khorgos.supplementary_sources.some(s=>s.kind==='experience' && s.published_at==='2025-09-02'));
-assert.ok(!routeTransportReferences(['阿拉木图','伊宁']).flatMap(s=>s.options.concat(s.archive)).some(r=>r.id===khorgos.id),'去程经验不能反转为返程证据');
-assert.throws(()=>routeTransportReferences(['伊宁']),/城市链/);
-assert.ok(routeTransportReferences(['北京','阿拉木图','乌鲁木齐'],Date.parse('2026-10-15T02:00:00Z'),'2026-10-25 ~ 2026-10-25')[1].archive.some(r=>r.id==='ala-urc-cz6012'),'出发窗不替代后续交通日期，不误删后续方向的参考资料');
-assert.ok(!validTransportReference({...khorgos,supplementary_sources:[{...khorgos.source,url:'javascript:alert(1)'}]}),'补充经验链接也经过来源校验');
-const referenceHtml=workspace.transportHtml(['伊宁','阿拉木图'],null,[yining]);
-assert.ok(referenceHtml.includes('经霍尔果斯') && referenceHtml.includes('旅行者经验') && referenceHtml.includes('2025-09-02') && referenceHtml.includes('仅作历史参考'));
-assert.ok(!referenceHtml.includes('已核实') && !referenceHtml.includes('200元'),'参考方案不展示未经确认的当期价格或完成核实标签');
-assert.ok(workspace.transportHtml(['昆明','大理'],null,[yining]).includes('暂无通过时效筛选'),'参考资料只附相同两端方向');
 let materialSeen=false;
 await conversationTurn({text:'先说经霍尔果斯的参考流程，不改方案',conversation:original},null,{search:async()=>[],model:async opts=>{
   if(opts.kind==='conversation'){materialSeen=JSON.parse(opts.user).transport_references.some(s=>s.options.some(r=>r.id==='yin-ala-khorgos-road'));}
@@ -124,7 +112,3 @@ await conversationTurn({text:'先说经霍尔果斯的参考流程，不改方�
 }});
 assert.equal(materialSeen,false,'旧报道不进入模型的现时参考材料');
 console.log('✓ 动态路线卡：结构保留、稳定身份、旧稿兼容、预览采纳、候选顺序与证据隔离通过');
-
-assert.ok(references.every(s=>s.directions.length),'三段均有有出处的交通方向');
-assert.ok(references.flatMap(s=>s.directions).every(r=>r.evidence_state==='explore' && !r.schedule),'方向不携带旧班期');
-assert.ok(!routeTransportReferences(['昆明','大理']).flatMap(s=>s.directions).some(r=>r.id==='bjs-urc-rail'),'交通方向不跨端点套用');

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {baselinePlan,runSourceBaseline,summarizeBaseline} from './lib/source-baseline.mjs';
 import {collectTravelSources} from './lib/travel-sources.mjs';
-const dataset=JSON.parse(readFileSync(new URL('../pipeline/data/source-baseline-tasks.json',import.meta.url),'utf8'));
+const dataset=JSON.parse(readFileSync(new URL('./fixtures/source-baseline-tasks.json',import.meta.url),'utf8'));
 const now=Date.parse('2026-10-20T02:00:00Z');
 const plan=baselinePlan(dataset,{now});
 assert.equal(plan.length,24);assert.equal(plan.find(p=>p.window).window,'2026-12-19 ~ 2026-12-19');

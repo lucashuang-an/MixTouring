@@ -1,8 +1,7 @@
-/* lib/llm.mjs · MixTouring Phase 2 LLM 适配层（唯一 LLM 出口）
+/* lib/llm.mjs · 旅行Agent模型与检索适配层（统一出口）
  * 硬约束（AGENTS §6.3 Phase 2）：LLM key 只存服务端，浏览器不直连。
  * 本模块用环境变量注入 key，统一所有 LLM 调用的入口；
- * 未配置 key 时规则版闭环照常可用（callJson 返回 null 交由调用方走规则/词典实现），
- * 之后注入 key（LLM_API_KEY / LLM_BASE_URL / LLM_MODEL）即自动切真模型，契约不变。
+ * 未配置 key 或调用失败返回 null，由Agent保留输入并提示重试，不以规则方案冒充模型成功。
  * 用量记录：每次真模型调用把 token 消耗追加到 server/logs/llm-usage.jsonl（kind 区分任务），
  * 为后续算法优化（prompt 瘦身/缓存/模型选型）提供逐任务数据。 */
 
@@ -27,6 +26,7 @@ const LOG_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'logs', 'll
 export function llmConfigured() {
   return !!KEY;
 }
+export function composeConfigured(){return !!process.env.VOLC_SEARCH_API_KEY || !!KEY;}
 
 /** 当前生效的模型标识（未配置时返回 'rule'） */
 export function llmModel() {
@@ -221,7 +221,7 @@ export async function composeJson(opts) {
     const m = raw.match(/\{[\s\S]*\}/);
     return m ? JSON.parse(m[0]) : null;
   } catch (err) {
-    console.error('✗ 火山组合调用失败，落回规则/策展组合：' + err.message);
+    console.error('✗ 火山组合调用失败，本次整合未完成：' + err.message);
     return null;
   }
 }
@@ -271,8 +271,8 @@ export async function callJson(opts) {
     if (!m) return null;
     return JSON.parse(m[0]);
   } catch (err) {
-    /* 规则版兜底：LLM 调用失败不阻塞在线查询，交回规则实现 */
-    console.error('✗ LLM 调用失败，回退规则版：' + err.message);
+    /* 失败由上层保留状态并提示重试。 */
+    console.error('✗ LLM 调用失败，本次请求未完成：' + err.message);
     return null;
   }
 }

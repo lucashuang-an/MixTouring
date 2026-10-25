@@ -3,8 +3,7 @@ import {createHash} from 'node:crypto';
 import {classifyTravelSource} from './travel-sources.mjs';
 import {sourceId} from './source-relevance.mjs';
 import {assessSourceTime, retrievalContext} from './source-time.mjs';
-import {resolvePlace} from './anywhere.mjs';
-import {loadPlaces} from './trip-service.mjs';
+import {transportEndpoints} from './place-text.mjs';
 import {buildContext} from './context-builder.mjs';
 
 const str=(v,n=2000)=>typeof v==='string'?v.trim().slice(0,n):'';
@@ -34,12 +33,11 @@ export function isQuestionSource(source){
 /** 首现顺序只作诊断，不作为支持或拒绝方向的充分条件。 */
 export function textDirection(text,a,b){
   const t=str(text,2000).toLowerCase();
-  const first=city=>[city,...resolvePlace(city)?.aliases || []].map(x=>t.indexOf(x.toLowerCase())).filter(x=>x>=0).sort((x,y)=>x-y)[0];
+  const first=city=>{const at=t.indexOf(String(city).toLowerCase());return at<0?undefined:at;};
   const ia=first(a),ib=first(b);
   return ia===undefined || ib===undefined || ia===ib?null:ia<ib?'AB':'BA';
 }
-const cities=loadPlaces().filter(p=>p.kind==='city').map(p=>p.name);
-export function statementCities(text){return cities.map(name=>({name,at:String(text).indexOf(name)})).filter(x=>x.at>=0).sort((a,b)=>a.at-b.at).slice(0,2).map(x=>x.name);}
+export function statementCities(text){return transportEndpoints(text).map(p=>p.name);}
 
 /** 所有条目保留时效边界；历史/待定条目可用于诊断，不能凭目录存在变成当前依据。 */
 export function buildEvidenceCatalog({sources=[],routing={},retrieval={},travel={},now=Date.now()}={}){

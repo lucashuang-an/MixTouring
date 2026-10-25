@@ -4,9 +4,7 @@ import {sourceDay,retrievalContext,assessSourceTime,partitionTimedSources} from 
 import {extractPublicPage,publicUrl,publicAddress,readPublicPage} from './lib/public-reader.mjs';
 import {collectTravelSources} from './lib/travel-sources.mjs';
 import {searchTransportSources,transportSearchEvidence} from './lib/transport-search.mjs';
-import {verifyLegs} from './lib/anywhere.mjs';
 import {conversationTurn} from './lib/conversation.mjs';
-import {discoverRoutes} from './lib/route-discovery.mjs';
 const now=Date.parse('2026-10-15T02:00:00Z');
 const context=retrievalContext({window:'2027-10-01 ~ 2027-10-07',purpose:'transport',now});
 assert.equal(sourceDay('2026年9月2日'),'2026-09-02');assert.equal(sourceDay('2026-02-30'),null);
@@ -93,12 +91,6 @@ assert.equal(solo.length,1);
 assert.deepEqual(sandwiched,solo,'有效项单独提交与夹在有界无关/过期/重复ID中提交，结果一致');
 assert.equal(transportSearchEvidence([...staleIds,expired.retrieval_id],{route:['伊宁','阿拉木图'],window:context.target_window,now}).length,0,'仅无关/过期记录时返回空，不误用旧方向资料');
 assert.equal(transportSearchEvidence([live.retrieval_id],{route:['乌鲁木齐','伊宁'],window:context.target_window,now}).length,0,'方向切换后当前链不复用反方向缓存');
-const candidates=[{legs:[{from:'伊宁',to:'阿拉木图',mode_guess:'road',evidence_state:'explore'}]}];
-await verifyLegs(candidates,async()=>[{title:'伊宁到阿拉木图国际客运班车',link:'https://example.com/old',content:body,date:'2020-01-01'}]);
-assert.equal(candidates[0].legs[0].evidence_state,'explore','旧运营资料不能进入当前连接线索');
-let oldDiscoveryInvoked=false;
-const oldDiscovery=await discoverRoutes({name:'哈尔滨',country:'CN'},{name:'三亚',country:'CN'},{searchFn:async()=>[{title:'哈尔滨经上海至三亚航班',link:'https://example.com/old-flight',content:'哈尔滨至上海航班，上海至三亚航班。',date:'2020-01-01'}],modelFn:async()=>{oldDiscoveryInvoked=true;return {};}});
-assert.equal(oldDiscoveryInvoked,false);assert.equal(oldDiscovery.routes.length,0,'在线路线组合不再消费已过时的运营来源');
 const changedQueries=[];
 const changed=await conversationTurn({text:'出发窗改到2027年10月1日至7日',travel:{outbound_window:'2026-10-20 ~ 2026-10-20'}},null,{now,search:async q=>{changedQueries.push(q);return [];},model:async opts=>opts.kind==='conversation_calendar'?{travel:{outbound_window:'2027-10-01 ~ 2027-10-07'}}:{intent_action:'discuss',reply:'已保留新的时间窗。',brief:{origin:'北京',destination:'阿拉木图',summary:'按新时间窗探索',wishes:[],open_questions:[]},ready:true,confirmed:false,travel:{outbound_window:'2027-10-01 ~ 2027-10-07'},preferences:{},constraints:{},sights:{},draft:null}});
 assert.equal(changed.status,'ok');assert.equal(changed.patch.travel.outbound_window,'2027-10-01 ~ 2027-10-07');
@@ -108,7 +100,7 @@ const question=await conversationTurn({text:'明年国庆出发怎么样，先�
 assert.equal(question.status,'ok');assert.deepEqual(question.patch.travel,{});assert.ok(futureQuestions.length && futureQuestions.every(q=>q.includes('2027-10-01')),'咨询窗口可改变，已确认旅行日期不被改写');
 console.log('✓ 日期、未来出行、旧文隔离、原文日期、公开读取边界和查询复用回归通过');
 
-const community=await searchTransportSources({from:'伊宁',to:'阿拉木图'},async(q,opts)=>opts.domains?[{title:'Yining to Almaty bus trip',link:'https://www.reddit.com/r/travel/comments/example',content:'Yining bus journey to Almaty: border queue experience',date:'2026-05-01'}]:[],{now,useCache:false,readPage:null});
+const community=await searchTransportSources({from:'伊宁',to:'阿拉木图',places:[{name:'伊宁',name_latin:'Yining'},{name:'阿拉木图',name_latin:'Almaty'}]},async(q,opts)=>opts.domains?[{title:'Yining to Almaty bus trip',link:'https://www.reddit.com/r/travel/comments/example',content:'Yining bus journey to Almaty: border queue experience',date:'2026-05-01'}]:[],{now,useCache:false,readPage:null});
 assert.equal(community.sources.length,0,'半年前经验不进入近期运营资料');
 assert.equal(community.experiences.length,1,'乘车经验独立按体验用途评估，不因超过九十天删除');
 assert.equal(transportSearchEvidence([community.retrieval_id],{route:['伊宁','阿拉木图'],now,purpose:'experience'}).length,1);

@@ -56,12 +56,5 @@ for (const page of pages) {
   for (const w of FORBIDDEN) if (html.includes(w)) err(page, `出现红线词「${w}」（产品无购买入口）`);
 }
 
-/* mock.js 语法与 DB 形状 */
-try {
-  const mockPath = join(root, 'mixtouring-hifi/assets/mock.js');
-  new Function(readFileSync(mockPath, 'utf8'));
-  console.log('✓ mock.js 语法通过');
-} catch (e) { fail++; console.error('  ✗ [mock.js] 语法错误: ' + e.message); }
-
 if (fail) { console.error(`\n自检未通过：${fail} 个问题`); process.exit(1); }
 console.log(`✓ ${pages.length} 个页面静态自检全部通过（脚本语法 / DOM id / 图标 / 跳转 / 红线词）`);

@@ -1,0 +1,27 @@
+/* 删除地点库后继续保留通用日期、条件与交通锚点的正反例。 */
+import assert from 'node:assert/strict';
+import {buildTravelIntent,isValidWindow,sanitizeIntentFields,extractConstraints,sanitizeConstraints,sanitizeAnchors} from './lib/anywhere.mjs';
+const now=Date.parse('2026-10-25T00:00:00Z');
+for(const invalid of ['2026-02-31 ~ 2026-03-01','2026-11-02 ~ 2026-11-01','2026-13-01 ~ 2026-13-01','明天'])assert.equal(isValidWindow(invalid),false);
+assert.equal(isValidWindow('2028-02-29 ~ 2028-02-29'),true);
+assert.equal(isValidWindow('2027-02-29 ~ 2027-02-29'),false);
+const unknown=buildTravelIntent('十五天，日期待定',null,now).intent;
+assert.equal(unknown.outbound_window,null);assert.equal(unknown.return_window,null);
+const round=buildTravelIntent('2026年11月1日出发，2026年11月15日回来，一个人往返',null,now).intent;
+assert.equal(round.trip_type,'round_trip');assert.equal(round.outbound_window,'2026-11-01 ~ 2026-11-01');assert.equal(round.return_window,'2026-11-15 ~ 2026-11-15');
+const single=buildTravelIntent('往返',{trip_type:'one_way',return_window:'2026-11-15 ~ 2026-11-15'},now);
+assert.equal(single.intent.trip_type,'one_way');assert.equal(single.intent.return_window,null);
+const overlap=buildTravelIntent('',{trip_type:'round_trip',outbound_window:'2026-11-03 ~ 2026-11-05',return_window:'2026-11-01 ~ 2026-11-07'},now);
+assert.equal(overlap.intent.return_window,'2026-11-01 ~ 2026-11-07');
+const inverted=buildTravelIntent('',{trip_type:'round_trip',outbound_window:'2026-11-05 ~ 2026-11-05',return_window:'2026-11-01 ~ 2026-11-01'},now);
+assert.equal(inverted.intent.return_window,null);assert.ok(inverted.needs.some(n=>n.includes('早于')));
+assert.deepEqual(sanitizeIntentFields({trip_type:'invented',traveler_count:999,outbound_window:'2026-02-31 ~ 2026-02-31'}),{});
+assert.equal(extractConstraints('不自驾，不想凌晨到达，预算8000元，最多中转一次').no_self_drive,true);
+assert.equal(extractConstraints('不自驾，不想凌晨到达，预算8000元，最多中转一次').night_arrival,'avoid');
+assert.equal(extractConstraints('不自驾，不想凌晨到达，预算8000元，最多中转一次').budget_max_cny,8000);
+assert.equal(extractConstraints('不换乘').max_transfers,0);
+assert.equal(sanitizeConstraints({no_self_drive:false,lodging_stays:[]}).no_self_drive,false,'显式撤销不能丢失');
+const anchor=sanitizeAnchors({outbound:{from_city:'库外起点甲',to_city:'库外终点乙',mode:'plane',date:'2026-11-01'}});
+assert.equal(anchor.invalid.length,0);assert.equal(anchor.outbound.to_city,'库外终点乙');assert.ok(!Object.hasOwn(anchor.outbound,'tz'));
+for(const patch of [{mode:'boat'},{date:'2026-02-31'},{to_city:'库外起点甲'}])assert.deepEqual(sanitizeAnchors({outbound:{...anchor.outbound,...patch}}).invalid,['outbound']);
+console.log('✓ 通用意图：真实日历、天数不造日期、显式覆盖、去返顺序、约束撤销与任意地点锚点通过');

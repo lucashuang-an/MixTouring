@@ -11,7 +11,8 @@ const original=['北京','乌鲁木齐','阿拉木图'],updated=['北京','乌�
 const candidate={id:'old',legs:[{from:'北京',to:'乌鲁木齐',mode_guess:'plane'},{from:'乌鲁木齐',to:'阿拉木图',mode_guess:'road'}]};
 const input={action:'chat',conversation:{draft:{route:original},requirements:{}},candidate_id:'old',preferences:{road:'open'},travel:{traveler_count:1}};
 const result={status:'ok',conversation:{draft:{route:updated},requirements:{}},patch:{preferences:{},travel:{}}};
-const update=draftResearchChanges(input,result,{candidates:[candidate]},{now});
+const fixturePlan={candidates:[candidate],places:[{name:'乌鲁木齐',country:'CN'},{name:'伊宁',country:'CN'},{name:'阿拉木图',country:'KZ'}]};
+const update=draftResearchChanges(input,result,fixturePlan,{now});
 assert.deepEqual(update.queries.map(l=>[l.from,l.to]),[['伊宁','阿拉木图'],['乌鲁木齐','伊宁']]);
 assert.equal(update.scope.legs[0].mode,'plane');assert.deepEqual(update.retained,['北京→乌鲁木齐']);assert.equal(update.removed[0].from,'乌鲁木齐');assert.ok(update.queries.every(l=>l.mode==='unknown'),'新增路段不继承旧跨境巴士方式');
 const remove=draftResearchChanges({...input,candidate_id:null,conversation:result.conversation,research_scope:update.scope},{...result,conversation:{draft:{route:['北京','伊宁','阿拉木图']}}},{candidates:[]},{now});assert.equal(remove.queries.length,1);assert.equal(remove.queries[0].from,'北京');assert.ok(remove.retained.includes('伊宁→阿拉木图'));
@@ -30,7 +31,7 @@ assert.equal(transportSearchCovered([data.retrieval_id],{from:'伊宁',to:'阿�
 assert.equal(transportSearchEvidence([data.retrieval_id],{route:['北京','伊宁'],now}).length,0,'删除的路段资料不进入新路线');
 await assert.rejects(searchDraftChanges({queries:Array(3).fill({from:'北京',to:'伊宁',mode:'rail'})},search),/一至两段/);
 await assert.rejects(searchDraftChanges({queries:[{from:'北京',to:'伊宁',mode:'boat'}]},search),/字段/);
-await assert.rejects(searchDraftChanges({queries:[{from:'北京',to:'Beijing',mode:'rail'}]},search),/字段/);
+await assert.rejects(searchDraftChanges({places:[{name:'北京',name_latin:'Beijing'}],queries:[{from:'北京',to:'Beijing',mode:'rail'}]},search),/字段/,'任务内别名不能伪装成两个不同端点');
 const sanitized=await searchDraftChanges({queries:[{from:'伊宁',to:'阿拉木图',mode:'road',verified:true,price:1}]},search,{now,readPage:null,useCache:false});assert.ok(!Object.hasOwn(sanitized.segments[0].leg,'verified'),'查询回显不携带客户端自报的核实或价格字段');
 await assert.rejects(searchDraftChanges({queries:[{from:'北京',to:'伊宁',mode:'rail'}],window:'无效'},search),/时间窗/);
 const partial=await searchDraftChanges({queries:[{from:'伊宁',to:'阿拉木图',mode:'road'},{from:'相同',to:'相同',mode:'rail'}]},search).catch(e=>e);assert.ok(partial instanceof Error,'整批字段先校验，不先发出第一段查询');

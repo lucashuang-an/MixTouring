@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { conversationTurn, cleanConversation } from './lib/conversation.mjs';
-import {planAnywhere} from './lib/anywhere.mjs';
 const brief={origin:'北京',destination:'阿拉木图',summary:'慢游，城区与自然搭配',wishes:['不想每天赶路','只住同一家住宿'],open_questions:[]};
 const result=(over={})=>({reply:'先把城区和山景搭配起来。',brief,ready:true,confirmed:false,preferences:{experience:'balanced'},travel:{},constraints:{},...over});
 const draft={title:'阿拉木图慢游草案',overview:'以城区为落脚点',sections:[{title:'山景安排',content:'先考虑山景，另留城区散步时间。'}],pending:['往返接驳待查']};
@@ -27,10 +26,6 @@ const preparation=await conversationTurn({action:'prepare',conversation:legacy,m
 assert.equal(preparation.status,'ok');assert.deepEqual(preparation.routing,{origin:'北京',destination:'比什凯克'});
 assert.deepEqual(preparation.conversation.brief.wishes,legacy.brief.wishes);
 assert.equal(preparation.conversation.brief.destination,legacy.brief.destination,'旅行范围不丢，交通端点独立保存');
-let geocoded=false;
-const repairedPlan=await planAnywhere(preparation.routing,{callJson:async()=>null,searchWeb:async()=>null,osmSearch:async()=>{geocoded=true;return [];},env:{}});
-assert.equal(repairedPlan.intent.destination_place.name,'比什凯克');assert.equal(geocoded,false,'不再将整段描述送进开放地图核验');
-assert.ok(repairedPlan.candidates.length);
 const ambiguous=await conversationTurn({action:'prepare',conversation:{...legacy,brief:{...legacy.brief,destination:'吉尔吉斯斯坦'}},messages:[{role:'user',text:'城市还没定'}]},null,{model:async()=>({origin:'北京',destination:null,question:'想先抵达哪座城市？'})});
 assert.equal(ambiguous.status,'needs_intent');assert.equal(ambiguous.conversation.routing.destination,'');
 const placeFailure=await conversationTurn({action:'prepare',conversation:legacy},null,{model:async()=>null});

@@ -86,7 +86,7 @@ try{
   const ctrl=new AbortController();ctrl.abort();assert.equal((await readPublicPage('https://example.org/article',{resolve:publicResolve,signal:ctrl.signal})).reason_code,'cancelled');
 }finally{https.get=originalGet;}
 console.log('✓ 实际HTTP链路状态、非正文、登录验证、大小／超时、DNS固定与重定向边界通过');
-const dataset=JSON.parse(readFileSync(new URL('../pipeline/data/source-baseline-tasks.json',import.meta.url),'utf8')),now=Date.parse('2026-10-20T02:00Z');
+const dataset=JSON.parse(readFileSync(new URL('./fixtures/source-baseline-tasks.json',import.meta.url),'utf8')),now=Date.parse('2026-10-20T02:00Z');
 const fixture=await runSourceBaseline(dataset,{now,repeat:1,search:async(query,options)=>({status:'empty',results:[],attempts:[],elapsed_ms:1}),readPage:async()=>null});
 const right=structuredClone(fixture);right.run_id='右侧运行';right.provider='tavily';assert.equal(compareSourceBaselines(fixture,right).delta.domain_hit_queries,0);
 assert.equal(compareSourceBaselines(fixture,fixture).status,'same_run_replay');

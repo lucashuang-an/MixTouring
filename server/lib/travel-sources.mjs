@@ -47,8 +47,7 @@ export async function collectTravelSources({destination='',query='',question='',
   const directUrls=[...task.question.matchAll(/https?:\/\/[^\s<>"'（）()]+/gi)].map(m=>m[0].replace(/[.,，。!?！？;；]+$/,''))
     .map(value=>{try{return publicUrl(value).href;}catch{return null;}}).filter(Boolean).filter((value,i,all)=>all.indexOf(value)===i).slice(0,2);
   const topic=task.query || destination+' 旅行';
-  const aliases={'北京':'Beijing','乌鲁木齐':'Urumqi','伊宁':'Yining','阿拉木图':'Almaty','霍尔果斯':'Khorgos'};
-  const english=String(foreignQuery || topic).replace(/北京|乌鲁木齐|伊宁|阿拉木图|霍尔果斯/g,x=>aliases[x]);
+  const english=String(foreignQuery || topic);
   /* R1-A：任务查询计划——替代固定四/七平台展开，普通资料补充收敛到最多两次搜索；
    * 多域名合并到单条查询（Tavily include_domains restrict），语言与用途显式。 */
   const CN_COMMUNITY_DOMAINS = ['xiaohongshu.com', 'mafengwo.cn', 'qyer.com'];

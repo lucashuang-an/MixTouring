@@ -305,7 +305,7 @@ const store={};const posts=[];
 const loopRecord={status:'ok',stop_reason:'planner_done',task:{id:'research_loop_ui'},rounds:[{round:1,query:'北京 阿拉木图 航班',gain:1}],
   claims:[{sentence:'来源记载北京到阿拉木图开通直飞，本次日期仍待确认。',allowed_use:'source_reference',supports:[{source_id:'src_ui',quote:'来源记载北京到阿拉木图开通直飞。'}]}],
   evidence_sources:[{id:'src_ui',url:'https://example.gov.cn/notice',title:'公告',published_at:'2026-10-20'}],leads:[],reply:'来源记载北京到阿拉木图开通直飞，本次日期仍待确认。',evidence_gaps:[]};
-const env={console,JSON,Object,Array,Date,Error,Promise,Set,encodeURIComponent,decodeURIComponent,AbortController,
+const env={console,JSON,Object,Array,Date,Error,Promise,Set,encodeURIComponent,decodeURIComponent,AbortController,activePlan:null,
   MT:{esc:v=>String(v == null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),toast(){}},
   sessionStorage:{getItem:k=>store[k] ?? null,setItem(k,v){store[k]=String(v);},removeItem(k){delete store[k];}},
   guideMessages:[{role:'user',text:'北京到阿拉木图怎么走'}],guideSequence:1,
@@ -330,7 +330,9 @@ assert.ok(entryHtml.includes('继续核对缺口') && entryHtml.includes('跨境
 const bindings=item=>{const b=env.gapResearchBinding(item);return b?(b.task_type==='transport'?'交通补查 · '+b.leg.from+' → '+b.leg.to:'体验补查 · '+b.destination):'';};
 assert.equal(bindings('北京到昆明的交通方式、班次与乘车点'),'交通补查 · 北京 → 昆明','明确两端绑交通');
 assert.equal(bindings('昆明铁路博物馆当期开放时间'),'体验补查 · 昆明','场馆开放时间按语义绑体验，不因“铁路”二字绑交通');
-assert.equal(bindings('后续东南亚陆路段的跨境交通与班次'),'交通补查 · 北京 → 昆明','交通信号仍绑路段');
+assert.equal(bindings('后续东南亚陆路段的跨境交通与班次'),'','未确定的后续段不能绑定当前去程');
+for(const gap of ['昆明之后进入东南亚的跨境口岸与接驳','东南亚段具体城市与顺序','返程回北京的日期与交通方式','全程日期待定','昆明到北京的交通方式','各段实际耗时与费用','以曼谷为基地做一两次周边短途，铁路或大巴都可作为方向，班次、接驳与运营情况待查','跨境交通须有可核查来源及适用日期。'])
+  assert.equal(env.gapResearchBinding(gap),null,'阶段、方向或个人条件缺口须先澄清：'+gap);
 assert.equal(bindings('到昆明后用米轨漫步和铁路博物馆这类火车主题体验过渡'),'体验补查 · 昆明','纯体验建议绑目的地');
 const originalConversation=env.conversation,originalScope=env.taskScope;
 env.conversation={routing:{origin:'北京',destination:'曼谷'},draft:{route:['北京','昆明','曼谷'],pending:['昆明铁路博物馆开放时间','昆明与曼谷博物馆开放时间']}};
@@ -343,7 +345,7 @@ assert.equal(env.gapResearchBinding('昆明与曼谷博物馆开放时间'),null
 assert.equal(env.gapResearchBinding('交通方式待查'),null,'多条未锁定路段不能擅自选择第一段');
 assert.match(env.gapResearchHtml(false,true),/请先在对话中明确地点或路段/);
 env.conversation=originalConversation;env.taskScope=originalScope;
-let ran=env.runGapResearch('跨境交通须有可核查来源及适用日期。');
+let ran=env.runGapResearch('北京到昆明的交通方式与班次');
 const firstPost=posts.at(-1);firstPost.settled=true;firstPost.resolve({code:0,data:structuredClone(loopRecord)});
 await ran;
 assert.equal(posts[0].url,'/api/anywhere/research-loop');
@@ -358,7 +360,7 @@ env.cancelGapResearch();
 assert.equal(env.researchLoopState.record,null,'新输入或重置使旧补查结果失效');
 /* 取消后按任务身份找回部分结果 */
 env.abortOnRun=true;
-const cancelRun=env.runGapResearch('跨境交通须有可核查来源及适用日期。');
+const cancelRun=env.runGapResearch('北京到昆明的交通方式与班次');
 setTimeout(()=>env.researchLoopState.controller.abort(),0);
 await cancelRun;
 assert.equal(posts.at(-1).url,'/api/anywhere/research-loop-status','取消后按任务身份找回部分结果');
@@ -366,10 +368,10 @@ assert.equal(env.researchLoopState.record.stop_reason,'cancelled');
 assert.ok(env.rendered.includes('已取消'));
 /* 旧请求隔离（复审 P2-7）：取消旧任务再启动新任务，旧请求回写不得干扰新任务。 */
 env.abortOnRun=false;
-const stale=env.runGapResearch('后续东南亚陆路段的跨境交通与班次');
+const stale=env.runGapResearch('北京到昆明的列车班次');
 env.cancelGapResearch();
 const live=env.runGapResearch('北京到昆明的交通方式、班次与乘车点');
-const stalePost=posts.find(p=>p.body && p.body.gap && p.body.gap.includes('跨境交通与班次') && p.url==='/api/anywhere/research-loop' && !p.settled);
+const stalePost=posts.find(p=>p.body && p.body.gap && p.body.gap.includes('列车班次') && p.url==='/api/anywhere/research-loop' && !p.settled);
 const livePost=posts.at(-1);
 stalePost.settled=true;
 stalePost.reject(Object.assign(new Error('aborted'),{name:'AbortError'}));

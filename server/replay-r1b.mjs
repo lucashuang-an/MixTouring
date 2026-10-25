@@ -9,7 +9,7 @@ import {conversationTurn} from './lib/conversation.mjs';
 import {readPublicPage} from './lib/public-reader.mjs';
 import {composeJson,searchWebDetailed} from './lib/llm.mjs';
 import {tavilyConfigured} from './lib/search-tavily.mjs';
-const dataset=JSON.parse(readFileSync(new URL('../pipeline/data/source-baseline-tasks.json',import.meta.url),'utf8'));
+const dataset=JSON.parse(readFileSync(new URL('./fixtures/source-baseline-tasks.json',import.meta.url),'utf8'));
 if(!tavilyConfigured())throw Error('Tavily未配置，不能将未配置记作无结果');
 const output=resolve(process.env.R1B_REPLAY_OUT || join(tmpdir(),'mixtouring-r1b-live.json'));
 const frozen=process.env.R1B_NOW?Date.parse(process.env.R1B_NOW):Date.now();

@@ -1,334 +1,30 @@
-/* index.mjs · MixTouring Phase 1 薄后端（原生 Koa）
- * 架构（AGENTS §6.2）：存储层 plans.json → 双校验 → derive.buildServiceDB 服务层派生
- * 接口形状 = mixtouring-hifi/assets/mock.js 的 DB 形状（API 响应契约）
- * 与 api.js 桩注释的映射：/api/routes/:routeId ≙ /api/plans?from=&to=（route_id = `${from}-${to}`）；
- * /api/item/:id ≙ /api/items/:id；/api/cities 合并入 /api/bootstrap（search 页同步渲染约束） */
+/* 搜索驱动的旅行Agent服务；无预置地点、方案或离线生成器。 */
 import Koa from 'koa';
-import { PassThrough } from 'node:stream';
-import { readFileSync, existsSync, statSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join, normalize, sep } from 'node:path';
-import { buildServiceDB, reverseRoute } from '../pipeline/lib/derive.mjs';
-import { enrichWithGeo } from '../pipeline/lib/geo-skill.mjs';
-import { validateStore } from '../pipeline/lib/validate-ai-copy.mjs';
-import { validateStorePlans } from '../pipeline/lib/validate-plan.mjs';
-import { parseTrip } from './lib/parse.mjs';
-import { answerAsk, suggestWish } from './lib/qa.mjs';
-import { addWish, listWishes, removeWish } from './lib/wishlist.mjs';
-import { llmConfigured, llmModel } from './lib/llm.mjs';
-import { parseTripIntent, searchTripStrategies, buildVerificationChecklist, resolveRoute, capabilities, webSearchConfigured } from './lib/trip-service.mjs';
-import { planAnywhere } from './lib/anywhere.mjs';
-import { registerJourneyPlan, journeyDetailFromPlanId, guidePlanFromId } from './lib/journey.mjs';
-import { webSearchStatus } from './lib/llm.mjs';
-import { parseGuideTurn } from './lib/guide.mjs';
-import { conversationTurn } from './lib/conversation.mjs';
-import { buildRouteComparison } from './lib/route-comparison.mjs';
-import { researchSelectedRoute } from './lib/route-research.mjs';
-import { draftResearchChanges,searchDraftChanges } from './lib/draft-research.mjs';
-import { createRequestSignal } from './lib/request-signal.mjs';
-import { routeTransportReferences } from './lib/transport-references.mjs';
-import { searchTransportSources,resolveTransportSearch } from './lib/transport-search.mjs';
-import { runResearchLoop,resolveResearchLoop } from './lib/research-loop.mjs';
-import {searchWeb} from './lib/llm.mjs';
-import planningGuide from '../mixtouring-hifi/assets/trip-guide.js';
-import { sightCatalog, compareSights } from './lib/sights.mjs';
-import { progressivePlan } from './lib/progressive.mjs';
-import { listInspirations } from './lib/inspirations.mjs';
-
-const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const PORT = Number(process.env.PORT) || 3000;
-
-/* Trip 目的地词典（v0.26.3 复审①：国际/偏远 OD 不在方案库 25 城——数据驱动扩展，识别不到仍待确认） */
-const TRIP_CITIES = (() => {
-  try { return JSON.parse(readFileSync(join(root, 'pipeline/data/trips/trip-cities.json'), 'utf8')).cities || []; }
-  catch (err) { console.error('✗ trip-cities.json 加载失败（Trip 解析将无扩展词典）：' + err.message); return []; }
-})();
-
-/* ---------- 存储层装载 + 双校验（fail fast）+ 热重载（离线管道写回后无需重启） ---------- */
-const PLANS_PATH = join(root, 'pipeline/data/plans.json');
-let plansMtime = 0;
-
-function loadDB() {
-  const store = JSON.parse(readFileSync(PLANS_PATH, 'utf8'));
-  const errors = [...validateStorePlans(store), ...validateStore(store)];
-  if (errors.length) throw new Error('方案库校验未通过：' + errors[0]);
-  plansMtime = statSync(PLANS_PATH).mtimeMs;
-  return enrichWithGeo(buildServiceDB(store));
-}
-
-let db;
-try {
-  db = loadDB();
-} catch (err) {
-  console.error('✗ ' + err.message + '，服务拒绝启动');
-  process.exit(1);
-}
-
-/* mtime 变化即整库重载（装载 + 双校验 + 派生）；新库校验不过时沿用旧库并跳过该版本 */
-function maybeReload() {
-  let mtime;
-  try { mtime = statSync(PLANS_PATH).mtimeMs; } catch { return; }
-  if (mtime === plansMtime) return;
-  try {
-    db = loadDB();
-    console.log('✓ plans.json 变更，方案库已热重载');
-  } catch (err) {
-    console.error('✗ 热重载失败，沿用旧库：' + err.message);
-    plansMtime = mtime;
-  }
-}
-
-const planCount = Object.values(db.routes).reduce((n, r) => n + r.plans.length, 0);
-console.log(`✓ 方案库已装载：${db.cities.length} 城市 · ${Object.keys(db.routes).length} 路线对 · ${planCount} 方案 · ${db.templates.length} 模板`);
-
-/* 时令窗口（v0.20.0 用户裁决：搜索落淡季 → 如实告知直飞/直达列车更优）。
- * 数据由天巡月度日历派生（pipeline/data/seasonality.json），随边库扩展而扩展 */
-const SEASONALITY = JSON.parse(readFileSync(join(root, 'pipeline/data/seasonality.json'), 'utf8')).routes;
-
-function seasonAdvice(routeId, month) {
-  const s = SEASONALITY[routeId] || SEASONALITY[routeId.split('-').reverse().join('-')];
-  if (!s) return null;
-  if (s.cheap_months.includes(month)) {
-    /* 不引用库内直飞基准数字（v0.18.5 已证虚高 1.5–3 倍），只做关系性表述 */
-    return {
-      verdict: 'off', month,
-      advice: `${month} 月处于这条线的低价窗口：直飞或直达列车通常更划算，混搭组合未必省钱，出行前请按分段信息自行比价`
-    };
-  }
-  if (s.peak_months.includes(month)) {
-    return {
-      verdict: 'peak', month,
-      advice: `${month} 月为这条线旺季（直飞价格通常走高），混搭组合此时更有优势，建议尽早比价锁定`
-    };
-  }
-  return { verdict: 'shoulder', month, advice: '' };
-}
-
-function findItem(id) {
-  for (const key in db.routes) {
-    const hit = db.routes[key].plans.find((p) => p.id === id);
-    if (hit) return hit;
-  }
-  return db.templates.find((t) => t.id === id) || null;
-}
-
-/* Phase 1 反馈仅内存接收（无账号体系，前端以 localStorage 为准），落盘后置 */
-const feedbackInbox = [];
-
-const app = new Koa();
-
-/* 统一错误兜底：任何异常都以 {code:1} 信封返回，不让前端拿到 HTML 错误页 */
-app.use(async (ctx, next) => {
-  try {
-    await next();
-  } catch (err) {
-    console.error('✗ ' + ctx.method + ' ' + ctx.path + '：', err.message);
-    ctx.status = 500;
-    ctx.body = { code: 1, msg: '服务内部错误' };
-  }
-});
-
-/* ---------- API 路由（含 /healthz 健康检查） ---------- */
-app.use(async (ctx, next) => {
-  if (!ctx.path.startsWith('/api/') && ctx.path !== '/healthz') return next();
-  ctx.type = 'application/json; charset=utf-8';
-  const path = ctx.path;
-  const q = ctx.query;
-
-  /* GET /healthz → 部署平台健康检查（不触发重载，只探活） */
-  if (path === '/healthz') {
-    ctx.body = { status: 'ok', wishes: listWishes().length };
-    return;
-  }
-
-  /* GET /api/bootstrap → 全量服务层 DB（api.js 预取后原地改写 window.DB） */
-  if (path === '/api/bootstrap') {
-    maybeReload();
-    ctx.body = { code: 0, data: { cities: db.cities, routes: db.routes, templates: db.templates } };
-    return;
-  }
-
-  /* ---------- 心愿队列（Phase 3）：登记 → 离线管道生成 → 三重守门写回 → 状态回流 ---------- */
-
-  /* GET /api/wishlist → 服务端心愿队列状态 */
-  if (path === '/api/wishlist' && ctx.method === 'GET') {
-    maybeReload();
-    ctx.body = { code: 0, data: listWishes() };
-    return;
-  }
-
-  /* POST /api/wishlist { from, to, date? } → 登记心愿（同路线未完成登记幂等去重）。
-   * 采集执行走离线 AI 工厂（§6.2），此处只入队不做在线生成 */
-  if (path === '/api/wishlist' && ctx.method === 'POST') {
-    const body = await readBody(ctx);
-    const out = addWish({ from: body.from, to: body.to, date: body.date });
-    if (out.error) { ctx.body = { code: 1, msg: out.error }; return; }
-    ctx.body = { code: 0, data: { ...out.item, deduped: !!out.deduped } };
-    return;
-  }
-
-  /* DELETE /api/wishlist/:id → 移除心愿（队列管理：清理误登记） */
-  if (path.startsWith('/api/wishlist/') && ctx.method === 'DELETE') {
-    const id = decodeURIComponent(path.slice('/api/wishlist/'.length));
-    ctx.body = removeWish(id) ? { code: 0 } : { code: 1, msg: '心愿不存在：' + id };
-    return;
-  }
-
-  /* POST /api/wishlist/process → 触发采集执行器（后台 detached 子进程，不阻塞服务）
-   * body { run:true } 全量执行；{ run:true, id } 只处理指定心愿（搜索页/结果页「无数据即起采集」用）；
-   * 缺省只报数（verify/前端探测用，避免误触发 LLM 消耗） */
-  if (path === '/api/wishlist/process' && ctx.method === 'POST') {
-    const pendingCount = listWishes().filter((w) => w.status === 'pending' && (w.attempts || 0) < 3).length;
-    const body = await readBody(ctx);
-    if (body.run !== true) {
-      ctx.body = { code: 0, data: { accepted: false, pending: pendingCount } };
-      return;
-    }
-    if (!llmConfigured()) { ctx.body = { code: 1, msg: 'LLM_API_KEY 未配置，采集执行器不可用' }; return; }
-    const targetId = typeof body.id === 'string' ? body.id : null;
-    if (targetId) {
-      const w = listWishes().find((x) => x.id === targetId);
-      if (!w) { ctx.body = { code: 1, msg: '心愿不存在：' + targetId }; return; }
-      if ((w.attempts || 0) >= 3) {
-        ctx.body = { code: 0, data: { accepted: false, note: '该路线此前多次采集未获合格方案，已转人工评估' } };
-        return;
-      }
-      if (w.status === 'processing') {
-        ctx.body = { code: 0, data: { accepted: false, collecting: true, note: '该心愿正在采集中' } };
-        return;
-      }
-      const { spawn } = await import('node:child_process');
-      const child = spawn(process.execPath, [join(root, 'pipeline/collect-wish.mjs'), '--wish', targetId], {
-        cwd: root, detached: true, stdio: 'ignore'
-      });
-      child.unref();
-      console.log(`▶ 采集执行器已后台启动（PID ${child.pid}，指定心愿 ${w.from} → ${w.to}）`);
-      ctx.body = { code: 0, data: { accepted: true, pending: 1 } };
-      return;
-    }
-    if (!pendingCount) { ctx.body = { code: 0, data: { accepted: false, pending: 0, note: '无可处理心愿' } }; return; }
-    const { spawn } = await import('node:child_process');
-    const child = spawn(process.execPath, [join(root, 'pipeline/collect-wish.mjs'), '--all'], {
-      cwd: root, detached: true, stdio: 'ignore'
-    });
-    child.unref();
-    console.log(`▶ 采集执行器已后台启动（PID ${child.pid}，pending ${pendingCount}）`);
-    ctx.body = { code: 0, data: { accepted: true, pending: pendingCount } };
-    return;
-  }
-
-  /* GET /api/parse?q= → 自然语言行程解析（Phase 2 · 触点①，规则版闭环，注入 key 后切 LLM）
-   * 返回 { from, to, date, conf, engine, note }；识别不到的字段为 null，绝不编造 */
-  if (path === '/api/parse') {
-    const query = qstr(q.q);
-    if (!query) { ctx.body = { code: 1, msg: '缺少 q 参数' }; return; }
-    const parsed = await parseTrip(query, db.cities);
-    ctx.body = { code: 0, data: { ...parsed, llm: llmConfigured(), model: llmModel() } };
-    return;
-  }
-
-  /* GET /api/ask?q=&collect=1 → 站内问答（Phase 2 · 触点③，grounded：答案数字必须来自库内数据）
-   * 返回 { answer, refs, engine, model, followUp? }；refs 为引用的方案 id，前端渲染成详情跳转。
-   * collect=1（前端问答带此参）：缺数据且能识别双城时，自动登记心愿并后台触发采集执行器
-   * （两步流：①查库 ②缺→进 AI 生成环节）；verify/CI 不带此参，零副作用 */
-  if (path === '/api/ask') {
-    const query = qstr(q.q);
-    if (!query) { ctx.body = { code: 1, msg: '缺少 q 参数' }; return; }
-    try {
-      const out = await answerAsk(query, db);
-      let followUp = null;
-      if (q.collect === '1') {
-        const sug = suggestWish(query, db);
-        if (sug) {
-          const added = addWish({ from: sug.from, to: sug.to, date: '' });
-          if (added.item) {
-            const w = listWishes().find((x) => x.id === added.item.id);
-            followUp = {
-              wishRegistered: true, wishId: w.id, from: sug.from, to: sug.to,
-              deduped: !!added.deduped, collecting: false
-            };
-            const exhausted = (w.attempts || 0) >= 3;
-            if (exhausted) {
-              followUp.note = '该路线此前多次采集未获合格方案，已转人工评估';
-            } else if (w.status === 'processing') {
-              followUp.collecting = true; /* 已在采集（重复问同一路线），前端直接附实时进度 */
-            } else if (llmConfigured()) {
-              const { spawn } = await import('node:child_process');
-              const child = spawn(process.execPath, [join(root, 'pipeline/collect-wish.mjs'), '--wish', w.id], {
-                cwd: root, detached: true, stdio: 'ignore'
-              });
-              child.unref();
-              followUp.collecting = true;
-              console.log(`▶ 问答衔接采集：${sug.from} → ${sug.to}（${w.id}，PID ${child.pid}）`);
-            } else {
-              followUp.note = '已登记，采集服务未配置（LLM_API_KEY 缺失）';
-            }
-          }
-        }
-      }
-      ctx.body = { code: 0, data: { ...out, followUp, model: out.engine === 'llm' ? llmModel() : 'rule' } };
-    } catch (err) {
-      console.error('✗ /api/ask：' + err.message);
-      ctx.body = { code: 0, data: { answer: '问答服务出了点问题，请稍后再试。', refs: [], engine: 'rule', model: 'rule' } };
-    }
-    return;
-  }
-
-  /* ---------- Solo Trip v1.2 行程级契约（G1 收尾：探索与核验助手范围，旧七页接口不动） ---------- */
-
-  /* POST /api/trip/parse {text} → 一句话行程意图（OD/往返/人数；缺字段进 needs_confirmation，不猜）
-   * v0.29.0 决策③：响应附 route_type（确定性国内/国际路由，由地点词典判定；未收录 → needs_confirmation） */
-  if (path === '/api/trip/parse' && ctx.method === 'POST') {
-    const body = await readBody(ctx);
-    if (!body.text || !String(body.text).trim()) { ctx.body = { code: 1, msg: '缺少 text' }; return; }
-    const out = await parseTripIntent(String(body.text), db.cities, TRIP_CITIES);
-    out.route = out.query.origin && out.query.destination
-      ? resolveRoute(out.query.origin, out.query.destination)
-      : { route_type: 'needs_confirmation' };
-    ctx.body = { code: 0, data: out };
-    return;
-  }
-
-  /* POST /api/trip/route {origin,destination} → 确定性国内/国际路由（决策③；两字段入口分流用） */
-  if (path === '/api/trip/route' && ctx.method === 'POST') {
-    const body = await readBody(ctx);
-    ctx.body = { code: 0, data: resolveRoute(body.origin, body.destination) };
-    return;
-  }
-
-  /* GET /api/capabilities → 服务端能力声明（决策⑤ + v0.31.0 P1-4：configured 与最近真实状态分开，不泄露凭据） */
-  if (path === '/api/capabilities' && ctx.method === 'GET') {
-    ctx.body = { code: 0, data: capabilities(llmConfigured(), webSearchConfigured(process.env).configured, webSearchStatus().status) };
-    return;
-  }
-
-  /* POST /api/trip/search → 行程查询（探索与核验助手：返回证据状态 + 下一步，不承诺指定日比较） */
-  if (path === '/api/trip/search' && ctx.method === 'POST') {
-    const body = await readBody(ctx);
-    ctx.body = { code: 0, data: searchTripStrategies({
-      origin: body.origin, destination: body.destination,
-      trip_type: body.trip_type || 'pending',
-      outbound_window: body.outbound_window || null,
-      return_window: body.return_window || null,
-      traveler_count: body.traveler_count ?? 1,
-      currency: body.currency || 'CNY'
-    }) };
-    return;
-  }
-
-  /* POST /api/trip/checklist {query, strategy_id} → 从服务端样本策略生成逐段核验清单 */
-  if (path === '/api/trip/checklist' && ctx.method === 'POST') {
-    const body = await readBody(ctx) || {};
-    const result = searchTripStrategies(body.query);
-    const strategy = result.strategies.find((item) => item.id === body.strategy_id);
-    if (!strategy) { ctx.body = { code: 1, msg: '策略不存在或已失效，请重新检索' }; return; }
-    ctx.body = { code: 0, data: buildVerificationChecklist(strategy) };
-    return;
-  }
-
-  /* POST /api/anywhere/plan → G2.5 任意地点规划（首卡：地点识别 + 约束 chips + 三类纯交通假设骨架 + 逐段取证/降级）
-   * 防幻觉契约：候选一律 candidate_hypothesis，无未取证数字；web_search 不可用时明确降级为探索态 */
-  if (path === '/api/anywhere/plan' && ctx.method === 'POST') {
+import {PassThrough} from 'node:stream';
+import {readFileSync,existsSync,statSync} from 'node:fs';
+import {fileURLToPath} from 'node:url';
+import {dirname,join,normalize,sep,resolve} from 'node:path';
+import {composeConfigured,webSearchStatus,searchWeb} from './lib/llm.mjs';
+import {capabilities,webSearchConfigured} from './lib/trip-service.mjs';
+import {registerJourneyPlan,journeyDetailFromPlanId,guidePlanFromId} from './lib/journey.mjs';
+import {conversationTurn} from './lib/conversation.mjs';
+import {buildRouteComparison} from './lib/route-comparison.mjs';
+import {researchSelectedRoute} from './lib/route-research.mjs';
+import {draftResearchChanges,searchDraftChanges} from './lib/draft-research.mjs';
+import {createRequestSignal} from './lib/request-signal.mjs';
+import {searchTransportSources,resolveTransportSearch} from './lib/transport-search.mjs';
+import {runResearchLoop,resolveResearchLoop} from './lib/research-loop.mjs';
+import {progressivePlan} from './lib/progressive.mjs';
+const root=join(dirname(fileURLToPath(import.meta.url)),'..');
+const PORT=Number(process.env.PORT) || 3000;
+export const app=new Koa();
+app.use(async(ctx,next)=>{try{await next();}catch(error){console.error('✗ 请求失败：'+error.message);ctx.status=500;ctx.body={code:1,msg:'服务内部错误'};}});
+export async function apiRouter(ctx,next){
+  if(!ctx.path.startsWith('/api/') && ctx.path!=='/healthz')return next();
+  ctx.type='application/json; charset=utf-8';const path=ctx.path;
+  if(path==='/healthz'){ctx.body={status:'ok'};return;}
+  if(path==='/api/capabilities'){ctx.body={code:0,data:capabilities(composeConfigured(),webSearchConfigured().configured,webSearchStatus().status)};return;}
+  if (['/api/anywhere/plan','/api/anywhere/search-plan'].includes(path) && ctx.method === 'POST') {
     const body = await readBody(ctx);
     if (!body || (!String(body.text || '').trim() && !String(body.origin || '').trim() && !String(body.destination || '').trim())) {
       ctx.body = { code: 1, msg: '缺少 text 或 origin/destination' };
@@ -340,25 +36,22 @@ app.use(async (ctx, next) => {
       ctx.set('Cache-Control', 'no-store');
       ctx.body = stream;
       ctx.res.once('close', () => controller.abort());
-      progressivePlan(body, (data, phase) => {
+      const planner=progressivePlan;
+      planner(body, (data, phase) => {
         if (controller.signal.aborted) return;
-        if (data.candidates.length || (data.intent?.origin_place && data.intent?.destination_place)) data.plan_id = registerJourneyPlan(data);
+        if (data.candidates.length || data.anchors?.full_cover || data.planning_mode!=='search_first' && (data.intent?.origin_place && data.intent?.destination_place)) data.plan_id = registerJourneyPlan(data);
         stream.write(JSON.stringify({ code: 0, phase, data }) + '\n');
       }, {}, controller.signal).catch(() => {
         if (!controller.signal.aborted) stream.write(JSON.stringify({ code: 1, msg: '补充搜索未完成，已有走法仍可查看' }) + '\n');
       }).finally(() => stream.end());
       return;
     }
-    const data = await planAnywhere(body);
-    if (data.candidates.length || (data.intent?.origin_place && data.intent?.destination_place)) data.plan_id = registerJourneyPlan(data);
+    const data = await progressivePlan(body,()=>{}, {},createRequestSignal(ctx.req,ctx.res));
+    if (data.candidates.length || data.anchors?.full_cover || data.planning_mode!=='search_first' && (data.intent?.origin_place && data.intent?.destination_place)) data.plan_id = registerJourneyPlan(data);
     ctx.body = { code: 0, data };
     return;
   }
 
-  if (path === '/api/inspirations' && ctx.method === 'GET') {
-    ctx.body = { code: 0, data: listInspirations() };
-    return;
-  }
   if (path === '/api/anywhere/compare' && ctx.method === 'POST') {
     const body=await readBody(ctx) || {},plan=guidePlanFromId(body.plan_id);
     ctx.body=plan?{code:0,data:buildRouteComparison(plan,{preferences:body.preferences,requirements:body.requirements,constraints:body.constraints,travel:body.travel,retrieval_ids:body.retrieval_ids,current_route:body.current_route})}:{code:1,msg:'路线比较已过期，请重新发现走法'};
@@ -379,16 +72,10 @@ app.use(async (ctx, next) => {
     catch(error){ctx.body={code:1,msg:error.message};}
     return;
   }
-  if (path === '/api/anywhere/transport-references' && ctx.method === 'POST') {
-    const body=await readBody(ctx) || {};
-    try {ctx.body={code:0,data:routeTransportReferences(body.route,Date.now(),body.window || null)};}
-    catch(error){ctx.body={code:1,msg:error.message};}
-    return;
-  }
   if (path === '/api/anywhere/transport-search' && ctx.method === 'POST') {
     const signal = createRequestSignal(ctx.req, ctx.res);
     const body=await readBody(ctx) || {};
-    try{ctx.body={code:0,data:await searchTransportSources({from:body.from,to:body.to,window:body.window,mode:body.mode,exclude_road:body.exclude_road},searchWeb,{signal})};}
+    try{ctx.body={code:0,data:await searchTransportSources({from:body.from,to:body.to,window:body.window,mode:body.mode,exclude_road:body.exclude_road,places:body.places},searchWeb,{signal})};}
     catch(error){ctx.body={code:1,msg:error.message};}
     return;
   }
@@ -418,25 +105,6 @@ app.use(async (ctx, next) => {
     catch(error){ctx.body={code:1,msg:error.message};}
     return;
   }
-  if (path === '/api/anywhere/guide' && ctx.method === 'POST') {
-    const body = await readBody(ctx) || {};
-    ctx.body = { code: 0, data: parseGuideTurn(body.text, Date.now(), guidePlanFromId(body.plan_id), body.candidate_id, {preferences:body.preferences,sights:body.sights,sight_requested:body.sight_requested,destination:body.destination}) };
-    return;
-  }
-
-  /* 卡 C：来源由服务端目录提供；显式 anchors/constraints 为完整个人快照，省略时才回查 plan_id。 */
-  if (path === '/api/anywhere/sights' && ctx.method === 'POST') {
-    const body = await readBody(ctx) || {};
-    const plan = guidePlanFromId(body.plan_id);
-    ctx.body = { code: 0, data: { catalog: sightCatalog(), comparison: compareSights({
-      state: body.state, relevant:planningGuide.sightRelevant(plan,body.sight_requested===true?'伊犁':body.destination) || (!plan && !body.destination),
-      destination:Object.prototype.hasOwnProperty.call(body,'destination')?body.destination:plan?.intent?.destination_place?.name,
-      anchors:Object.prototype.hasOwnProperty.call(body,'anchors')?body.anchors:plan?.anchors,
-      constraints:Object.prototype.hasOwnProperty.call(body,'constraints')?body.constraints:plan?.intent?.constraints
-    }) } };
-    return;
-  }
-
   /* G3：根据服务端保存的规划生成探索详情；客户端仅提交 plan_id、candidate_id 与停留晚数。 */
   if (path === '/api/anywhere/journey' && ctx.method === 'POST') {
     const body = await readBody(ctx) || {};
@@ -448,57 +116,9 @@ app.use(async (ctx, next) => {
     return;
   }
 
-  /* GET /api/plans?from&to&date → { direct, plans[], season? }（date 参数 v0.20.0 起消费于时令判定）
-   * P1.7：A-B 无数据时回落 B-A 并反转展示；season 仅在带合法 date 且落在淡/旺季时附加（verify 契约不变） */
-  if (path === '/api/plans') {
-    let route = db.routes[q.from + '-' + q.to];
-    if (!route && q.from && q.to) {
-      const rev = db.routes[q.to + '-' + q.from];
-      if (rev) route = reverseRoute(rev, q.from, q.to);
-    }
-    /* 浅拷贝再附加 season——db.routes 是进程级缓存对象，直接挂字段会污染后续所有响应（含 /api/bootstrap） */
-    const data = route ? { ...route } : { direct: null, plans: [] };
-    const dm = /^(\d{4})\/(\d{2})/.exec(q.date || '');
-    if (dm && route) {
-      /* 节假日出行（v0.22.0）：显式高峰标记，直接按旺季口径给建议 */
-      const season = q.holiday === '1'
-        ? { verdict: 'peak', month: Number(dm[2]), advice: '节假日为出行高峰（直飞价格通常显著走高），混搭组合更有优势，票源也更为紧张，建议尽早比价锁定' }
-        : seasonAdvice(q.from + '-' + q.to, Number(dm[2]));
-      if (season && season.advice) data.season = season;
-    }
-    ctx.body = { code: 0, data };
-    return;
-  }
-
-  /* GET /api/templates?region → Template[]（region 为空或「全部」时不过滤） */
-  if (path === '/api/templates') {
-    const region = q.region;
-    const list = (!region || region === '全部')
-      ? db.templates.slice()
-      : db.templates.filter((t) => t.region === region);
-    ctx.body = { code: 0, data: list };
-    return;
-  }
-
-  /* GET /api/items/:id → Plan|Template|null */
-  if (path.startsWith('/api/items/')) {
-    const id = decodeURIComponent(path.slice('/api/items/'.length));
-    ctx.body = { code: 0, data: findItem(id) };
-    return;
-  }
-
-  /* POST /api/feedback { id, cost, time, note } → { code } */
-  if (path === '/api/feedback' && ctx.method === 'POST') {
-    const chunk = await readBody(ctx);
-    feedbackInbox.push({ received_at: new Date().toISOString(), ...chunk });
-    ctx.body = { code: 0 };
-    return;
-  }
-
-  ctx.status = 404;
-  ctx.body = { code: 1, msg: '接口不存在：' + path };
-});
-
+  ctx.status=410;ctx.body={code:1,msg:'此旧接口已退役，请使用旅行对话与搜索规划。'};
+}
+app.use(apiRouter);
 function readBody(ctx) {
   return new Promise((resolve) => {
     let raw = '';
@@ -540,7 +160,4 @@ app.use(async (ctx, next) => {
   ctx.body = readFileSync(file);
 });
 
-app.listen(PORT, () => {
-  console.log(`✓ MixTouring Phase 1 后端已启动：http://localhost:${PORT}`);
-  console.log('  七页入口：http://localhost:' + PORT + '/index.html');
-});
+if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url))app.listen(PORT,()=>console.log('✓ MixTouring旅行Agent已启动：http://localhost:'+PORT));

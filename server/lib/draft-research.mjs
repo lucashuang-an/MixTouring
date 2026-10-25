@@ -1,5 +1,4 @@
 /* 草案变化只产生资料查询任务，不生成交通候选或已核实事实。 */
-import {resolvePlace} from './anywhere.mjs';
 import {retrievalContext,sourceWindow} from './source-time.mjs';
 import {searchTransportSources,transportSearchCovered,discardTransportSearch} from './transport-search.mjs';
 const modes=new Set(['plane','rail','road']);
@@ -36,7 +35,7 @@ export function draftResearchChanges(input,data,plan,{now=Date.now()}={}){
   const changed=scope.legs.filter(l=>!l.locked && (windowChanged || verificationChanged || !previous.legs.some(old=>edgeKey(old)===edgeKey(l) && old.mode===l.mode && old.exclude_road===l.exclude_road && old.locked===l.locked)));
   const initialChosen=input.action==='generate' && !before.draft && input.requested_candidate_id;
   const pending=initialChosen?[]:changed.filter(l=>!transportSearchCovered(input.retrieval_ids,{...l,window:scope.window,now}));
-  const cross=l=>{const a=resolvePlace(l.from),b=resolvePlace(l.to);return a?.country && b?.country && a.country!==b.country;};
+  const cross=l=>{const p=plan?.places || [];const a=p.find(p=>p.name===l.from),b=p.find(p=>p.name===l.to);return a?.country && b?.country && a.country!==b.country;};
   const ordered=pending.map((l,i)=>({...l,order:i})).sort((a,b)=>Number(!!cross(b))-Number(!!cross(a)) || a.order-b.order).map(({order,...l})=>l);
   return {scope,queries:ordered.slice(0,2),remaining:ordered.slice(2),removed:previous.legs.filter(l=>!scope.legs.some(n=>edgeKey(n)===edgeKey(l))),retained:scope.legs.filter(l=>!changed.includes(l)).map(edgeKey)};
 }
@@ -46,14 +45,16 @@ export async function searchDraftChanges(input,search,options={}){
   const window=sourceWindow(input.window);
   if(input.window!=null && !window)throw Error('资料查询时间窗无效');
   const seen=new Set(),clean=[];
+  const places=Array.isArray(input.places)?input.places.filter(p=>typeof p?.name==='string' && p.name.length<=80).slice(0,24):[];
+  const nameOf=value=>places.find(p=>p.name===value || p.name_latin===value)?.name || value.trim();
   for(const q of queries){
     if(!q || [q.from,q.to].some(v=>typeof v!=='string' || !v.trim() || v.length>80) || !['unknown',...modes].includes(q.mode) || q.exclude_road!=null && typeof q.exclude_road!=='boolean')throw Error('交通查询字段无效');
-    const leg={from:resolvePlace(q.from)?.name || q.from.trim(),to:resolvePlace(q.to)?.name || q.to.trim(),mode:q.mode,exclude_road:q.exclude_road===true};
+    const leg={from:nameOf(q.from),to:nameOf(q.to),mode:q.mode,exclude_road:q.exclude_road===true};
     if(leg.from===leg.to)throw Error('交通查询字段无效');
     const key=edgeKey(leg)+'|'+leg.mode;if(seen.has(key))throw Error('请勿重复查询相同路段');seen.add(key);clean.push(leg);
   }
   const lookup=options.lookup || searchTransportSources;
-  const settled=await Promise.allSettled(clean.map(q=>lookup({...q,window},search,options)));
+  const settled=await Promise.allSettled(clean.map(q=>lookup({...q,window,places},search,options)));
   const completed=settled.filter(r=>r.status==='fulfilled').map(r=>r.value);
   if(options.signal?.aborted){discardTransportSearch(completed.map(d=>d.retrieval_id));throw Error('请求已取消，本轮补查未采用');}
   return {segments:settled.map((r,i)=>({leg:clean[i],status:r.status==='fulfilled'?'complete':'failed',data:r.status==='fulfilled'?r.value:null})),verified:false,note:'仅补查变化路段的资料；未升级为已核实交通。'};

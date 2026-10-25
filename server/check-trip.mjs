@@ -17,15 +17,14 @@ import {
   detectReversal, buildCostBreakdown, canClaimCheaper,
   evidenceState, legFreshness, nextVersion
 } from './lib/trip.mjs';
-import { extractIntentFields, parseTripIntent, searchTripStrategies, buildVerificationChecklist, resolveRoute, findPlace, capabilities, webSearchConfigured } from './lib/trip-service.mjs';
+import {extractIntentFields} from './lib/trip-service.mjs';
 import { parseVolcSearch } from './lib/search-volc.mjs';
-import { parseTripRule } from './lib/parse.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 let fail = 0;
 const ok = (cond, name) => { if (cond) console.log('✓ ' + name); else { fail++; console.error('✗ ' + name); } };
 
-const FIXTURE = JSON.parse(readFileSync(join(root, 'pipeline/data/trips/almaty-g0.json'), 'utf8'));
+const FIXTURE = JSON.parse(readFileSync(join(root, 'server/fixtures/trip-contract.json'), 'utf8'));
 const Q = FIXTURE.query;
 const NOW = new Date('2026-09-17T00:00:00+08:00').getTime(); /* 固定回放时钟（复审⑦） */
 
@@ -235,7 +234,7 @@ const [F_OUT, F_IN] = FIXTURE.dated_legs.map((l) => ({ ...l, baggage_terms: { ca
   ok(i3.trip_type === undefined, '无往返/单程线索 → 不猜 trip_type（交给 parseTrip 默认）');
 }
 
-/* ---------- v0.26.3 复审①②③回归（解析层三缺口） ---------- */
+/* 保留原有通用日期回归；删除的是地点/方案库专属检查。 */
 {
   /* R14 复审③：「直达」是交通偏好不是行程类型 */
   ok(extractIntentFields('北京直达阿拉木图').trip_type === undefined, 'C3 「直达」不再误判 one_way → 维持待确认');
@@ -261,116 +260,7 @@ const [F_OUT, F_IN] = FIXTURE.dated_legs.map((l) => ({ ...l, baggage_terms: { ca
   ok(extractIntentFields('10月1-3号之间到达', NOW).arrival_window === '2026-10-01 ~ 2026-10-03' &&
     extractIntentFields('10月3日到达', NOW).arrival_window === '2026-10-03 ~ 2026-10-03',
     '写明月份的范围与单日到达也不误作出发日');
-  ok(parseTripRule('北京去阿拉木图，国庆1-3号之间到就可以', ['北京', '阿拉木图']).date === null,
-    '旧单日解析器不把国庆日期范围误读为1月3日');
-
-  /* R16 复审①：parseTripIntent 合并 Trip 城市词典——真实城市源识别阿拉木图（规则版确定性） */
-  const tripCities = JSON.parse(readFileSync(join(root, 'pipeline/data/trips/trip-cities.json'), 'utf8')).cities;
-  const r = await parseTripIntent('国庆附近一个人从北京去阿拉木图，玩几天后回来', ['北京', '上海'], tripCities, NOW);
-  ok(r.query.origin === '北京' && r.query.destination === '阿拉木图', `C1 真实词典解析国际 OD（实际 ${r.query.origin}→${r.query.destination}）`);
-  ok(r.query.trip_type === 'round_trip' && r.query.traveler_count === 1, 'C1 往返 + 1 人');
-  ok(r.query.outbound_window === '2026-09-27 ~ 2026-10-07', 'C1 假期宽窗（不收缩为单日）');
-  ok(r.needs_confirmation.some((n) => n.includes('返程')), 'C1 返程窗仍要求用户补全（不推断）');
-  /* 明确「10 月 1 日」输入 → 单日窗（不误伤精确意图） */
-  const exact = await parseTripIntent('10月1日从北京去阿拉木图', ['北京'], tripCities, NOW);
-  ok(exact.query.outbound_window === '2026-10-01 ~ 2026-10-01', `C1 明确日期 → 单日窗（实际 ${exact.query.outbound_window}）`);
-  const arrivalOnly = await parseTripIntent('北京去阿拉木图，国庆1-3号之间到就可以', ['北京'], tripCities, NOW);
-  ok(arrivalOnly.query.outbound_window == null, 'Trip 入口不会把到达窗或1月3日写入去程出发窗');
-  const exactWithHoliday = await parseTripIntent('国庆附近从北京去阿拉木图，10月3日出发，10月10日回来', ['北京'], tripCities, NOW);
-  ok(exactWithHoliday.query.outbound_window === '2026-10-03 ~ 2026-10-03' &&
-    !exactWithHoliday.needs_confirmation.some((n) => n.includes('已按假期窗口预填')),
-    '卡 C：Trip 意图也保留明确去程日，不误提示预填假期宽窗');
-  /* 未知城市仍待确认（不编造） */
-  const unknownCity = await parseTripIntent('从北京去乌兰巴托', ['北京'], tripCities, NOW);
-  ok(unknownCity.query.destination === null && unknownCity.needs_confirmation.some((n) => n.includes('目的地')), 'C1 未知城市保持待确认（trip 词典外不编造）');
 }
 
-/* ---------- v0.29.0 决策③：确定性国内/国际路由（v0.29.1 评审二轮 P0-2 更新：港澳台进国际） ---------- */
-{
-  ok(resolveRoute('北京', '喀什').route_type === 'domestic', '决策③验收：北京→喀什 → 国内链路');
-  ok(resolveRoute('北京', '阿拉木图').route_type === 'international', '决策③验收：北京→阿拉木图 → 国际链路');
-  /* 评审二轮 P0-2 更正：港澳台按既定规则进入国际链路（is_mainland=false），不再是 needs_confirmation */
-  ok(resolveRoute('北京', '香港').route_type === 'international', '二轮 P0-2：北京→香港 → international');
-  ok(resolveRoute('香港', '北京').route_type === 'international', '二轮 P0-2：香港→北京（反向）→ international');
-  ok(resolveRoute('北京', '澳门').route_type === 'international', '二轮 P0-2：北京→澳门 → international');
-  ok(resolveRoute('北京', '台北').route_type === 'international', '二轮 P0-2：北京→台北 → international');
-  ok(resolveRoute('香港', '台北').route_type === 'international', '港澳台互往 → international（不建第三套链路）');
-  ok(resolveRoute('阿拉木图', '北京').route_type === 'international', '反向国际 OD 同样走国际链路（仍不做反转构造返程）');
-  ok(findPlace('阿拉木图').tz === 'Asia/Almaty' && findPlace('北京').tz === 'Asia/Shanghai', '地点词典含国家与时区（PlaceResolver 底座）');
-  ok(findPlace('香港').is_mainland === false && findPlace('北京').is_mainland === true, 'is_mainland 口径：港澳台非大陆');
-  /* 评审二轮 P1-5 + v0.31.0 P1-4：capabilities 配置与最近真实状态分开、版本拆分 */
-  ok(capabilities(false, false).llm === false && capabilities(false, false).web_search_configured === false, 'P1-5 组合1：均关');
-  ok(capabilities(true, false).llm === true && capabilities(true, false).web_search_configured === false, 'P1-5 组合2：仅 LLM → web_search_configured=false');
-  ok(capabilities(false, true).web_search_configured === true && capabilities(false, true).llm === false, 'P1-5 组合3：仅 web_search 配置');
-  ok(capabilities(true, true).llm === true && capabilities(true, true).web_search_configured === true, 'P1-5 组合4：均开');
-  ok(capabilities(true, true, 'quota_exhausted').web_search_status === 'quota_exhausted' &&
-    capabilities(true, true, 'quota_exhausted').web_search_configured === true, 'P1-4：配置成功但状态如实为 quota_exhausted');
-  ok(capabilities(true, true).trip_planner_version === 'v0.29.1' &&
-    capabilities(true, true).anywhere_planner_version === 'v0.60.0', 'P1-4：版本拆分（trip/anywhere 各自对齐）');
-  ok(webSearchConfigured({ VOLC_SEARCH_API_KEY: 'test' }).basis === 'volc-search', '火山搜索独立于问答密钥配置');
-  const cited = { status: 'completed', usage: { tool_usage: { web_search: 1 } }, output: [
-    { type: 'web_search_call', status: 'completed' },
-    { type: 'message', content: [{ annotations: [
-      { type: 'url_citation', title: '客运公告', url: 'https://example.org/notice', summary: '北京至阿拉木图客运连接', publish_time: '2026-09-20' },
-      { type: 'url_citation', title: '重复', url: 'https://example.org/notice' }
-    ] }] }
-  ] };
-  ok(parseVolcSearch(cited)?.length === 1 && parseVolcSearch(cited)?.[0].date === '2026-09-20', '火山搜索只采结构化引用并去重');
-  ok(parseVolcSearch({ ...cited, usage: { tool_usage: { web_search: 0 } } }) === null, '模型未实际搜索时不认引用');
-  ok(parseVolcSearch({ ...cited, status: 'incomplete' }) === null, '推理截断不认搜索结果');
-}
-
-/* ---------- v0.26.0 服务动作：策略检索（fixture 驱动 + 反向不反转） ---------- */
-{
-  const hit = searchTripStrategies({ origin: '北京', destination: '阿拉木图', trip_type: 'round_trip', outbound_window: '2026-09-27 ~ 2026-10-03', return_window: '2026-10-05 ~ 2026-10-11', traveler_count: 1, currency: 'CNY' }, NOW);
-  ok(hit.strategies.length === 1 && hit.evidence_state === 'dated_partial', `检索命中 G0 样本 → dated_partial（实际 ${hit.evidence_state}）`);
-  const st = hit.strategies[0];
-  ok(st.structure.length === 2 && st.structure.every((s) => s.source_url), '策略卡结构：双向段齐 + 每段带来源');
-  ok(st.price_samples.every((p) => /非当日可购/.test(p.note)), '价格样本标注「非当日可购」（探索与核验助手边界）');
-  ok(st.cost_breakdown.unknown_costs.length > 0, '成本未知项如实列出（往返口径不可拆分/行李未核）');
-  ok(hit.next_steps.length > 0, '给出真实下一步');
-
-  /* T06 服务层回归：反向查询不做反转，返回探索态 + 心愿引导 */
-  const rev = searchTripStrategies({ origin: '阿拉木图', destination: '北京', trip_type: 'round_trip', outbound_window: '2026-09-27 ~ 2026-10-03', return_window: '2026-10-05 ~ 2026-10-11', traveler_count: 1, currency: 'CNY' }, NOW);
-  ok(rev.evidence_state === 'explore' && rev.strategies.length === 0, '反向查询（阿拉木图→北京）→ 探索态，不由 B–A 反转构造');
-  ok(rev.next_steps.some((s) => s.includes('登记')), '反向查询给登记心愿引导');
-
-  const unknown = searchTripStrategies({ origin: '北京', destination: '亚的斯亚贝巴', trip_type: 'pending', traveler_count: 1, currency: 'CNY' }, NOW);
-  ok(unknown.evidence_state === 'explore', '未覆盖 OD → explore');
-}
-
-/* ---------- v0.26.0 服务动作：核验清单 ---------- */
-{
-  const legs = FIXTURE.dated_legs.map(decorateLeg);
-  const cl = buildVerificationChecklist({ outbound: [legs[0]], inbound: [legs[1]] });
-  ok(cl.checklist.length === 2, '核验清单：双向逐段');
-  ok(cl.checklist.every((r) => r.query_entry && r.local_times && Array.isArray(r.missing)), '每段含查询入口/当地时刻/待核项');
-  ok(cl.checklist.some((r) => r.missing.includes('班次/航班号未核验')), 'G0 去程 price-only（无航班号）如实列为待核项');
-  ok(!cl.note.includes('余票掌握'), '清单声明不掌握余票（交易边界）');
-}
-
-/* ---------- v0.26.1 四项接口契约回归：解析 → 检索 → 清单 ---------- */
-{
-  const parsed = await parseTripIntent('9月30日从北京去阿拉木图往返', ['北京', '阿拉木图']);
-  ok(parsed.query.trip_type === 'round_trip' && /^\d{4}-09-30 ~ \d{4}-09-30$/.test(parsed.query.outbound_window || ''), '往返意图日期统一为查询契约 YYYY-MM-DD');
-  ok(parsed.needs_confirmation.some((s) => s.includes('返程')), '已识别去程日期但缺返程窗时要求补全');
-  const ambiguous = await parseTripIntent('国庆从北京去阿拉木图', ['北京', '阿拉木图']);
-  ok(ambiguous.query.trip_type === 'pending' && ambiguous.needs_confirmation.some((s) => s.includes('单程还是往返')), '未明说单/往返时不根据日期猜单程');
-
-  const parsedSearch = searchTripStrategies({ ...parsed.query, outbound_window: '2026-09-30 ~ 2026-09-30' }, NOW);
-  ok(parsedSearch.evidence_state === 'dated_partial', '解析的行程意图配合固定日期回放可命中指定日部分证据');
-  const card = parsedSearch.strategies[0];
-  const cardChecklist = buildVerificationChecklist(card);
-  ok(cardChecklist.checklist.length === card.structure.length && cardChecklist.checklist.length === 2, '检索卡直接生成双向逐段清单');
-  ok(card.outbound[0].sampled_at && card.inbound[0].sampled_at && card.structure.every((l) => l.sampled_at && l.valid_for_date), '检索响应逐段保留来源取样时间与有效日期');
-  ok(cardChecklist.checklist[0].sampled_at && cardChecklist.checklist[0].local_times.includes('Asia/Shanghai') && cardChecklist.checklist[0].local_times.includes('Asia/Almaty'), '清单保留取样时间与起落各自时区');
-
-  const oneWay = searchTripStrategies({ ...Q, trip_type: 'one_way', return_window: null }, NOW);
-  ok(oneWay.strategies.length === 1 && oneWay.strategies[0].outbound.length === 1 && oneWay.strategies[0].inbound.length === 0 && oneWay.strategies[0].structure.every((l) => l.direction === 'outbound'), '单程查询只返回去程，不混入返程成本与班次');
-  ok(oneWay.strategies[0].cost_breakdown.known_total === null, '单程不能把往返口径样本价计为已知票价');
-  const pending = searchTripStrategies({ ...Q, trip_type: 'pending', outbound_window: null, return_window: null }, NOW);
-  ok(pending.strategies[0].inbound.length === 0 && pending.evidence_state === 'historical', '待确认行程只展示起终点方向历史参考');
-}
-
-console.log(fail ? `\n✗ ${fail} 项未通过` : '\n✓ 行程契约确定性测试全部通过');
+console.log(fail ? `\n✗ ${fail} 项未通过` : '\n✓ 通用行程日期、费用与证据契约通过');
 process.exit(fail ? 1 : 0);

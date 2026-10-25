@@ -1,5 +1,5 @@
 /* 数字声明逐项核对：用户条件与外部事实分别建表，不用整份上下文中的同数作依据。 */
-import {loadPlaces} from './trip-service.mjs';
+import {transportEndpoints} from './place-text.mjs';
 import {classifyTravelSource} from './travel-sources.mjs';
 import {assessSourceTime,retrievalContext} from './source-time.mjs';
 
@@ -86,14 +86,8 @@ function numberValue(text){
 }
 const canon=s=>String(s || '').toLowerCase().replace(/[\s“”"'：:（）()]/g,'');
 function placesIn(text){
-  const hits=[];
-  for(const p of loadPlaces())for(const name of [p.name,...p.aliases || []]){
-    if(!name || name.length<2)continue;
-    const escaped=name.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-    const re=new RegExp(/^[a-z ]+$/i.test(name)?'\\b'+escaped+'\\b':escaped,'i'),m=re.exec(text);
-    if(m){hits.push({name:p.name,start:m.index,end:m.index+m[0].length});break;}
-  }
-  return hits.sort((a,b)=>a.start-b.start || b.end-a.end).filter((p,i,a)=>!a.slice(0,i).some(x=>p.start>=x.start && p.end<=x.end));
+  const hits=transportEndpoints(text);
+  return hits.map(p=>({...p,start:text.indexOf(p.name),end:text.indexOf(p.name)+p.name.length}));
 }
 function subjectFor(clause,occurrence){
   const modes=Object.entries(MODES).filter(([,re])=>re.test(clause)).map(([k])=>k),hits=placesIn(clause);

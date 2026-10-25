@@ -148,7 +148,7 @@
           <span style="font-size: 15px; color: var(--mixtouring-foreground, #1E2022);">Mix<span style="color: var(--mixtouring-ring, #C86A4B);">Touring</span></span>
           <span id="verLine" style="font-size: 12px; color: var(--mixtouring-muted-foreground, #7C8089);">探索预览版 · 交通班期与费用待核验</span>
         </div>
-        <p style="font-size: 12.5px; color: var(--mixtouring-muted-foreground, #7C8089); line-height: 1.7; margin-top: 10px;">帮助独立旅行者发现值得探索的走法、理解取舍与待查项。这里保留的是旧路线收藏和心愿；当前班期、费用需回规划页逐段核验。MixTouring 不提供购票服务。</p>
+        <p style="font-size: 12.5px; color: var(--mixtouring-muted-foreground, #7C8089); line-height: 1.7; margin-top: 10px;">帮助独立旅行者发现值得探索的走法、理解取舍与待查项。旅行从本次对话与搜索生成；当前班期、费用仍需逐段核验。MixTouring 不提供购票服务。</p>
       </div>
     </div>
 
@@ -157,12 +157,9 @@
   <!-- Bottom Navigation -->
   <nav data-mobile-nav="global" aria-label="主要导航" class="trip-nav"><div>
     <a href="trip.html"><svg aria-hidden="true"><use href="#hero-magnifying-glass"></use></svg><span>规划</span></a>
-    <a href="library.html"><svg aria-hidden="true"><use href="#hero-map-pin"></use></svg><span>路线灵感</span></a>
+
     <a href="me.html" aria-current="page" class="trip-nav-current"><svg aria-hidden="true"><use href="#hero-user"></use></svg><span>我的旅行</span></a>
   </div></nav>
-
-  <script src="../assets/mock.js"></script>
-  <script src="../assets/api.js"></script>
   <script src="../assets/app.js"></script>
   <script src="../assets/draft-store.js"></script>
   <script src="../assets/save-state.js"></script>
@@ -291,143 +288,10 @@
     var resume=document.getElementById('sessionResume');try{var session=JSON.parse(sessionStorage.getItem('mt:planning-session') || 'null');if(session?.conversation && !MTSaveState.find(session,MTDrafts.list(),session.saved_draft_id).saved){var info=MTTrips.summary(session);resume.hidden=false;resume.innerHTML='<div><p class="mt-eyebrow">上次尚未保存</p><h2>'+MT.esc(info.route || '还在讨论的旅行想法')+'</h2><p class="mt-meta">继续上次对话，保存后会出现在下方列表。</p></div><a class="mt-button-secondary" href="trip.html">继续这次规划</a>';}}catch(e){}
     window.addEventListener('storage',function(e){if(e.key===MTDrafts.DRAFT_KEY)MT.toast('其他窗口已更新旅行，请刷新后继续管理');});
 
-    /* ---------- 收藏列表 ---------- */
-    function favRowHtml(f) {
-      return '<div class="detail-card row-card p-4 flex items-center justify-between" data-fav-id="' + MT.esc(f.id) + '" data-fav-type="' + MT.esc(f.type) + '" role="button" tabindex="0">' +
-        '<div class="flex items-center min-w-0" style="gap:10px;">' +
-          '<div class="w-9 h-9 rounded-full flex items-center justify-center shrink-0" style="background:rgba(225,29,72,0.08);">' +
-            '<svg style="width:16px;height:16px;color:var(--color-accent-heart,#E11D48);"><use href="#hero-heart-solid"></use></svg>' +
-          '</div>' +
-          '<div class="min-w-0">' +
-            '<div style="font-size:15px;color:var(--mixtouring-foreground,#1E2022);">' + MT.esc(f.title) + '</div>' +
-            '<div style="font-size:12px;color:var(--mixtouring-muted-foreground,#7C8089);margin-top:3px;">历史路线收藏 · 当前费用待核 · 收藏于 ' + MT.fmtTs(f.ts) + '</div>' +
-          '</div>' +
-        '</div>' +
-        '<svg class="shrink-0" style="width:16px;height:16px;color:var(--mixtouring-muted-foreground,#7C8089);margin-left:8px;"><use href="#hero-chevron-right"></use></svg>' +
-      '</div>';
-    }
-
-    function renderFavs() {
-      var list = MT.favList();
-      var wrap = document.getElementById('favWrap');
-      if (!list.length) {
-        wrap.innerHTML = '<div class="detail-card p-5 text-center" style="font-size:13px;color:var(--mixtouring-muted-foreground,#7C8089);line-height:1.7;">还没有收藏任何方案<br />在方案详情页点「收藏」，会出现在这里</div>';
-        return;
-      }
-      wrap.innerHTML = list.map(favRowHtml).join('');
-      wrap.querySelectorAll('.row-card').forEach(function (card) {
-        function open() {
-          var id = card.getAttribute('data-fav-id');
-          var type = card.getAttribute('data-fav-type');
-          location.href = type === 'tpl' ? ('detail.html?tpl=' + id + '&source=library') : ('detail.html?id=' + id + '&source=library');
-        }
-        card.addEventListener('click', open);
-        card.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
-      });
-    }
-
-    /* ---------- 回填记录 ---------- */
-    function fbRowHtml(r) {
-      return '<div class="detail-card p-4">' +
-        '<div class="flex items-center justify-between">' +
-          '<div class="flex items-center" style="gap:8px;">' +
-            '<svg style="width:15px;height:15px;color:var(--mixtouring-ring,#C86A4B);"><use href="#hero-pencil-square"></use></svg>' +
-            '<span style="font-size:15px;color:var(--mixtouring-foreground,#1E2022);">' + MT.esc(r.title) + '</span>' +
-          '</div>' +
-          '<span style="font-size:12px;color:var(--mixtouring-muted-foreground,#7C8089);">' + MT.fmtTs(r.ts) + '</span>' +
-        '</div>' +
-        '<div class="flex items-center flex-wrap" style="gap:6px;margin-top:10px;">' +
-          (r.smooth ? '<span style="font-size:12px;padding:3px 10px;border-radius:9999px;background:' + (r.smooth === '顺利' ? 'rgba(52,199,89,0.10);color:#2e9e54;' : r.smooth === '误衔接' ? 'rgba(225,29,72,0.08);color:#be123c;' : 'rgba(251,191,36,0.14);color:#A16207;') + '">衔接 ' + MT.esc(r.smooth) + '</span>' : '') +
-          (r.cost ? '<span style="font-size:12px;padding:3px 10px;border-radius:9999px;background:var(--mixtouring-muted,#F4F5F7);color:var(--mixtouring-ring,#C86A4B);">实际花费 ' + MT.esc(r.cost) + '</span>' : '') +
-          (r.time ? '<span style="font-size:12px;padding:3px 10px;border-radius:9999px;background:var(--mixtouring-muted,#F4F5F7);color:var(--mixtouring-muted-foreground,#7C8089);">实际耗时 ' + MT.esc(r.time) + '</span>' : '') +
-        '</div>' +
-        (r.note ? '<p style="font-size:13px;color:var(--mixtouring-muted-foreground,#7C8089);line-height:1.6;margin-top:10px;">' + MT.esc(r.note) + '</p>' : '') +
-      '</div>';
-    }
-
-    function renderFeedback() {
-      var list = MT.feedbackList();
-      var wrap = document.getElementById('fbWrap');
-      if (!list.length) {
-        wrap.innerHTML = '<div class="detail-card p-5 text-center" style="font-size:13px;color:var(--mixtouring-muted-foreground,#7C8089);line-height:1.7;">还没有回填过实测数据<br />走过某条方案后，在详情页点「回填实测」</div>';
-        return;
-      }
-      wrap.innerHTML = list.map(fbRowHtml).join('');
-    }
-
-    /* ---------- 我的心愿 ---------- */
-    function wishRowHtml(w) {
-      var statusColor; var statusText;
-      if (w.status === 'generated') { statusColor = '#34c759'; statusText = '已生成'; }
-      else if (w.status === 'pending') {
-        /* 服务端队列状态（Phase 3）：processing=离线管道生成中；仅文案增强，状态机不变 */
-        statusColor = '#FBBF24';
-        statusText = w.serverStatus === 'processing' ? '生成中' : '探索中';
-      } else { statusColor = '#7C8089'; statusText = '已关闭'; }
-      var generated = w.generatedAt ? ' · ' + MT.fmtTs(w.generatedAt) : '';
-      return '<div class="detail-card row-card p-4 flex items-center justify-between" data-wish-id="' + MT.esc(w.id) + '" role="button" tabindex="0">' +
-        '<div class="flex items-center min-w-0" style="gap:10px;">' +
-          '<div class="w-9 h-9 rounded-full flex items-center justify-center shrink-0" style="background:rgba(200,106,75,0.08);">' +
-            '<svg style="width:16px;height:16px;color:var(--mixtouring-ring,#C86A4B);"><use href="#hero-sparkles"></use></svg>' +
-          '</div>' +
-          '<div class="min-w-0">' +
-            '<div style="font-size:15px;color:var(--mixtouring-foreground,#1E2022);">' + MT.esc(w.from + ' → ' + w.to) + '</div>' +
-            '<div style="font-size:12px;color:var(--mixtouring-muted-foreground,#7C8089);margin-top:3px;">' + MT.esc(w.date) + ' · <span style="color:' + statusColor + ';">' + statusText + '</span>' + generated + '</div>' +
-          '</div>' +
-        '</div>' +
-        '<svg class="shrink-0" style="width:16px;height:16px;color:var(--mixtouring-muted-foreground,#7C8089);margin-left:8px;"><use href="#hero-chevron-right"></use></svg>' +
-      '</div>';
-    }
-
-    function renderWishes() {
-      /* 自动回流：方案库已有此路线（离线生成已完成）时，pending 升级为 generated */
-      var pending = MT.wishList().filter(function (w) { return w.status === 'pending'; });
-      pending.forEach(function (w) {
-        if (window.DB && window.DB.routes[w.from + '-' + w.to]) MT.wishMarkGenerated(w.from, w.to);
-      });
-      var list = MT.wishList().filter(function (w) { return w.status !== 'dismissed'; });
-      var wrap = document.getElementById('wishWrap');
-      if (!list.length) {
-        wrap.innerHTML = '<div class="detail-card p-5 text-center" style="font-size:13px;color:var(--mixtouring-muted-foreground,#7C8089);line-height:1.7;">还没有心愿路线<br />可以先到规划页探索新的出行方向</div>';
-        return;
-      }
-      wrap.innerHTML = list.map(wishRowHtml).join('');
-      bindWishCards(wrap);
-
-      /* Phase 3：拉服务端队列状态合并显示（后端可达时 pending 可见「生成中」；失败静默保持本地状态） */
-      API.fetchWishes().then(function (res) {
-        if (!res || res.code !== 0 || !Array.isArray(res.data)) return;
-        var map = {};
-        res.data.forEach(function (s) { map[s.from + '-' + s.to] = s.status; });
-        var changed = false;
-        list.forEach(function (w) {
-          if (w.status !== 'pending') return;
-          var s = map[w.from + '-' + w.to];
-          if (s && s !== 'generated' && s !== w.serverStatus) { w.serverStatus = s; changed = true; }
-        });
-        if (changed) {
-          wrap.innerHTML = list.map(wishRowHtml).join('');
-          bindWishCards(wrap);
-        }
-      });
-    }
-
-    function bindWishCards(wrap) {
-      wrap.querySelectorAll('.row-card').forEach(function (card) {
-        function open() {
-          var id = card.getAttribute('data-wish-id');
-          var w = MT.wishList().find(function (x) { return x.id === id; });
-          if (!w) return;
-          location.href = 'trip.html?' + new URLSearchParams({ from: w.from, to: w.to });
-        }
-        card.addEventListener('click', open);
-        card.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
-      });
-    }
-
-    renderFavs();
-    renderWishes();
-    renderFeedback();
+    // 历史个人记录只读保留，不连接已退役的方案库或离线生成器。
+    [['favWrap',MT.favList()],['wishWrap',MT.wishList()],['fbWrap',MT.feedbackList()]].forEach(function(pair){
+      document.getElementById(pair[0]).innerHTML=pair[1].length?pair[1].map(function(item){return '<p>'+MT.esc(item.title || [item.from,item.to].filter(Boolean).join(' → ') || item.note || '历史个人记录')+'</p>';}).join(''):'<p>暂无个人历史记录</p>';
+    });
   })();
   </script>
 </body>

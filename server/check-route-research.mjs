@@ -6,7 +6,7 @@ import {conversationTurn} from './lib/conversation.mjs';
 import client from '../mixtouring-hifi/assets/route-research.js';
 const now=Date.parse('2026-10-17T08:00:00Z');
 const legs=[{from:'北京',to:'伊宁',mode_guess:'unknown'},{from:'伊宁',to:'阿拉木图',mode_guess:'road'}];
-const plan={intent:{origin:'北京',destination:'阿拉木图'},candidates:[{id:'via',kind:'mixed',legs},{id:'direct',kind:'direct',legs:[{from:'北京',to:'阿拉木图',mode_guess:'plane'}]}]};
+const plan={places:[{name:'北京',country:'CN'},{name:'伊宁',country:'CN'},{name:'阿拉木图',country:'KZ'}],intent:{origin:'北京',destination:'阿拉木图'},candidates:[{id:'via',kind:'mixed',legs},{id:'direct',kind:'direct',legs:[{from:'北京',to:'阿拉木图',mode_guess:'plane'}]}]};
 assert.equal(criticalTransportLeg(plan,'via').from,'伊宁');assert.equal(criticalTransportLeg(plan,'direct').mode,'plane');
 assert.throws(()=>criticalTransportLeg(plan,'伪造'),/过期/);
 await assert.rejects(researchSelectedRoute({candidate_id:'via',window:'2026-02-31 ~ 2026-03-01'},plan,async()=>{throw Error('不应搜索');}),/时间窗无效/);
