@@ -29,7 +29,7 @@ async function harness({plans,searchResults,readPage=null,answer=null,extractSup
       return {items:fields.map(f=>({id:f.id,text:f.text,needs_source:extractSupports && /直飞|200元/.test(f.text),
         allowed_use:'source_reference',supports:extractSupports && /直飞|200元/.test(f.text) && entry?[{source_id:entry.id,quote:entry.excerpt}]:[]}))};
     }
-    if(opts.kind==='conversation_evidence_support')return {items:JSON.parse(opts.user).claims.map(c=>({id:c.id,decision:assessment,reason:'原句支持该结论'}))};
+    if(opts.kind==='conversation_evidence_support')return {items:JSON.parse(opts.user).claims.map(c=>({id:c.id,decision:assessment,relation:assessment==='supported'?'supports':assessment==='unsupported'?'refutes':'uncertain',reason:'原句支持该结论'}))};
     return {};
   };
   const search=async(query,options)=>{calls.search++;if(searchThrows)throw Error(searchThrows);return searchResults(query,options);};
@@ -59,8 +59,8 @@ assert.ok(minimal.record.usage.searches<=RESEARCH_LOOP_LIMITS.searches && minima
 /* 2) 满三轮仍有增益：三轮后按轮次上限停止，终验照常完成，不越上限。 */
 let sourceIndex=0;
 const plans3=[{query:'北京 阿拉木图 航班',foreign_query:''},{query:'北京 阿拉木图 铁路',foreign_query:''},{query:'北京 阿拉木图 客运',foreign_query:''},{done:true}];
-const full=await harness({plans:plans3,searchResults:()=>[fresh(++sourceIndex)]});
-assert.equal(full.record.stop_reason,'rounds','三轮增益后按轮次上限停止');
+const full=await harness({plans:plans3,searchResults:()=>{const item=fresh(++sourceIndex);return [{...item,content:item.content+' 新增资料内容'+sourceIndex}];}});
+assert.equal(full.record.run.reason,'rounds','三轮增益后按轮次上限停止');
 assert.equal(full.record.rounds.length,3);
 assert.equal(full.record.rounds.filter(r=>r.gain>0).length,3);
 assert.equal(full.record.usage.searches,6);
@@ -70,7 +70,7 @@ assert.equal(full.record.status,'ok');
 assert.ok(full.record.claims.length>=1);
 /* 模型额度不足时以预算停止并保留部分成果，不强行发布未核对回复。 */
 const capped=await harness({plans:[{query:'北京 阿拉木图 航班',foreign_query:''},{query:'北京 阿拉木图 铁路',foreign_query:''}],searchResults:()=>[fresh('cap')],limits:{...RESEARCH_LOOP_LIMITS,model_calls:7}});
-assert.equal(capped.record.stop_reason,'budget_model');
+assert.equal(capped.record.run.reason,'budget_model');
 assert.equal(capped.record.rounds.length,2);
 assert.ok(capped.record.reply && capped.record.claims.length,'在继续补查前保住终验，提前收尾仍交付有出处的回答');
 assert.ok(capped.record.sources.length>=1,'部分成果保留');
@@ -122,7 +122,7 @@ const cancelled=await runResearchLoop(transportInput,{now,
     throw Error('取消后不得再调用模型');
   },signal:cancelController.signal,
   search:async()=>{cancelSearches++;const results=[fresh()];cancelController.abort();return results;},readPage:null});
-assert.equal(cancelled.stop_reason,'cancelled');
+assert.equal(cancelled.run.reason,'cancelled');
 assert.equal(cancelled.rounds.length,0,'取消轮不登记为完成');
 const restoredCancel=resolveResearchLoop({task_id:cancelled.task.id,task:transportInput},{now:now+1000});
 assert.equal(restoredCancel.record.task.id,cancelled.task.id,'部分记录可只读恢复');
@@ -157,7 +157,7 @@ const readRecord=await runResearchLoop(transportInput,{now,
     if(opts.kind==='conversation_source_relevance')return {items:JSON.parse(opts.user).candidates.map(v=>({id:v.id,decision:'keep',reason:'相关',quote:v.title}))};
     if(opts.kind==='research_loop_answer')return {reply:'来源记载北京到阿拉木图开通直飞，本次日期仍待确认。'};
     if(opts.kind==='conversation_evidence_extract'){const {fields,evidence_catalog}=JSON.parse(opts.user),e=evidence_catalog.entries[0];return {items:fields.map(f=>({id:f.id,text:f.text,needs_source:/直飞/.test(f.text),allowed_use:'source_reference',supports:/直飞/.test(f.text)&&e?[{source_id:e.id,quote:e.excerpt}]:[]}))};}
-    if(opts.kind==='conversation_evidence_support')return {items:JSON.parse(opts.user).claims.map(c=>({id:c.id,decision:'supported',reason:'原句支持'}))};
+    if(opts.kind==='conversation_evidence_support')return {items:JSON.parse(opts.user).claims.map(c=>({id:c.id,decision:'supported',relation:'supports',reason:'原句支持'}))};
     return {};
   },
   search:async()=>[fresh()],
@@ -172,14 +172,14 @@ assert.equal(reread.stop_reason,'no_new_read','同一篇原文去重');
 
 /* 10) 预算不足与相关性核对失败都保留部分成果。 */
 const tight=await harness({plans:[{query:'北京 阿拉木图 航班',foreign_query:''},{done:true}],searchResults:()=>[fresh()],limits:{...RESEARCH_LOOP_LIMITS,model_calls:5}});
-assert.equal(tight.record.stop_reason,'budget_model');
+assert.equal(tight.record.run.reason,'budget_model');
 assert.equal(tight.record.rounds.length,1);
 assert.equal(tight.record.status,'ok','五次额度可完成最小一轮与终验，不再用未核对结果代替答复');
 assert.ok(tight.record.reply && tight.record.claims.length);
 assert.equal(tight.record.usage.model_calls,5);
 assert.ok(tight.record.sources.length>=1,'部分成果保留');
 const insufficient=await harness({plans:plans3,searchResults:()=>[fresh()],limits:{...RESEARCH_LOOP_LIMITS,model_calls:4}});
-assert.equal(insufficient.record.stop_reason,'budget_model');
+assert.equal(insufficient.record.run.reason,'budget_model');
 assert.equal(insufficient.record.reply,null,'不足以完成最小闭环时不发布未经核对的回答');
 assert.equal(insufficient.record.usage.model_calls,0);
 assert.equal(insufficient.calls.search,0,'不足以完成闭环时也不白耗检索额度');
@@ -285,11 +285,11 @@ assert.equal(repeatedFailure.calls.read,1,'自动读取失败也不因换查询�
 /* 相关性空响应补试不能侵占终验。十二次上限不提高；较紧预算须提前收尾。 */
 for(const limit of [12,8]){
   let reviewCalls=0,nextSource=0;
-  const retried=await harness({plans:plans3,searchResults:()=>[fresh('retry'+(++nextSource))],limits:{...RESEARCH_LOOP_LIMITS,model_calls:limit},
-    modelHook:opts=>opts.kind==='conversation_source_relevance' && ++reviewCalls%2===1?null:undefined});
+  const retried=await harness({plans:plans3,searchResults:()=>{const item=fresh('retry'+(++nextSource));return [{...item,content:item.content+' 不同摘录'+nextSource}];},limits:{...RESEARCH_LOOP_LIMITS,model_calls:limit},
+    modelHook:opts=>{if(opts.kind==='conversation_source_relevance' && ++reviewCalls%2===1){opts.onFailure?.({reason_code:'empty_response',retryable:true});return null;}return undefined;}});
   assert.equal(retried.record.status,'ok');assert.ok(retried.record.reply && retried.record.claims.length);
   assert.notEqual(retried.record.verify_status,'skipped');assert.ok(retried.record.usage.model_calls<=limit);
-  if(limit===8)assert.equal(retried.record.stop_reason,'budget_model','补试将触碰预留时，保住已有依据的最终答复');
+  if(limit===8)assert.equal(retried.record.run.reason,'budget_model','补试将触碰预留时，保住已有依据的最终答复');
 }
 const budget=createResearchBudget({now,signal:new AbortController().signal});
 assert.equal(budget.take('searches',8),null);
@@ -403,3 +403,14 @@ const restoredHtml=env.gapResearchHtml(false,true);
 assert.ok(restoredHtml.includes('上次补查记录（只读）') && restoredHtml.includes('不自动重启付费任务'),'恢复只读且不自动重启');
 
 console.log('✓ R1-C 有界补查：取消接通、逐轮相关性与数字守门、已核对增量、出口去重、恢复只读、桌面入口与旧请求隔离通过');
+
+for(const record of [full.record,capped.record,tight.record,insufficient.record,cancelled]){assert.equal(record.stop_reason,'execution_interrupted');assert.equal(record.run.status,'interrupted');assert.equal(record.task.state,'active','运行限制不表示研究任务完成');}
+
+// 同样的规划器done与支持结论，只有回答明确解决问题才标记任务满足。
+for(const resolution of ['partial','answered']){
+  const resolved=await harness({plans:[{query:'北京 阿拉木图 航班'},{done:true}],searchResults:()=>[fresh()],
+    task:{...transportInput,question:'有北京到阿拉木图直飞的公开报道吗',gap:'寻找公开报道',window:null},
+    modelHook:async o=>o.kind==='research_loop_answer'?{reply:'来源记载北京到阿拉木图开通直飞，本次日期仍待确认。',resolution}:undefined});
+  assert.equal(resolved.record.stop_reason,'planner_done');assert.equal(resolved.record.verify_status,'complete');
+  assert.equal(resolved.record.task.state,resolution==='answered'?'satisfied':'active');
+}

@@ -1,11 +1,21 @@
+import {agentPrompt} from './agent-prompts.mjs';
 /* 火山方舟普通推理接口的联网搜索适配。与 Coding Plan 分开鉴权和计费。 */
 const ENDPOINT = 'https://ark.cn-beijing.volces.com/api/v3/responses';
+const DEFAULT_MODEL='deepseek-v4-1-flash-261017';
+const UNAVAILABLE_MODEL='doubao-seed-2-1-lite-260915';
+// 本账户实测旧默认模型ModelNotOpen；不先请求它再降级，直接使用已配置的组合模型。
+export function volcSearchModel(env=process.env){
+  const explicit=env.VOLC_SEARCH_MODEL?.trim();
+  if(explicit && explicit!==UNAVAILABLE_MODEL)return explicit;
+  const compose=env.VOLC_COMPOSE_MODEL?.trim();
+  return compose && compose!==UNAVAILABLE_MODEL?compose:DEFAULT_MODEL;
+}
 
 export function parseVolcSearch(body, limit = 5) {
   if (body?.status !== 'completed') return null;
   const calls = (body.output || []).filter((item) => item.type === 'web_search_call' && item.status === 'completed');
   if (!calls.length || !(body.usage?.tool_usage?.web_search > 0)) return null;
-  const seen = new Set();
+  const seen = new Map();
   const results = [];
   for (const item of body.output || []) {
     for (const content of item.content || []) {
@@ -17,23 +27,32 @@ export function parseVolcSearch(body, limit = 5) {
           if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') continue;
           link = parsed.href;
         } catch { continue; }
-        if (seen.has(link)) continue;
-        seen.add(link);
-        results.push({
-          title: String(source.title || source.site_name || '').slice(0, 120),
+        // 保留搜索引擎返回的摘录，不采用模型生成的回答；12k仅为异常响应上限。
+        const summary=String(source.summary || '');
+        const result={
+          title: String(source.title || source.site_name || new URL(link).hostname).slice(0, 120),
           link,
-          content: String(source.summary || '').slice(0, 300),
+          content: summary.slice(0,12000),
+          content_original_chars:summary.length,content_truncated:summary.length>12000,
           media: source.site_name || 'volc-search',
-          date: source.publish_time || null
-        });
+          date: source.publish_time || null,date_basis:'search_index'
+        };
+        const previous=seen.get(link);
+        if(previous){
+          // 同一URL多次引用不能让先出现的短摘要覆盖后续完整摘录。
+          if(result.content.length>previous.content.length)Object.assign(previous,result);
+          continue;
+        }
+        seen.set(link,result);results.push(result);
       }
     }
   }
   return results.slice(0, limit).length ? results.slice(0, limit) : null;
 }
 
-export async function searchVolc(query, { key, model = 'doubao-seed-2-1-lite-260915', limit = 5, timeoutMs = 30000, signal } = {}) {
+export async function searchVolc(query, { key, model = volcSearchModel(), limit = 5, timeoutMs = 30000, signal } = {}) {
   if (!key) return { status: 'unconfigured', results: null };
+  if(model===UNAVAILABLE_MODEL)model=volcSearchModel();
   const timeout = AbortSignal.timeout(timeoutMs);
   try {
     const res = await fetch(ENDPOINT, {
@@ -41,7 +60,7 @@ export async function searchVolc(query, { key, model = 'doubao-seed-2-1-lite-260
       headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
       body: JSON.stringify({
         model,
-        input: `请联网搜索下面的查询词，仅列出最相关的来源，每条用一句话概括。查询词：${String(query).slice(0, 100)}`,
+        input: agentPrompt('search.web_query',{query:String(query).slice(0,100)}),
         tools: [{ type: 'web_search', sources: ['search_engine'], limit: Math.max(1, Math.min(limit, 10)), max_keyword: 1 }],
         tool_choice: { type: 'web_search' },
         thinking: { type: 'disabled' },

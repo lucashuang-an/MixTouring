@@ -2,4 +2,4 @@
  * trip 部分自 v0.29.1 后未改；anywhere 随 G2.5 卡演进 */
 export const TRIP_PLANNER_VERSION = 'v0.29.1';
 export const ANYWHERE_PLANNER_VERSION = 'v0.60.0';
-export const SEARCH_PLANNER_VERSION = 'v0.62.0';
+export const SEARCH_PLANNER_VERSION = 'v0.63.0';

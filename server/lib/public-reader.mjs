@@ -4,6 +4,8 @@ import {isIP} from 'node:net';
 import https from 'node:https';
 import http from 'node:http';
 import {sourceDay} from './source-time.mjs';
+import {Readability} from '@mozilla/readability';
+import {parseHTML} from 'linkedom';
 
 export function publicAddress(address){
   if(isIP(address)===4){const a=address.split('.').map(Number);return !(a[0]===0 || a[0]===10 || a[0]===127 || a[0]>=224 || a[0]===169 && a[1]===254 || a[0]===172 && a[1]>=16 && a[1]<=31 || a[0]===192 && [0,168].includes(a[1]) || a[0]===100 && a[1]>=64 && a[1]<=127 || a[0]===198 && [18,19].includes(a[1]));}
@@ -41,9 +43,11 @@ export function extractPublicPage(html){
       published=date;break;
     }
   }
-  const content=plain(body);if(content.length<60)throw Error('未取得可读正文');
+  let article=null;
+  try{const {document}=parseHTML(html);article=new Readability(document,{charThreshold:200}).parse();}catch{}
+  const content=article?.textContent?.trim().length>=200?article.textContent.trim():plain(body);if(content.length<60)throw Error('未取得可读正文');
   published ||=sourceDay(content.slice(0,1200).match(/(?:发布时间|发布日期|发布于|Published on)[：:\s]*(\d{4}[-年/]\d{1,2}[-月/]\d{1,2}(?:日)?)/i)?.[1]);
-  return {title:plain(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || '').slice(0,160),excerpt:content.slice(0,6000),published_at:published,updated_at:updated,read_status:'page_excerpt',truncated:content.length>6000};
+  return {title:plain(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || '').slice(0,160),excerpt:content.slice(0,24000),published_at:published,updated_at:updated,read_status:'page_excerpt',extractor:article?.textContent?.trim().length>=200?'readability':'plain',truncated:content.length>24000};
 }
 export async function readPublicPage(value,{timeoutMs=6000,maxBytes=524288,resolve=lookup,signal}={}){
   const started=Date.now(),diagnostics={phase:'validation',http_status:null,content_type:'unknown',redirects:0,elapsed_ms:0};

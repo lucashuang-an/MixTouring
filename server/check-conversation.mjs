@@ -2,14 +2,14 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { conversationTurn, cleanConversation } from './lib/conversation.mjs';
+import { conversationTurn, cleanConversation } from './fixtures/confirmed-conversation.mjs';
 const brief={origin:'北京',destination:'阿拉木图',summary:'慢游，城区与自然搭配',wishes:['不想每天赶路','只住同一家住宿'],open_questions:[]};
 const result=(over={})=>({reply:'先把城区和山景搭配起来。',brief,ready:true,confirmed:false,preferences:{experience:'balanced'},travel:{},constraints:{},...over});
 const draft={title:'阿拉木图慢游草案',overview:'以城区为落脚点',sections:[{title:'山景安排',content:'先考虑山景，另留城区散步时间。'}],pending:['往返接驳待查']};
 let contexts=[];
 const model=async opts=>{contexts.push(JSON.parse(opts.user));return result({draft});};
 const first=await conversationTurn({text:'想散心，城区自然都看看'},null,{model});
-assert.equal(first.engine,'llm');assert.equal(first.conversation.stage,'ready');
+assert.equal(first.engine,'llm');assert.equal(first.conversation.stage,'discuss');
 assert.equal(first.conversation.draft,null,'未经用户确认，即使模型输出草案也不能采用');
 assert.equal(first.request_generation,false);
 const country=await conversationTurn({text:'想从北京去吉尔吉斯斯坦'},null,{model:async()=>result({brief:{...brief,destination:'吉尔吉斯斯坦',summary:'想去吉尔吉斯斯坦，城市未定'}})});
@@ -17,7 +17,7 @@ assert.equal(country.conversation.stage,'discuss','国家目的地继续讨论�
 const countryGenerate=await conversationTurn({action:'generate',conversation:{...country.conversation,stage:'ready'}},null,{model:async()=>{throw Error('不应调用模型生成');}});
 assert.equal(countryGenerate.status,'needs_intent');
 const cityChosen=await conversationTurn({text:'那就从比什凯克开始',conversation:country.conversation},null,{model:async()=>result({brief:{...brief,destination:'比什凯克'}})});
-assert.equal(cityChosen.conversation.stage,'ready');assert.equal(cityChosen.conversation.brief.destination,'比什凯克');
+assert.equal(cityChosen.conversation.stage,'discuss');assert.equal(cityChosen.conversation.brief.destination,'比什凯克');
 const legacy={stage:'ready',brief:{origin:'北京',destination:'吉尔吉斯斯坦（待定，倾向比什凯克+湖区）',summary:'首站比什凯克，随后湖区，偏好民宿',wishes:['湖区民宿','慢节奏']},revision:0};
 const preparation=await conversationTurn({action:'prepare',conversation:legacy,messages:[{role:'assistant',text:'先飞到比什凯克，再去湖区，按此生成？'},{role:'user',text:'可以生成'}]},null,{model:async opts=>{
   assert.equal(opts.kind,'conversation_places');assert.match(JSON.parse(opts.user).messages[0].text,/飞到比什凯克/);
@@ -33,6 +33,7 @@ assert.equal(placeFailure.status,'unavailable');assert.match(placeFailure.reply,
 const beforeEarly=contexts.length;
 const early=await conversationTurn({action:'generate'},null,{model});
 assert.equal(early.status,'needs_intent');assert.equal(contexts.length,beforeEarly);
+first.conversation.stage='ready'; // 下游回归由fixture补充已确认方案。
 const generated=await conversationTurn({action:'generate',conversation:first.conversation,anchors:{outbound:{from_city:'北京',to_city:'阿拉木图'}},constraints:{no_self_drive:true},messages:[{role:'user',text:'不每天搬住宿'}]},null,{model});
 assert.equal(generated.conversation.stage,'draft');assert.equal(generated.conversation.revision,1);
 assert.deepEqual(generated.patch.preferences,{},'写稿只读取确认条件，不制造新的结构化偏好');
@@ -40,8 +41,8 @@ assert.equal(contexts.at(-1).current.constraints.no_self_drive,true);
 assert.equal(contexts.at(-1).user_messages[0].text,'不每天搬住宿');
 assert.equal(contexts.at(-1).conversation,undefined,'校对不把旧助手和旧草案当权威条件');
 const revised=await conversationTurn({text:'刚才那个山景先不去，多留城区',conversation:generated.conversation},null,{model:async opts=>{
-  if(opts.kind==='conversation')assert.equal(JSON.parse(opts.user).conversation.draft.title,draft.title);
-  return result({preferences:{experience:'city'},draft:{...draft,sections:[{title:'城区安排',content:'多留时间散步，暂不安排山景。'}]}});
+  if(opts.kind==='conversation'){const c=JSON.parse(opts.user);assert.equal((c.draft_outline || c.original_draft || c.conversation?.draft).title,draft.title);}
+  return result({intent_action:'revise',preferences:{experience:'city'},draft:{...draft,sections:[{title:'城区安排',content:'多留时间散步，暂不安排山景。'}]}});
 }});
 assert.equal(revised.conversation.revision,2);assert.equal(revised.patch.preferences.experience,'city');
 const failed=await conversationTurn({text:'再调整',conversation:revised.conversation},null,{model:async()=>null});
@@ -52,7 +53,7 @@ const noUndo=await conversationTurn({text:'撤销',conversation:revised.conversa
 assert.equal(noUndo.action,null);assert.match(noUndo.reply,/没有/);
 const notApplied=await conversationTurn({text:'改掉山景',conversation:revised.conversation},null,{model:async()=>result({intent_action:'revise',draft:null})});
 assert.equal(notApplied.status,'unavailable','模型口头说已修改但没交付修订稿时不谎报成功');
-const question=await conversationTurn({text:'先比较，不修改',conversation:revised.conversation},null,{model:async()=>result({intent_action:'question',draft,preferences:{experience:'nature'},constraints:{no_self_drive:false}})});
+const question=await conversationTurn({text:'先比较，不修改',conversation:revised.conversation},null,{model:async opts=>opts.kind==='conversation_condition_update'?{}:result({intent_action:'question',draft,preferences:{experience:'nature'},constraints:{no_self_drive:false}})});
 assert.deepEqual(question.conversation.draft,revised.conversation.draft);assert.deepEqual(question.patch.constraints,{});assert.deepEqual(question.patch.preferences,{});
 const malformed=await conversationTurn({conversation:revised.conversation},null,{model:async()=>result({travel:{outbound_window:'2026-02-31 ~ 2026-02-31'}})});
 assert.equal(malformed.status,'unavailable');assert.deepEqual(malformed.conversation,revised.conversation);
@@ -79,17 +80,18 @@ assert.deepEqual(noGeneratedDates.conversation.brief,first.conversation.brief,'�
 const changed=await conversationTurn({text:'还是换昆明吧',conversation:revised.conversation},null,{model:async opts=>opts.kind==='conversation_route_change'?{origin:'北京',destination:'昆明'}:result({brief:{...brief,destination:'昆明'},draft})});
 assert.equal(changed.conversation.stage,'ready');assert.equal(changed.conversation.draft,null);
 const confirm=await conversationTurn({text:'就按这个想法生成',conversation:first.conversation},null,{model:async()=>result({confirmed:true})});
-assert.equal(confirm.request_generation,true);
+assert.equal(confirm.request_generation,false);
 const notFirst=await conversationTurn({text:'就生成吧'},null,{model:async()=>result({confirmed:true})});
 assert.equal(notFirst.request_generation,false);
 let clarificationCalls=0;
 const confirmedAfterSearch=await conversationTurn({text:'确认从北京去比什凯克，按这个生成',conversation:{...first.conversation,stage:'discuss'},messages:[{role:'assistant',text:'你想从哪座城市开始？'}]},null,{
-  model:async()=>++clarificationCalls===1?result({intent_action:'confirm',confirmed:true,brief:{...brief,destination:'比什凯克'},search_query:'比什凯克 自然风光'}):result({intent_action:'discuss',confirmed:false,brief:{...brief,destination:'吉尔吉斯斯坦'}}),search:async()=>[]});
-assert.equal(confirmedAfterSearch.request_generation,true,'用户明确确认城市后，资料补充不能覆盖已识别的生成动作');
+  model:async o=>o.kind==='conversation_route_change'?{origin:'北京',destination:'比什凯克'}:++clarificationCalls===1?result({intent_action:'confirm',confirmed:true,brief:{...brief,destination:'比什凯克'},search_query:'比什凯克 自然风光'}):result({intent_action:'discuss',confirmed:false,brief:{...brief,destination:'吉尔吉斯斯坦'}}),search:async()=>[]});
+assert.equal(confirmedAfterSearch.request_generation,false,'确认城市不等于确认粗略方案的编排');
 assert.equal(confirmedAfterSearch.conversation.brief.destination,'比什凯克');
 let calls=0;
 const searched=await conversationTurn({text:'还有什么自然景观'},null,{model:async opts=>{
-  calls++;if(calls===1)return result({brief:{...brief,destination:'昆明'},search_query:'昆明 自然景观 官方旅游'});
+  if(opts.kind==='conversation_condition_update')return JSON.parse(opts.user).proposed;
+  calls++;if(calls===1)return result({intent_action:'question',brief:{...brief,destination:'昆明'},search_query:'昆明 自然景观 官方旅游'});
   assert.equal(JSON.parse(opts.user).search_complete,true);return result();
 },search:async()=>[{title:'目的地资料',link:'https://example.org/guide',content:'景观介绍',date:new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Shanghai'})}]});
 assert.equal(calls,2);assert.equal(searched.sources.length,1);
@@ -206,3 +208,7 @@ console.log('✓ AI 对话确认、多轮上下文、改口、失败恢复、来
   const normal = await conversationTurn({ text: '想散心，城区自然都看看' }, null, { model });
   assert.equal(normal.status, 'ok', '#32 正常成功路径不因总时限退化');
 }
+
+const outputDiagnostics=[];
+const emptyReply=await conversationTurn({text:'先聊聊'},null,{model:async()=>result({reply:''}),onTrace:e=>outputDiagnostics.push(e)});
+assert.equal(emptyReply.status,'unavailable');assert.ok(outputDiagnostics.some(e=>e.stage==='output_contract' && e.missing_fields.includes('reply')),'输出失败必须区分缺字段与数值拒绝');

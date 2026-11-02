@@ -33,7 +33,7 @@ const deps={model:async()=>payload({memory_patch:{decisions:[candidate]}}),searc
   assert.deepEqual(commitMemoryDecisions(again.memory,[candidate]).unrecognized,unknown.unrecognized);
   const old=cleanConversation({stage:'draft'});assert.equal(old.memory.entries.length,0);assert.equal(old.summaries.items.length,0);
 }
-const draft={title:'十天探索',overview:'交通仍待核实',route:['北京','伊宁','阿拉木图'],cards:[{id:'card-a',place:'阿拉木图',label:'第1—10天',title:'阶段预留',content:'待核实交通后安排。'}],sections:[],pending:['班次待查']};
+const draft={title:'十天探索',overview:'交通仍待核实',route:['北京','伊宁','阿拉木图'],cards:[{id:'card-a',place:'阿拉木图',label:'第1—10天',title:'阶段预留',content:'安排城市散步与休息。'}],sections:[],pending:['班次待查']};
 {
   const url='https://www.xiaohongshu.com/explore/alm1';   //R1-A:证据引用须落在检索计划域名内
   const generate=async source=>{

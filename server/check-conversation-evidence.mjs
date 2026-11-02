@@ -1,6 +1,6 @@
 /* 真实编排合同：最终答复/草案、证据核对与用户引用消费同一来源集合。 */
 import assert from 'node:assert/strict';
-import {conversationTurn} from './lib/conversation.mjs';
+import {conversationTurn} from './fixtures/confirmed-conversation.mjs';
 import {buildEvidenceCatalog} from './lib/evidence-grounding.mjs';
 import {groundConversationOutput} from './lib/conversation-evidence.mjs';
 const now=Date.parse('2026-10-22T02:00:00Z');
@@ -9,12 +9,13 @@ const statement='来源记载北京到阿拉木图开通直飞，本次日期仍
 const brief={origin:'北京',destination:'阿拉木图',summary:'北京到阿拉木图旅行'};
 const base={intent_action:'question',reply:statement,brief,ready:true,confirmed:false,requirements_patch:{},preferences:{},travel:{},constraints:{},sights:{},search_query:'北京到阿拉木图航班',search_purpose:'transport',destination_country:'KZ'};
 const start={text:'北京到阿拉木图交通资料怎样？',conversation:{stage:'discuss',brief,routing:{origin:'北京',destination:'阿拉木图'}}};
-const execute=async({page=source,answer=statement,assessment='supported',extract=null,draft=null,action='chat',reviewFailure=false,reviewSources=false,searchFailure=false,omitSearchQuery=false,repairReply=null,withDraft=false,contextBudgetChars,text='北京到阿拉木图交通资料怎样？'}={})=>{
+const execute=async({transientSupportFailure=false,page=source,answer=statement,assessment='supported',extract=null,draft=null,action='chat',reviewFailure=false,reviewSources=false,searchFailure=false,omitSearchQuery=false,repairReply=null,withDraft=false,contextBudgetChars,text='北京到阿拉木图交通资料怎样？'}={})=>{
   const calls=[],queries=[],collections=[],views=[];const model=async opts=>{
     calls.push(opts.kind);
     if(['conversation','conversation_review','conversation_evidence_extract','conversation_evidence_repair'].includes(opts.kind))views.push({...JSON.parse(opts.user),model_kind:opts.kind});
     if(opts.kind==='conversation')return {...base,reply:answer,intent_action:draft?'revise':'question',draft,search_query:omitSearchQuery?'':'北京到阿拉木图航班'};
     if(opts.kind==='conversation_review')return {reply:answer,draft,changes:[]};
+    if(opts.kind==='conversation_delivery'){const p=JSON.parse(opts.user),structure=p.structure;assert.ok(Array.isArray(p.numeric_fact_catalog),'交付修复必须共享数字目录');assert.match(opts.schema_prompt,/数字只可/);return {reply:'已整理每日建议。',draft:{...draft,route:structure.route,overview:draft.overview.replace('，本次日期仍待确认',''),cards:draft.cards.map((c,i)=>({...c,id:structure.cards[i].id,label:structure.cards[i].label}))}};}
     if(opts.kind==='conversation_evidence_repair')return repairReply?{reply:repairReply}:null;
     if(opts.kind==='conversation_source_relevance')return reviewFailure?null:{items:JSON.parse(opts.user).candidates.map(s=>({id:s.id,decision:'keep',reason:'相关资料',quote:s.title}))};
     if(opts.kind==='conversation_evidence_extract'){
@@ -22,7 +23,8 @@ const execute=async({page=source,answer=statement,assessment='supported',extract
       const {fields,evidence_catalog}=JSON.parse(opts.user);
       return {items:fields.map(f=>({id:f.id,text:f.text,needs_source:/开通直飞/.test(f.text),allowed_use:/核心取舍/.test(f.text)?'inference':'source_reference',supports:/开通直飞/.test(f.text)?[{source_id:evidence_catalog.entries[0]?.id,quote:evidence_catalog.entries[0]?.excerpt || ''}]:[]}))};
     }
-    if(opts.kind==='conversation_evidence_support')return {items:JSON.parse(opts.user).claims.map(c=>({id:c.id,decision:assessment,reason:'逐句核对完成'}))};
+    if(opts.kind==='conversation_evidence_support' && transientSupportFailure && calls.filter(k=>k==='conversation_evidence_support').length===1){opts.onFailure?.({retryable:true,reason_code:'upstream_timeout'});return null;}
+    if(opts.kind==='conversation_evidence_support')return {items:JSON.parse(opts.user).claims.map(c=>({id:c.id,decision:assessment,relation:assessment==='supported'?'supports':assessment==='unsupported'?'refutes':'uncertain',reason:'逐句核对完成'}))};
     return {};
   };
   const input=action==='generate'?{action:'generate',conversation:{stage:'ready',brief,routing:{origin:'北京',destination:'阿拉木图'}}}:{...start,text};
@@ -30,11 +32,14 @@ const execute=async({page=source,answer=statement,assessment='supported',extract
   const result=await conversationTurn(input,null,{now,contextBudgetChars,evidenceReview:true,sourceReview:reviewFailure || reviewSources,search:async query=>{queries.push(query);return searchFailure?null:Array.isArray(page)?page:page?[page]:[];},model,onSourceCollection:s=>collections.push(s)});
   return {result,calls,queries,collections,views};
 };
+const retriedSupport=await execute({transientSupportFailure:true});
+assert.equal(retriedSupport.result.status,'ok');assert.equal(retriedSupport.calls.filter(k=>k==='conversation_evidence_support').length,2,'瞬时支持核对失败只重试该次调用，不重写整稿');
 const good=await execute();
 assert.equal(good.result.status,'ok');assert.equal(good.result.sources.length,1);assert.equal(good.result.evidence_claims.length,1);
 assert.ok(good.calls.includes('conversation_evidence_extract') && good.calls.includes('conversation_evidence_support'));
 assert.equal(good.result.evidence_claims[0].supports[0].source_id,good.result.sources[0].id);
 const generatedView=good.views.find(v=>v.search_complete);
+assert(good.views.filter(v=>v.model_kind==='conversation_evidence_extract').every(v=>!v.execution_observations),'事实核对只接收目录与待核对文本，不重复灌入工具执行日志挤占预算');
 assert.equal(generatedView.evidence_catalog.entries[0].excerpt,source.content);
 assert.deepEqual(generatedView.search_results,[]);assert.deepEqual(generatedView.transport_references,[],'最终生成不借旧交通资料或另一份长摘录扩展事实');
 const editedQuestion=await execute({withDraft:true}),editorView=editedQuestion.views.find(v=>v.model_kind==='conversation_review');
@@ -67,20 +72,22 @@ for(const text of ['现有资料不足以核实直飞是否在售、由哪家航
 const airport=await execute({page:{...source,title:'阿拉木图机场介绍',content:'阿拉木图机场位于哈萨克斯坦。'}});
 assert.equal(airport.result.status,'ok');assert.equal(airport.result.sources.length,0);assert.doesNotMatch(airport.result.reply,/开通直飞/);
 const failed=await execute({extract:'fail'});assert.equal(failed.result.status,'unavailable');assert.equal(failed.result.conversation.revision || 0,0);
-const unreviewed=await execute({reviewFailure:true});assert.equal(unreviewed.result.status,'unavailable');assert.match(unreviewed.result.reply,/不能据此判断是否有匹配资料/);assert.equal(unreviewed.result.sources.length,0);
-const channelsDown=await execute({searchFailure:true});assert.equal(channelsDown.result.status,'unavailable');assert.match(channelsDown.result.reply,/不能据此判断是否有匹配资料/);
+const unreviewed=await execute({reviewFailure:true});assert.equal(unreviewed.result.status,'ok');assert.equal(unreviewed.result.task_status,'partial');assert.match(unreviewed.result.reply,/核对未完成/);assert.equal(unreviewed.result.sources.length,0);
+const channelsDown=await execute({searchFailure:true});assert.equal(channelsDown.result.status,'ok');assert.equal(channelsDown.result.task_status,'partial');assert.equal(channelsDown.result.sources.length,0);
 const historical=await execute({page:{...source,date:null},reviewSources:true});
 assert.equal(historical.result.status,'ok');assert.equal(historical.result.sources.length,0,'日期未明不能成为当前事实引用');
 assert.equal(historical.result.historical_sources.length,1,'相关日期未明来源只进探索折叠区');
 const explicit=await execute({omitSearchQuery:true,text:'请核对公开资料：北京到阿拉木图航班。先不要改行程。'});
 assert.equal(explicit.queries.length,2,'用户明确要求核对时，意图模型漏交查询词不能取消检索');
-const plan={title:'旅行草案',overview:statement,route:['北京','阿拉木图'],cards:[{id:'city',place:'阿拉木图',label:'目的地阶段',title:'城区',content:'安排市区活动。'}],sections:[],pending:['班次待核实。']};
+const plan={title:'旅行草案',overview:statement.replace('，本次日期仍待确认',''),route:['北京','阿拉木图'],cards:[{id:'city',place:'阿拉木图',label:'目的地阶段',title:'城区',content:'安排市区活动。'}],sections:[],pending:['班次待核实。']};
 const generated=await execute({action:'generate',draft:plan});
-assert.equal(generated.result.status,'ok');assert.equal(generated.result.conversation.draft.overview,statement);
+assert.equal(generated.result.status,'ok');assert.equal(generated.result.conversation.draft.overview,statement.replace('，本次日期仍待确认',''));
 assert.equal(generated.result.sources.length,1);assert.equal(generated.result.evidence_claims.length,1);
 const generatedDenied=await execute({action:'generate',draft:plan,assessment:'unsupported'});
-assert.equal(generatedDenied.result.status,'ok');assert.doesNotMatch(generatedDenied.result.conversation.draft.overview,/开通直飞/);
-assert.equal(generatedDenied.result.sources.length,0);
+assert.equal(generatedDenied.result.status,'ok','删去无支持事实后，仍完整的AI安排可以交付');
+assert.doesNotMatch(generatedDenied.result.conversation.draft.overview,/开通直飞/);
+assert.ok(generatedDenied.result.conversation.draft.cards.every(c=>c.content.trim()));
+assert.doesNotMatch(JSON.stringify({...generatedDenied.result.conversation.draft,pending:[]}),/待查|待核实|待考证|不支持|不确定/);
 const inferred=await execute({answer:'这次的核心取舍是以伊宁为基地少换乘，还是多换乘比较沿线。',page:null});
 assert.equal(inferred.result.status,'ok');assert.match(inferred.result.reply,/核心取舍/);
 assert.equal(inferred.result.evidence_inferences.length,1);assert.equal(inferred.result.sources.length,0);
@@ -98,14 +105,14 @@ const conflictCatalog=buildEvidenceCatalog({sources:conflictSources,now,routing:
 const conflictText='两份资料对北京到阿拉木图班车是否开通说法不一，仍待核实。';
 const conflict=await groundConversationOutput({reply:conflictText,catalog:conflictCatalog,model:async opts=>{
   if(opts.kind==='conversation_evidence_extract')return {items:JSON.parse(opts.user).fields.map(f=>({id:f.id,text:f.text,needs_source:true,allowed_use:'conflict',supports:conflictCatalog.entries.map(s=>({source_id:s.id,quote:s.excerpt}))}))};
-  return {items:JSON.parse(opts.user).claims.map(c=>({id:c.id,decision:'supported',reason:'来源确有冲突且结论保留待查'}))};
+  return {items:JSON.parse(opts.user).claims.map(c=>({id:c.id,decision:'supported',relation:'conflicting',reason:'来源确有冲突且结论保留待查'}))};
 }});
 assert.equal(conflict.status,'complete');assert.equal(conflict.claims[0].allowed_use,'conflict');assert.equal(conflict.sources.length,2);
 const pronounCatalog=buildEvidenceCatalog({sources:[{title:'资料指南',url:'https://example.gov.cn/guide',excerpt:'出发前核对天气与官方开放状态。',published_at:'2026-10-20',kind:'guide'}],now});
 const pronounFact='它要求出发前核对天气与官方开放状态。';
 const pronoun=await groundConversationOutput({reply:'这条路线可执行。\n'+pronounFact,catalog:pronounCatalog,allowRepair:false,model:async opts=>{
   if(opts.kind==='conversation_evidence_extract')return {items:JSON.parse(opts.user).fields.map(f=>({id:f.id,text:f.text,needs_source:true,allowed_use:'source_reference',supports:f.text===pronounFact?[{source_id:pronounCatalog.entries[0].id,quote:pronounCatalog.entries[0].excerpt}]:[]}))};
-  return {items:JSON.parse(opts.user).claims.map(c=>({id:c.id,decision:'supported',reason:'原句支持'}))};
+  return {items:JSON.parse(opts.user).claims.map(c=>({id:c.id,decision:'supported',relation:'supports',reason:'原句支持'}))};
 }});
 assert.match(pronoun.reply,/资料参考（example.gov.cn）：\n它要求/,'删掉先行句后由实际出处补回主语');
 assert.equal(pronoun.claims[0].sentence,pronounFact,'补归属不改已经核对的事实原句');assert.equal(pronoun.sources.length,1);
@@ -118,3 +125,10 @@ const narrowed=await groundConversationOutput({reply:'你更关注交通还是�
 assert.ok(extractionView.entries.length<wideCatalog.entries.length,'夹具确实触发抽取目录裁剪');
 assert.deepEqual(narrowed.visible_catalog,extractionView,'后续数字校验拿到实际抽取视图，不能重增被裁剪内容');
 console.log('✓ 主对话、最终答复、生成草案、来源与引用一致、失败保留通过');
+// 查询用户文档状态时，普通问答核对同样需要看到当前条件；这不豁免运营保证。
+{
+ const context={text:'当前安排几天，含返程吗？',current:{requirements:{trip_days:5},travel:{trip_type:'round_trip'}},read_only_plan:{route:['福州','宁波'],cards:[{id:'card-day-5',label:'第5天',title:'返回福州'}]}};
+ const grounded=await groundConversationOutput({reply:'当前方案是5天，包含返程。',catalog:{entries:[]},conditions:context,allowRepair:false,model:async o=>{
+  const p=JSON.parse(o.user);assert.equal(p.planning_conditions.current.requirements.trip_days,5);assert.equal(p.planning_conditions.read_only_plan.cards[0].label,'第5天');return {items:p.fields.map(f=>({id:f.id,text:f.text,needs_source:false,allowed_use:null,supports:[]}))};
+ }});assert.equal(grounded.status,'complete');assert.match(grounded.reply,/5天/);
+}

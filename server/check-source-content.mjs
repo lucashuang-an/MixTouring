@@ -1,0 +1,31 @@
+import assert from 'node:assert/strict';
+import {selectSourcePassages,sourceSearchProvider} from './lib/source-passages.mjs';
+import {extractPublicPage} from './lib/public-reader.mjs';
+import {collectTravelSources} from './lib/travel-sources.mjs';
+const relevant='阿拉木图的青绿市场适合体验当地食材与市民生活。这里不能保证每天开放。';
+const input=('登录注册、服务热线和网站导航。\n'.repeat(180))+relevant;
+const selected=selectSourcePassages(input,{destination:'阿拉木图',query:'市场当地生活'},1600);
+assert.ok(selected.includes('阿拉木图的青绿市场适合体验当地食材与市民生活。'));assert.ok(selected.includes('这里不能保证每天开放。'));assert.ok(selected.length<=1600);
+for(const part of selected.split('\n'))assert.ok(input.includes(part),'只摘原句，不编新资料');
+const html='<html><head><title>深度游记</title></head><body><nav>'+('注册 登录 促销'.repeat(100))+'</nav><article><h1>阿拉木图游记</h1>'+Array.from({length:12},()=>'<p>'+relevant+'旅行者在这里观察到街区的日常生活与饮食文化。</p>').join('')+'</article><script>throw Error("网页脚本不可执行")</script></body></html>';
+const page=extractPublicPage(html);assert.equal(page.extractor,'readability');assert.ok(page.excerpt.includes(relevant));assert.ok(!page.excerpt.includes('促销'));
+assert.throws(()=>extractPublicPage('<title>安全验证</title>'+html));
+assert.equal(sourceSearchProvider('zh',{TRAVEL_SEARCH_MODE:'hybrid',VOLC_SEARCH_API_KEY:'x'}),'current');
+assert.equal(sourceSearchProvider('en',{TRAVEL_SEARCH_MODE:'hybrid',TAVILY_API_KEY:'x'}),'tavily');
+assert.equal(sourceSearchProvider('en',{}),null);
+const keys=['TRAVEL_SEARCH_MODE','VOLC_SEARCH_API_KEY','TAVILY_API_KEY'],old=Object.fromEntries(keys.map(k=>[k,process.env[k]]));
+try{
+  Object.assign(process.env,{TRAVEL_SEARCH_MODE:'hybrid',VOLC_SEARCH_API_KEY:'test',TAVILY_API_KEY:'test'});
+  const calls=[];
+  const result=await collectTravelSources({destination:'阿拉木图',query:'阿拉木图 深度游记',foreignQuery:'阿拉木图 travel local culture',international:true,purpose:'experience'},async(q,o)=>{calls.push({q,...o});return [{title:'阿拉木图游记',link:'https://example.org/guide',content:input}];},{useCache:false});
+  assert.deepEqual(calls.map(c=>c.provider),['current','tavily']);
+  assert.equal(result.archive.length,1,'跨通道相同URL去重');
+  assert.ok(result.archive[0].excerpt.includes('阿拉木图的青绿市场'));assert.ok(result.archive[0].excerpt.includes('不能保证每天开放'));
+  assert.deepEqual(result.channels.map(c=>c.provider),['current','tavily']);
+  calls.length=0;
+  let reviewScope=null;
+  await collectTravelSources({destination:'阿拉木图',query:'沿途深度游记',itinerary_stops:['伊宁','阿拉木图'],foreignQuery:'Almaty travel',international:true,purpose:'experience'},async(q,o)=>{calls.push({q,...o});return [{title:'伊宁街区',link:'https://example.org/yining',content:'伊宁街区游记'}];},{useCache:false,assessSources:async(task)=>{reviewScope=task.itinerary_stops;return {status:'completed',items:[]};}});
+  assert.deepEqual(reviewScope,['伊宁','阿拉木图'],'审核必须收到所有沿途城市，不能只认最终目的地');
+  assert.equal(calls.length,3);assert.ok(calls[0].q.startsWith('伊宁 '));assert.ok(calls[1].q.startsWith('阿拉木图 '));assert.deepEqual(calls.map(c=>c.provider),['current','current','tavily']);
+}finally{for(const k of keys)if(old[k]===undefined)delete process.env[k];else process.env[k]=old[k];}
+console.log('✓ 双搜索协作、长文后段原句保留、正文去噪、跨源去重与验证页边界');

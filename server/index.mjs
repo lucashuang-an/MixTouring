@@ -1,13 +1,25 @@
+import {withModelUsageContext} from './lib/model-usage.mjs';
+import {INPUT_LAYOUT_POLICY} from './lib/input-layout.mjs';
+import {RUNTIME_VERSION} from './lib/runtime-version.mjs';
+import {appendBoundedJsonl} from './lib/bounded-log.mjs';
+import {readJsonBody} from './lib/http-body.mjs';
+import {conversationStream} from './lib/conversation-stream.mjs';
+import {googleStaticMap} from './lib/google-maps.mjs';
 /* 搜索驱动的旅行Agent服务；无预置地点、方案或离线生成器。 */
 import Koa from 'koa';
 import {PassThrough} from 'node:stream';
 import {readFileSync,existsSync,statSync} from 'node:fs';
+import {randomUUID} from 'node:crypto';
+import {runMapTool} from './lib/map-tool.mjs';
 import {fileURLToPath} from 'node:url';
 import {dirname,join,normalize,sep,resolve} from 'node:path';
 import {composeConfigured,webSearchStatus,searchWeb} from './lib/llm.mjs';
 import {capabilities,webSearchConfigured} from './lib/trip-service.mjs';
 import {registerJourneyPlan,journeyDetailFromPlanId,guidePlanFromId} from './lib/journey.mjs';
 import {conversationTurn} from './lib/conversation.mjs';
+import {createPlanningSessions} from './lib/planning-session.mjs';
+import {AGENT_RULES_VERSION} from './lib/agent-prompts.mjs';
+import {checkDaySchedule} from './lib/planning-mobility.mjs';
 import {buildRouteComparison} from './lib/route-comparison.mjs';
 import {researchSelectedRoute} from './lib/route-research.mjs';
 import {draftResearchChanges,searchDraftChanges} from './lib/draft-research.mjs';
@@ -16,14 +28,16 @@ import {searchTransportSources,resolveTransportSearch} from './lib/transport-sea
 import {runResearchLoop,resolveResearchLoop} from './lib/research-loop.mjs';
 import {progressivePlan} from './lib/progressive.mjs';
 const root=join(dirname(fileURLToPath(import.meta.url)),'..');
+const planningSessions=createPlanningSessions({directory:join(root,'server','logs','planning-checkpoints'),rulesVersion:AGENT_RULES_VERSION});
 const PORT=Number(process.env.PORT) || 3000;
+const BIND_HOST=process.env.MIXTOURING_HOST || '127.0.0.1';
 export const app=new Koa();
-app.use(async(ctx,next)=>{try{await next();}catch(error){console.error('✗ 请求失败：'+error.message);ctx.status=500;ctx.body={code:1,msg:'服务内部错误'};}});
+app.use(async(ctx,next)=>{try{await next();}catch(error){const exposed=error.expose&&[400,408,413,415].includes(error.status);if(!exposed)console.error('✗ 请求失败：'+error.message);ctx.status=exposed?error.status:500;ctx.body={code:1,msg:exposed?error.message:'服务内部错误'};}});
 export async function apiRouter(ctx,next){
   if(!ctx.path.startsWith('/api/') && ctx.path!=='/healthz')return next();
-  ctx.type='application/json; charset=utf-8';const path=ctx.path;
-  if(path==='/healthz'){ctx.body={status:'ok'};return;}
-  if(path==='/api/capabilities'){ctx.body={code:0,data:capabilities(composeConfigured(),webSearchConfigured().configured,webSearchStatus().status)};return;}
+  ctx.type='application/json; charset=utf-8';ctx.set('Cache-Control','no-store');const path=ctx.path;
+  if(path==='/healthz'){ctx.body={status:'ok',runtime_version:RUNTIME_VERSION,agent_rules_version:AGENT_RULES_VERSION,input_layouts:INPUT_LAYOUT_POLICY};return;}
+  if(path==='/api/capabilities'){ctx.body={code:0,data:{...capabilities(composeConfigured(),webSearchConfigured().configured,webSearchStatus().status),runtime_version:RUNTIME_VERSION,agent_rules_version:AGENT_RULES_VERSION,input_layouts:INPUT_LAYOUT_POLICY}};return;}
   if (['/api/anywhere/plan','/api/anywhere/search-plan'].includes(path) && ctx.method === 'POST') {
     const body = await readBody(ctx);
     if (!body || (!String(body.text || '').trim() && !String(body.origin || '').trim() && !String(body.destination || '').trim())) {
@@ -61,10 +75,43 @@ export async function apiRouter(ctx,next){
     /* #32：客户端断开（提交阶段断开或等待回复时断开）取消下游模型/检索；正常完成不取消 */
     const signal = createRequestSignal(ctx.req, ctx.res);
     const body = await readBody(ctx) || {};
-    const plan=guidePlanFromId(body.plan_id),data=await conversationTurn(body,plan,{signal});
+    const action=body.action===undefined?'chat':body.action;
+    if(!['chat','prepare','generate','accept_preview','discard_preview'].includes(action)||body.text!==undefined&&typeof body.text!=='string')throw Object.assign(Error('对话请求字段无效。'),{status:400,expose:true});
+    if(action==='chat'&&!body.text?.trim())throw Object.assign(Error('请先输入你的旅行想法。'),{status:400,expose:true});
+    const taskId=ctx.state?.modelUsageTaskId || randomUUID(),events=[];
+    const execute=async (progress=()=>{})=>{
+    const observe=event=>{events.push({at:new Date().toISOString(),...event});progress(event);};
+    const plan=guidePlanFromId(body.plan_id),data=await planningSessions.run(body,{signal,execute:(request,execution)=>conversationTurn(request,plan,{...execution,taskId,
+      onTrace:observe,onModelUsage:value=>observe({stage:'model_usage',...value}),onSourceAudit:items=>observe({stage:'source_audit',items}),
+      onSourceCollection:value=>observe({stage:'source_collection',...value})})});
+    data.trace_id=taskId;
+    try{const dir=join(root,'server','logs');appendBoundedJsonl(join(dir,'agent-trace.jsonl'),{task_id:taskId,action:body.action || 'chat',status:data.status,
+      before:{revision:body.conversation?.revision || 0,requirements:body.conversation?.requirements},after:{revision:data.conversation?.revision || 0,requirements:data.conversation?.requirements},events});}catch{}
     data.research_update=draftResearchChanges(body,data,plan);
-    ctx.body = { code: 0, data };
+    return {code:0,data};
+    };
+    if(body.progressive===true){ctx.type='application/x-ndjson';ctx.set('Cache-Control','no-store');ctx.body=conversationStream(execute,signal);}else ctx.body=await execute();
     return;
+  }
+  if(path==='/api/anywhere/google-map-image' && ctx.method==='GET'){
+    const ids=typeof ctx.query.ids==='string'?ctx.query.ids.split(','):[];
+    const result=await googleStaticMap(ids,{signal:createRequestSignal(ctx.req,ctx.res)});
+    ctx.set('Cache-Control','no-store');ctx.set('X-Content-Type-Options','nosniff');ctx.status=result.status;
+    if(result.data){ctx.type='image/png';ctx.body=result.data;}else ctx.body={code:1,msg:'Google底图暂不可用',reason:result.reason};
+    return;
+  }
+  if(path==='/api/anywhere/map-places' && ctx.method==='POST'){
+    const signal=createRequestSignal(ctx.req,ctx.res),body=await readBody(ctx) || {};
+    ctx.body={code:0,data:await runMapTool('map_cities',{names:body.names || [],places:Array.isArray(body.places)?body.places:[]},{signal})};return;
+  }
+  if(path==='/api/anywhere/day-schedule' && ctx.method==='POST'){
+    const signal=createRequestSignal(ctx.req,ctx.res),body=await readBody(ctx) || {};
+    ctx.set('Cache-Control','no-store');
+    ctx.body={code:0,data:await checkDaySchedule(body,{signal})};return;
+  }
+  if(path==='/api/anywhere/day-map' && ctx.method==='POST'){
+    const signal=createRequestSignal(ctx.req,ctx.res),body=await readBody(ctx) || {};
+    ctx.body={code:0,data:await runMapTool('map_day',{...body,places:body.places || []},{signal})};return;
   }
   if (path === '/api/anywhere/route-research' && ctx.method === 'POST') {
     const signal=createRequestSignal(ctx.req,ctx.res),body=await readBody(ctx) || {};
@@ -75,7 +122,7 @@ export async function apiRouter(ctx,next){
   if (path === '/api/anywhere/transport-search' && ctx.method === 'POST') {
     const signal = createRequestSignal(ctx.req, ctx.res);
     const body=await readBody(ctx) || {};
-    try{ctx.body={code:0,data:await searchTransportSources({from:body.from,to:body.to,window:body.window,mode:body.mode,exclude_road:body.exclude_road,places:body.places},searchWeb,{signal})};}
+    try{ctx.body={code:0,data:await searchTransportSources({from:body.from,to:body.to,window:body.window,mode:body.mode,exclude_road:body.exclude_road,no_self_drive:body.no_self_drive,places:body.places},searchWeb,{signal})};}
     catch(error){ctx.body={code:1,msg:error.message};}
     return;
   }
@@ -118,15 +165,15 @@ export async function apiRouter(ctx,next){
 
   ctx.status=410;ctx.body={code:1,msg:'此旧接口已退役，请使用旅行对话与搜索规划。'};
 }
+app.use(async(ctx,next)=>{
+  if(!ctx.path.startsWith('/api/'))return next();
+  const taskId=randomUUID();ctx.state.modelUsageTaskId=taskId;
+  return withModelUsageContext({task_id:taskId,operation:ctx.path},next);
+});
 app.use(apiRouter);
 function readBody(ctx) {
-  return new Promise((resolve) => {
-    let raw = '';
-    ctx.req.on('data', (c) => { raw += c; });
-    ctx.req.on('end', () => {
-      try { resolve(raw ? JSON.parse(raw) : {}); } catch { resolve({ raw }); }
-    });
-  });
+  if(!/^application\/(?:[\w.+-]+\+)?json(?:\s*;|$)/i.test(ctx.req.headers?.['content-type'] || '')){ctx.req.once('error',()=>{});ctx.req.resume();throw Object.assign(Error('请使用JSON格式提交请求。'),{status:415,expose:true});}
+  return readJsonBody(ctx.req);
 }
 
 /* query 字符串容错：koa 在无该 key 时返回空字符串优先，兼容 |undefined */
@@ -153,11 +200,12 @@ const MIME = {
 app.use(async (ctx, next) => {
   if (ctx.method !== 'GET' && ctx.method !== 'HEAD') return next();
   const rel = ctx.path === '/' ? '/index.html' : ctx.path;
-  const file = normalize(join(HIFI_DIR, decodeURIComponent(rel)));
+  let decoded;try{decoded=decodeURIComponent(rel);}catch{ctx.status=400;ctx.body='Invalid path';return;}
+  const file = normalize(join(HIFI_DIR, decoded));
   if (!file.startsWith(HIFI_DIR + sep)) { ctx.status = 403; return; } /* 防目录穿越 */
   if (!existsSync(file) || !statSync(file).isFile()) { ctx.status = 404; ctx.type = 'text/plain; charset=utf-8'; ctx.body = 'Not Found'; return; }
   ctx.type = MIME[file.slice(file.lastIndexOf('.')).toLowerCase()] || 'application/octet-stream';
   ctx.body = readFileSync(file);
 });
 
-if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url))app.listen(PORT,()=>console.log('✓ MixTouring旅行Agent已启动：http://localhost:'+PORT));
+if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url))app.listen(PORT,BIND_HOST,()=>console.log('✓ MixTouring旅行Agent已启动：http://'+BIND_HOST+':'+PORT));

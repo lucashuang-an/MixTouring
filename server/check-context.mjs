@@ -1,7 +1,7 @@
 /* check-context.mjs · v0.60.1 M1：上下文组装、预算裁剪与增量摘要的确定性回归。
  * 无网络、无密钥、固定时钟。运行：node server/check-context.mjs */
 import assert from 'node:assert/strict';
-import { buildContext, cleanSummaries, summarizeBacklog, appendSummary, summaryFingerprint, isStale, RECENT_WINDOW } from './lib/context-builder.mjs';
+import { buildContext, cleanSummaries, summarizeBacklog, appendSummary, summaryFingerprint, isStale, summarySourceHash, RECENT_WINDOW } from './lib/context-builder.mjs';
 
 const fingerprint = summaryFingerprint(3, JSON.stringify({ requirements: { required_stops: ['伊宁'] }, routing: { origin: '北京', destination: '阿拉木图' } }));
 const msgs = n => Array.from({ length: n }, (_, i) => ({ mid: i + 1, role: i % 2 ? 'assistant' : 'user', text: '消息' + (i + 1) }));
@@ -10,7 +10,7 @@ const msgs = n => Array.from({ length: n }, (_, i) => ({ mid: i + 1, role: i % 2
 {
   const { sections, manifest } = buildContext({
     rulesVersion: 'v0.60.1', coreRules: '硬要求优先于便利。', text: '国庆去阿拉木图', conversation: { revision: 3, brief: { destination: '阿拉木图' } },
-    messages: msgs(20), summaries: { items: [{ id: 'sum_1', from_mid: 1, to_mid: 4, revision: 3, condition_hash: fingerprint, text: '早期：用户确定必经伊宁[2]' }] },
+    messages: msgs(20), summaries: { items: [{ id: 'sum_1', from_mid: 1, to_mid: 4, revision: 3, condition_hash: fingerprint, source_hash:summarySourceHash(msgs(20),1,4), text: '早期：用户确定必经伊宁[2]' }] },
     fingerprint, decisionIndex: { entries: [{ id: 'mem_1', summary: '用户选择必经伊宁' }] },
     evidenceSources: [{ url: 'https://a.example/1', title: 'A', excerpt: 'x' }, { url: 'https://a.example/1', title: 'A 重复' }, { url: 'https://b.example/2', title: 'B' }]
   });
@@ -48,7 +48,7 @@ const msgs = n => Array.from({ length: n }, (_, i) => ({ mid: i + 1, role: i % 2
   const summaries = cleanSummaries({ items: [] });
   const backlog1 = summarizeBacklog(msgs(20), summaries, fingerprint);
   assert.equal(backlog1.pending.length, 20 - RECENT_WINDOW, '摘要：滑出窗口的消息进入待摘要范围');
-  const withSummary = appendSummary(summaries, { fromMid: 1, toMid: 4, text: '早期摘要' }, fingerprint, 3);
+  const withSummary = appendSummary(summaries, { fromMid: 1, toMid: 4, text: '早期摘要' }, fingerprint, 3, msgs(20));
   const backlog2 = summarizeBacklog(msgs(20), withSummary, fingerprint);
   assert.equal(backlog2.pending.length, 20 - RECENT_WINDOW - 4, '摘要：已覆盖范围不再重复提炼');
   const stale = appendSummary(summaries, { fromMid: 1, toMid: 4, text: '旧指纹摘要' }, summaryFingerprint(9, '{}'), 9);
@@ -60,7 +60,7 @@ const msgs = n => Array.from({ length: n }, (_, i) => ({ mid: i + 1, role: i % 2
 /* 摘要失败继续：不写入则范围保留，下次重试；有效摘要仍被组装使用 */
 {
   const failed = cleanSummaries({ items: [] });
-  const kept = appendSummary(appendSummary(failed, { fromMid: 1, toMid: 3, text: '已验证旧摘要' }, fingerprint, 3), { fromMid: 4, toMid: 6, text: '第二批' }, fingerprint, 3);
+  const kept = appendSummary(appendSummary(failed, { fromMid: 1, toMid: 3, text: '已验证旧摘要' }, fingerprint, 3, msgs(20)), { fromMid: 4, toMid: 6, text: '第二批' }, fingerprint, 3, msgs(20));
   assert.equal(kept.items.length, 2, '摘要失败继续：已验证摘要保留');
   const { sections } = buildContext({ text: 't', conversation: { revision: 3 }, messages: msgs(20), summaries: kept, fingerprint, decisionIndex: { entries: [] }, evidenceSources: [] });
   const sum = sections.find(s => s.id === 'history_summaries').body;
@@ -86,8 +86,8 @@ console.log('✓ 上下文组装与增量摘要回归通过');
     assert.ok(opts.user.length+opts.schema_prompt.length<=24000,'实际system与user总长不超预算');
     assert.ok(c.manifest?.estimated_chars<=c.manifest?.budget_chars);
     if(opts.kind==='conversation'){
-      assert.equal(c.conversation.draft.cards[0].title,draft.cards[0].title,'预算不能丢当前草案');
-      assert.ok(c.manifest.omitted_ids.includes('decision_index'));
+      assert.equal((c.draft_outline || c.original_draft || c.conversation?.draft).cards[0].title,draft.cards[0].title,'理解保留结构，正式问答保留当前草案');
+      if(opts.instruction_phase==='discuss')assert.ok(c.manifest.omitted_ids.includes('decision_index'));
       return {intent_action:'question',reply:'先讨论取舍，原安排保留。',brief,ready:true,preferences:{},travel:{},constraints:{},search_query:'阿拉木图旅行'};
     }
     if(opts.kind==='conversation_intent')return {intent_action:'question',requirements_patch:{}};

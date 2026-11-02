@@ -40,7 +40,7 @@ for(const bad of [async()=>null,async()=>({items:[]}),async()=>({items:[{id:sour
   const judged=await collectTravelSources({destination:'大阪'},async()=>[good],{now,useCache:true,assessSources:relevanceReviewer(bad)});assert.equal(judged.sources.length,0);assert.equal(judged.relevance.uncertain,1);
 }
 let emptyModelCalls=0;
-await relevanceReviewer(async()=>{emptyModelCalls++;return null;})({destination:'大阪'},[{url:good.link,title:good.title,excerpt:good.content}]);
+await relevanceReviewer(async opts=>{emptyModelCalls++;opts.onFailure?.({reason_code:'empty_response',retryable:true});return null;})({destination:'大阪'},[{url:good.link,title:good.title,excerpt:good.content}]);
 assert.equal(emptyModelCalls,2,'HTTP成功但模型空返回仅补一次，全部调用纳入用量');
 let retries=0;await collectTravelSources({destination:'大阪'},async()=>{retries++;return [good];},{now,useCache:true,assessSources});assert.equal(retries,2,'评估失败或缺项不会缓存为成功');
 const duplicateReviewer=relevanceReviewer(async({user})=>{const c=JSON.parse(user).candidates[0],entry={id:c.id,decision:'keep',reason:'重复ID',quote:c.title};return {items:[entry,entry]};});assert.equal((await duplicateReviewer({destination:'大阪'},[{url:good.link,title:good.title,excerpt:good.content}])).items[0].decision,'uncertain');

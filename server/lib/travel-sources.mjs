@@ -1,7 +1,10 @@
+import {AGENT_RULES_VERSION} from './agent-prompts.mjs';
+import {composeModelInfo} from './llm.mjs';
 /* 旅行经验与目的地资料并行检索；平台归属依据真实 URL，不由模型指定。 */
 import {retrievalContext,partitionTimedSources,sourceDay,assessSourceTime} from './source-time.mjs';
 import {RELEVANCE_VERSION,sourceId,sourceRule} from './source-relevance.mjs';
 import {publicUrl} from './public-reader.mjs';
+import {selectSourcePassages,sourceSearchProvider} from './source-passages.mjs';
 const cache=new Map();
 const hostIs=(host,domain)=>host===domain || host.endsWith('.'+domain);
 export const articleIdentity=url=>{try{const x=new URL(url);x.hash='';for(const k of [...x.searchParams.keys()])if(/^utm_|^(spm|share_source|share_from)$/i.test(k))x.searchParams.delete(k);return x.host.replace(/^www\./,'')+x.pathname.replace(/\/$/,'')+x.search;}catch{return url;}};
@@ -28,7 +31,7 @@ export function classifyTravelSource(link){
   if(/\.gov(?:\.[a-z]{2})?$/.test(host) || ['kazakhstan.travel','jr-central.co.jp','jreast.co.jp','smart-ex.jp','12306.cn','csair.com','airchina.com.cn','airastana.com'].some(d=>hostIs(host,d)))return {platform:host,kind:'official',host};
   return {platform:host,kind:'guide',host};
 }
-function cleanResult(raw,now=Date.now()){
+function cleanResult(raw,now=Date.now(),task={}){
   const meta=classifyTravelSource(raw?.link);if(!meta)return null;
   const published=raw.date_basis==='provider_estimate'?null:raw.date;
   const url=new URL(raw.link);url.hash='';
@@ -36,14 +39,15 @@ function cleanResult(raw,now=Date.now()){
   if(url.pathname==='/' || /\/search(?:\/|$)/.test(url.pathname))return null;
   if(hostIs(meta.host,'xiaohongshu.com') && !/^\/(explore|discovery\/item)\/[^/]+/.test(url.pathname))return null;
   for(const key of [...url.searchParams.keys()])if(/^utm_|^(spm|share_source|share_from)$/i.test(key))url.searchParams.delete(key);
-  return {...meta,url:url.href,title:String(raw.title || meta.platform).slice(0,160),excerpt:String(raw.content || '').slice(0,1600),
+  return {...meta,url:url.href,title:String(raw.title || meta.platform).slice(0,160),excerpt:selectSourcePassages(raw.content,task),
     ...(raw.date_basis==='provider_estimate'?{estimated_date:String(raw.estimated_date || '').slice(0,100),estimated_date_basis:'provider_estimate'}:{}),
     published_at:sourceDay(published),published_raw:published || null,date_basis:published?'search_index':'unknown',read_status:'search_excerpt',checked_at:new Date(now).toISOString()};
 }
-export async function collectTravelSources({destination='',query='',question='',international=false,foreignQuery='',travel={},window=null,purpose='experience'},search,{useCache=true,readPage=null,now=Date.now(),signal=null,queryPlans=null,diagnostics=false,assessSources=null}={}){
+export async function collectTravelSources({destination='',query='',question='',international=false,foreignQuery='',travel={},window=null,purpose='experience',itinerary_stops=[],include_day_tours=false,connection_modes=[]},search,{useCache=true,cacheScope=null,forceRefresh=false,readPage=null,now=Date.now(),signal=null,queryPlans=null,diagnostics=false,assessSources=null}={}){
   const temporal=retrievalContext({travel,window,purpose,now});
   const stamp=temporal.target_window?' '+temporal.target_window.replaceAll(' ',''):'';
-  const task={destination:String(destination).trim(),query:String(query).trim(),question:String(question).trim().slice(0,2000),foreignQuery:String(foreignQuery).trim(),purpose,international:!!international};
+  const task={destination:String(destination).trim(),query:String(query).trim(),question:String(question).trim().slice(0,2000),foreignQuery:String(foreignQuery).trim(),purpose,international:!!international,
+    itinerary_stops:[...new Set((Array.isArray(itinerary_stops)?itinerary_stops:[]).filter(s=>typeof s==='string' && s.trim()).map(s=>s.trim().slice(0,80)))].slice(0,12)};
   const directUrls=[...task.question.matchAll(/https?:\/\/[^\s<>"'（）()]+/gi)].map(m=>m[0].replace(/[.,，。!?！？;；]+$/,''))
     .map(value=>{try{return publicUrl(value).href;}catch{return null;}}).filter(Boolean).filter((value,i,all)=>all.indexOf(value)===i).slice(0,2);
   const topic=task.query || destination+' 旅行';
@@ -71,7 +75,7 @@ export async function collectTravelSources({destination='',query='',question='',
   };
   const defaults = [
     { channel: explicitDomains.length?'指定来源':'中文社区', domains: explicitDomains.length?explicitDomains:CN_COMMUNITY_DOMAINS, domainMode:explicitDomains.length?'restrict':'prefer', language:language(topic), kinds: communityKinds, base:task.query || destination+' '+themeWords },
-    ...(international && purpose==='experience' && !explicitDomains.length ? [{ channel: '海外社区', domains: OVERSEAS_DOMAINS, domainMode:'prefer', language:language(english), kinds: communityKinds, base:english }] : [officialPlan])
+    ...(international && purpose==='experience' && !explicitDomains.length ? [{ channel: '海外社区', domains: OVERSEAS_DOMAINS, domainMode:'prefer', language:language(english)==='ja'?'ja':'en', kinds: communityKinds, base:english }] : [officialPlan])
   ].map(({base,suffix,...q}) => { const scope = stamp;
     const room=100-scope.length,primary=fit(base,room),free=room-primary.length-1;
     const secondary=(suffix || '').split(/\s+/).reduce((value,word)=>{const next=value?value+' '+word:word;return next.length<=free?next:value;},'');
@@ -79,23 +83,32 @@ export async function collectTravelSources({destination='',query='',question='',
       startDate:new Date(Date.parse(temporal.today+'T00:00:00Z')-(q.domains?365:temporal.max_age_days)*86400000).toISOString().slice(0,10),endDate:temporal.today}; });
   // 固定探针仅供内部基线工具注入，不接受 HTTP 入参；默认产品检索计划与筛选保持原样。
   if(queryPlans!==null && (!Array.isArray(queryPlans) || !queryPlans.length || queryPlans.length>8 || queryPlans.some(q=>!q || typeof q.text!=='string' || !q.text.trim() || q.text.length>100 || !/^[a-z0-9.-]+$/.test(q.domain || '') || !Array.isArray(q.kinds) || !q.kinds.length || q.kinds.some(k=>!['experience','guide','official'].includes(k)))))throw Error('基线查询计划无效');
-  const queries=queryPlans || defaults;
+  const stops=[...new Set((Array.isArray(itinerary_stops)?itinerary_stops:[]).filter(s=>typeof s==='string' && s.trim()).map(s=>s.trim().slice(0,80)))].slice(0,3);
+  const scoped=purpose==='experience' && !explicitDomains.length && stops.length>1?
+    stops.map(city=>({...defaults[0],text:(city+' 深度游记 地标 街区 公园 当地文化 特色体验').slice(0,100),language:'zh',sourceLimit:4})).concat(defaults.slice(1).map(q=>({...q,sourceLimit:4}))):defaults;
+  if(include_day_tours && international && purpose==='experience' && !explicitDomains.length && !queryPlans){
+    scoped.push({channel:'当地游与接送',text:fit(english,60)+' day tour small group pickup transfer',language:'en',domains:['getyourguide.com','viator.com','klook.com'],domainMode:'prefer',kinds:['guide','experience'],sourceLimit:4});
+  }
+  const connectionTerms={rail:'火车 高铁 时刻表 查询',plane:'机票 航班 直飞 中转 查询',drive:'自驾 驾车 路线 导航'};
+  const connectionQueries=[...new Set(Array.isArray(connection_modes)?connection_modes:[])].filter(m=>connectionTerms[m]).slice(0,3).map(m=>({channel:{rail:'铁路方向',plane:'航空方向',drive:'自驾方向'}[m],text:(task.query+' '+connectionTerms[m]).slice(0,100),language:'zh',domains:null,kinds:['guide','official','experience'],sourceLimit:5,provider:sourceSearchProvider('zh'),startDate:null,endDate:temporal.today}));
+  const queries=queryPlans || (connectionQueries.length?connectionQueries.concat({...defaults[0],text:(task.query+' 交通 乘车 经验').slice(0,100),sourceLimit:3,provider:sourceSearchProvider(defaults[0].language)}):scoped.map(q=>({...q,provider:sourceSearchProvider(q.language)})));
   if(diagnostics || queryPlans)useCache=false;
   /* R1-A:服务敏感缓存——不同检索服务的来源集合不可互串 */
-  const key=JSON.stringify(['sources-0.60.25',RELEVANCE_VERSION,process.env.TRAVEL_SEARCH_PROVIDER || 'current',task,queries,temporal,!!readPage,assessSources?'model':'rules']);
+  const key=JSON.stringify(['sources-0.60.77',AGENT_RULES_VERSION,cacheScope,RELEVANCE_VERSION,process.env.TRAVEL_SEARCH_MODE || null,composeModelInfo(),process.env.TRAVEL_SEARCH_PROVIDER || 'current',process.env.TRAVEL_CHINESE_SEARCH_PROVIDER || null,task,queries,temporal,!!readPage,assessSources?'model':'rules']);
   /* #32（复审二轮）：取消检查统一三处——缓存命中前、搜索阶段后、原文读取阶段后；
    * 取消轮一律返回 cancelled（不产出来源、不登记、缓存命中也不放行），重试重新全量检索。 */
   const cancelledResult=()=>({sources:[],archive:[],experiences:[],channels:[],temporal,status:'unavailable',reader:{attempted:0,available:0},excluded_count:0,cache_hit:false,retrieved_at:new Date(now).toISOString(),results:[],cancelled:true});
+  if(forceRefresh)cache.delete(key);
   const cached=cache.get(key);
   if(useCache && cached?.until>now){if(signal?.aborted)return cancelledResult();return {...structuredClone(cached.value),cache_hit:true};}
-  const settled=signal?.aborted?[]:await Promise.allSettled(queries.map(q=>search(q.text,{limit:5,timeoutMs:12000,signal,domains:q.domains || (q.domain?[q.domain]:null),domainMode:q.domainMode || 'restrict',language:q.language || null,startDate:q.startDate || null,endDate:q.endDate || null})));
+  const settled=signal?.aborted?[]:await Promise.allSettled(queries.map(q=>search(q.text,{limit:q.sourceLimit || 5,timeoutMs:12000,signal,...(q.provider?{provider:q.provider}:{}),domains:q.domains || (q.domain?[q.domain]:null),domainMode:q.domainMode || 'restrict',language:q.language || null,startDate:q.startDate || null,endDate:q.endDate || null})));
   /* #32（复审 P2）：部分查询先成功、其余被取消时，本轮不产出可用结果、不登记来源、不写缓存 */
   if(signal?.aborted)return cancelledResult();
   let pool=[];
   const seen=new Map(),channels=[],queryDiagnostics=[],queryEntries=[];
   settled.forEach((item,i)=>{
     const results=item.status==='fulfilled' && Array.isArray(item.value)?item.value:[];
-    const plan=queries[i],planDomains=plan.domains || (plan.domain?[plan.domain]:[]),cleaned=results.map(raw=>cleanResult(raw,now));
+    const plan=queries[i],planDomains=plan.domains || (plan.domain?[plan.domain]:[]),cleaned=results.map(raw=>cleanResult(raw,now,task));
     const inPlanDomain=raw=>{try{return planDomains.some(d=>hostIs(new URL(raw.link).hostname.toLowerCase(),d));}catch{return false;}};
     const domainHits=results.filter(inPlanDomain);
     const entries=cleaned.map(source=>{
@@ -109,7 +122,7 @@ export async function collectTravelSources({destination='',query='',question='',
     });
     queryEntries.push(entries);
     queryDiagnostics.push({query:plan.text,raw_count:results.length,domain_hit_count:domainHits.length});
-    channels.push({channel:plan.channel,status:item.status==='fulfilled' && Array.isArray(item.value)?'empty':'unavailable',query:plan.text});
+    channels.push({channel:plan.channel,provider:plan.provider || 'configured-default',status:item.status==='fulfilled' && Array.isArray(item.value)?'empty':'unavailable',query:plan.text});
   });
   if(directUrls.length){
     const entries=directUrls.map(url=>{const existing=seen.get(url);if(existing){existing.direct_input=true;return {source:existing,duplicate:true};}
@@ -146,7 +159,8 @@ export async function collectTravelSources({destination='',query='',question='',
         source.read_note='原文读取跳转到其他文章，为避免身份混淆未采用，仅有搜索摘要';
         return;
       }
-      readCount++;source.excerpt=String(page.excerpt || source.excerpt).slice(0,3500);source.read_status='page_excerpt';
+      // 交通公告保留原连续视图，避免跨表格行选段改变方向／票价口径；体验长文按主题选段。
+      readCount++;source.excerpt=purpose==='transport'?String(page.excerpt || source.excerpt).slice(0,3500):selectSourcePassages(page.excerpt || source.excerpt,task);source.read_status='page_excerpt';
       if(page.title){source.search_title=source.title;source.title=String(page.title).slice(0,160);}
       if(page.url && classifyTravelSource(page.url)){source.original_url=source.url;source.url=page.url;Object.assign(source,classifyTravelSource(page.url));}
       source.updated_at=page.updated_at || null;source.truncated=!!page.truncated;
@@ -159,7 +173,8 @@ export async function collectTravelSources({destination='',query='',question='',
     for(const source of pool)if(source.direct_input && source.read_status!=='page_excerpt')decisions.set(source.url,{decision:'reject',reason:'direct_read_failed',stage:'reader'});
     for(const source of pool){const rule=sourceRule(task,source);if(rule?.kind){source.kind=rule.kind;source.allowed_use=rule.reason;}if(rule?.decision==='reject')decisions.set(source.url,rule);}
     const experienceScope=retrievalContext({travel,window,purpose:'experience',now});
-    const eligible=pool.filter(s=>!decisions.has(s.url) && ['recent','window_reference','undated'].includes(assessSourceTime(s,s.kind==='experience'?experienceScope:temporal).state));
+    const eligible=pool.filter(s=>!decisions.has(s.url) && (['recent','window_reference','undated'].includes(assessSourceTime(s,s.kind==='experience'?experienceScope:temporal).state) ||
+      purpose!=='transport' && ['guide','official','experience'].includes(s.kind) && assessSourceTime(s,temporal).state==='historical'));
     if(assessSources && eligible.length){
       let assessed;try{assessed=await assessSources(task,eligible,{signal});}catch{}
       if(signal?.aborted)return cancelledResult();
@@ -182,6 +197,9 @@ export async function collectTravelSources({destination='',query='',question='',
   relevance.rejected=queryDiagnostics.reduce((sum,q)=>sum+q.rejected_count,0);
   relevance.uncertain=[...decisions.values()].filter(d=>d.decision==='uncertain').length;
   if(assessSources && relevance.uncertain && relevance.status==='completed'){relevance.status='partial';relevance.reason_code='incomplete_assessment';}
+  const sourceAudit=pool.map(s=>({id:sourceId(s),url:s.url,read_status:s.read_status || 'search_excerpt',read_note:s.read_note || null,
+    temporal_state:assessSourceTime(s,temporal).state,relevance:decisions.get(s.url)?.decision || 'not_reviewed',reason:decisions.get(s.url)?.reason || null,
+    disposition:accepted(s)?['recent','window_reference'].includes(assessSourceTime(s,temporal).state)?'current':'archive':'rejected'}));
   pool=pool.filter(accepted);relevance.kept=pool.length;
   const partition=partitionTimedSources(pool,temporal);
   const diverse=list=>{const counts=new Map();return list.filter(s=>{const count=counts.get(s.platform)||0;if(count>=2)return false;counts.set(s.platform,count+1);return true;});};
@@ -189,9 +207,9 @@ export async function collectTravelSources({destination='',query='',question='',
   const experiences=diverse(partitionTimedSources(pool.filter(s=>s.kind==='experience'),experienceContext).current).slice(0,8).map(s=>({...s,allowed_use:'travel_experience'}));
   const sources=diverse(partition.current).slice(0,8),archive=diverse(partition.archive).slice(0,8);
   const available=channels.filter(c=>c.status!=='unavailable').length;
-  const value={sources,archive,experiences,channels,temporal,relevance,query_diagnostics:queryDiagnostics,status:available===0?'unavailable':available<channels.length?'partial':'available',reader:{attempted:reads.length,available:readCount},excluded_count:partition.excluded.length,cache_hit:false,retrieved_at:new Date(now).toISOString(),
+  const value={sources,archive,experiences,channels,temporal,relevance,query_diagnostics:queryDiagnostics,source_audit:sourceAudit,status:available===0?'unavailable':available<channels.length?'partial':'available',reader:{attempted:reads.length,available:readCount},excluded_count:partition.excluded.length,cache_hit:false,retrieved_at:new Date(now).toISOString(),
     results:sources.map(s=>({title:s.title,link:s.url,content:s.excerpt,date:s.published_at,date_basis:s.date_basis,source_kind:s.kind,platform:s.platform,read_status:s.read_status,temporal:s.temporal}))};
   if(diagnostics)value.diagnostics={queries:queryDiagnostics,all_sources:[...partition.current,...partition.archive,...partition.excluded]};
-  if(useCache && available && !['unavailable','partial'].includes(relevance.status) && !signal?.aborted){cache.set(key,{value:structuredClone(value),until:now+300000});if(cache.size>80)cache.delete(cache.keys().next().value);}
+  if(useCache && pool.length && value.status==='available' && !['unavailable','partial'].includes(relevance.status) && !signal?.aborted){cache.set(key,{value:structuredClone(value),until:now+300000});if(cache.size>80)cache.delete(cache.keys().next().value);}
   return value;
 }

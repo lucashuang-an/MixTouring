@@ -1,8 +1,14 @@
 /* 数字事实真实编排回归：同数不同义、方向／币种／用途／时效，以及合法预算不误拦。 */
 import assert from 'node:assert/strict';
 import {buildNumericCatalog,validateNumericClaims,numericOccurrences} from './lib/numeric-grounding.mjs';
-import {conversationTurn,cleanConversation} from './lib/conversation.mjs';
+import {conversationTurn,cleanConversation} from './fixtures/confirmed-conversation.mjs';
 const now=Date.parse('2026-10-20T04:00:00Z');
+assert.equal(numericOccurrences('分开安排老街与田园两块').length,0,'区域数量不是金额');
+assert.equal(numericOccurrences('把游览区域分成三块').length,0);
+assert.equal(numericOccurrences('看20元人民币背景图案').length,0,'纸币图案仍走事实核对，不冒充景点票价');
+assert.equal(numericOccurrences('门票20元人民币')[0].field,'price');
+assert.equal(numericOccurrences('花两块买水')[0].value,2);
+assert.equal(numericOccurrences('门票两块')[0].value,2);
 const source=(excerpt,over={})=>({url:'https://example.com/fare',excerpt,published_at:'2026-10-01',read_status:'page_excerpt',...over});
 const fare=source('北京到阿拉木图航班票价8000元');
 const catalog=buildNumericCatalog({sources:[fare],now});
@@ -134,12 +140,12 @@ for(const [name,reply,material]of [
  assert.equal(r.status,'ok',name);assert.equal(corrections,1,name+'触发真实纠正分支');assert.equal(r.reply,'预算8000元，实际费用待查。');
 }
 {
- let calls=0;const r=await conversationTurn(input,null,{now,model:async()=>{calls++;return output('预算8000元，实际费用待查。');}});
+ let calls=0;const r=await conversationTurn(input,null,{now,model:async opts=>{if(opts.kind==='conversation')calls++;assert.equal(JSON.parse(opts.user).correction,undefined);return output('预算8000元，实际费用待查。');}});
  assert.equal(r.status,'ok');assert.equal(calls,1,'合法预算直接通过，不浪费纠正调用');
  assert.equal(r.numeric_grounding[0].field,'user_condition');
 }
 for(const reply of ordinary){
- let calls=0;const r=await conversationTurn(input,null,{now,model:async()=>{calls++;return output(reply);}});
+ let calls=0;const r=await conversationTurn(input,null,{now,model:async opts=>{if(opts.kind==='conversation')calls++;assert.equal(JSON.parse(opts.user).correction,undefined);return output(reply);}});
  assert.equal(r.status,'ok',reply);assert.equal(r.reply,reply);assert.equal(calls,1,'普通中文不增加纠正调用');
 }
 {
@@ -160,10 +166,10 @@ for(const reply of ordinary){
 }
 {
  const travelBrief={...brief,origin:'北京',destination:'阿拉木图'},before=cleanConversation({stage:'ready',brief:travelBrief});
- const draft={title:'探索草案',overview:'班期与接驳待查。',route:['北京','阿拉木图'],cards:[{id:'a',place:'阿拉木图',label:'目的地阶段',title:'参考资料',content:reference}],sections:[],pending:['本次日期及运营待查']};
+ const draft={title:'探索草案',overview:'班期与接驳待查。',route:['北京','阿拉木图'],cards:[{id:'a',place:'阿拉木图',label:'目的地阶段',title:'参考资料',content:'安排城市散步。'+reference}],sections:[],pending:['本次日期及运营待查']};
  for(const unsafe of [false,true]){
   let reviewed=false;
-  const r=await conversationTurn({action:'generate',text:'生成草案',conversation:before},null,{now,search:async()=>[{title:'合成航班资料',link:fare.url,content:fare.excerpt,date:fare.published_at}],model:async o=>{
+  const r=await conversationTurn({action:'generate',text:'生成草案',conversation:before,anchors:{outbound:{from_city:'北京',to_city:'阿拉木图'}}},null,{now,search:async()=>[{title:'合成航班资料',link:fare.url,content:fare.excerpt,date:fare.published_at}],model:async o=>{
    const c=JSON.parse(o.user);
    if(o.kind==='conversation_review'){
     reviewed=true;assert.ok(c.numeric_fact_catalog.length,'草案校对也读取当前事实表');
@@ -173,7 +179,7 @@ for(const reply of ordinary){
   }});
   assert.ok(reviewed);assert.equal(r.status,unsafe?'unavailable':'ok','校对后再次守门');
   if(unsafe)assert.equal(r.conversation.draft,null,'拒绝校对产生的无依据数值，原状态保留');
-  else assert.ok(r.numeric_grounding.some(f=>f.path==='draft.cards.0.content' && f.source_url===fare.url));
+  else assert.equal(r.conversation.draft.cards[0].content,'安排城市散步。','规划保留活动，核验说明与所附数字整句移到内部，不当作活动交付');
  }
 }
 const arbitrary=buildNumericCatalog({sources:[source('库外起点甲到库外终点乙航班票价1200元')],now});
@@ -181,3 +187,17 @@ assert.equal(arbitrary.length,1,'删除城市词典后任意端点仍能绑定�
 assert.equal(validateNumericClaims({reply:'来源显示库外起点甲到库外终点乙航班票价1200元，仅供参考，本次日期仍待确认。'},{catalog:arbitrary}).rejected.length,0);
 assert.equal(validateNumericClaims({reply:'来源显示库外终点乙到库外起点甲航班票价1200元，仅供参考，本次日期仍待确认。'},{catalog:arbitrary}).rejected.length,1);
 console.log('✓ 数字事实对象／方向／方式／单位／用途／日期隔离、原始反例及合法预算实际编排通过');
+
+// 真实生成暴露的合法预算语序与内部预算核对，不授予实际费用资格。
+for(const content of ['8000元为含全部交通的预算目标，实际费用另算。','预算8000元为含全部交通的目标。'])assert.equal(validateNumericClaims({reply:content},{constraints:{budget_max_cny:8000}}).rejected.length,0);
+assert.equal(validateNumericClaims({draft:{pending:['全程费用是否在8000元以内']}},{constraints:{budget_max_cny:8000}}).rejected.length,0);
+assert.equal(validateNumericClaims({reply:'全程费用8000元以内。'},{constraints:{budget_max_cny:8000}}).rejected.length,1);
+
+for(const content of ['你确认的8000元作为整趟行程的预算目标，包含全部往返交通。','8000元预算下各项实际费用待核算','你确认的8000元是包含全部往返交通的整体预算目标。'])assert.equal(validateNumericClaims({reply:content},{constraints:{budget_max_cny:8000}}).rejected.length,0);
+
+assert.equal(validateNumericClaims({draft:{pending:['核对全程实际费用与8000元预算的匹配情况']}},{includePending:false}).rejected.length,0);assert.equal(validateNumericClaims({draft:{cards:[{content:'全程实际费用8000元。'}]}},{includePending:false}).rejected.length,1);
+
+assert.equal(validateNumericClaims({reply:'8000元是否够用，取决于机票实际价格。'},{constraints:{budget_max_cny:8000}}).rejected.length,0);assert.equal(validateNumericClaims({reply:'8000元够用。'},{constraints:{budget_max_cny:8000}}).rejected.length,1);
+assert.equal(validateNumericClaims({reply:'不能凭200元跨境大巴判断全程更便宜。'},{text:'不能只凭200元跨境大巴判断哪条更便宜。'}).rejected.length,0);assert.equal(validateNumericClaims({reply:'跨境大巴200元。'},{text:'不能只凭200元跨境大巴判断哪条更便宜。'}).rejected.length,1);
+
+assert.equal(validateNumericClaims({reply:'预算8000元按你的目标复述并说明实际费用待查。'},{constraints:{budget_max_cny:8000}}).rejected.length,0);

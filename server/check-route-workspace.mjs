@@ -1,7 +1,7 @@
 /* 路线与动态卡片合同：结构保留、预览采纳、指代顺序及旧证据隔离。 */
 import assert from 'node:assert/strict';
 import workspace from '../mixtouring-hifi/assets/route-workspace.js';
-import {conversationTurn} from './lib/conversation.mjs';
+import {conversationTurn} from './fixtures/confirmed-conversation.mjs';
 
 const brief={origin:'北京',destination:'阿拉木图',summary:'十天独行，自然与文化，预算8000元，允许巴士',wishes:['自然','本地文化','愿意坐长途巴士'],open_questions:[]};
 const draft={title:'经伊宁的探索安排',overview:'沿途留一站，继续前往阿拉木图',route:['北京','伊宁','阿拉木图'],
@@ -19,6 +19,17 @@ assert.deepEqual(workspace.dayCoverage({...cleaned,cards:[{label:'第1天'},{lab
 const duplicate=workspace.cleanDraft({...draft,cards:[draft.cards[0],draft.cards[0]]});
 assert.equal(new Set(duplicate.cards.map(c=>c.id)).size,2,'同名卡片仍有不同身份');
 assert.ok(!workspace.routeHtml(['<script>alert(1)</script>']).includes('<script>'),'地点文本按纯文本转义');
+const bulletContent='- 上午：去`六星街`漫步，看看街区建筑。\n- 下午：到`伊犁河`散步。\n- 备选：在街区休息。';
+const formatted=workspace.itineraryContentHtml(bulletContent);
+assert.equal((formatted.match(/<li>/g)||[]).length,2);assert.ok(formatted.includes('class="itinerary-place">六星街</span>'));assert.ok(formatted.includes('class="itinerary-slot">上午</strong>'));
+assert.ok(formatted.includes('<dt>备选</dt>'));assert.ok(!formatted.includes('itinerary-slot">备选'));assert.ok(formatted.indexOf('</ul>')<formatted.indexOf('<aside'));
+assert.ok(!workspace.itineraryContentHtml('`<img src=x onerror=alert(1)>`').includes('<img'),'高亮不允许注入HTML');
+const formattedDraft=workspace.cleanDraft({...draft,cards:[{...draft.cards[0],content:bulletContent}]});
+assert.equal(workspace.cleanDraft(JSON.parse(JSON.stringify(formattedDraft))).cards[0].content,bulletContent,'保存恢复保留分点与高亮标记');
+assert.equal(workspace.presentDraft(formattedDraft).cards[0].content,bulletContent);
+const detailed=workspace.cardHtml({...formattedDraft.cards[0],content:bulletContent+'\n- Tips：按兴趣停留，不必赶完。'});
+assert.ok(detailed.includes('itinerary-day-preview'));assert.ok(detailed.includes('itinerary-day-full'));assert.ok(detailed.includes('<dt>Tips</dt>'));
+assert.ok(!detailed.split('itinerary-day-preview')[1].split('day-expand')[0].includes('按兴趣停留'),'补充说明只在当天详情展示');
 const legacy=workspace.cleanDraft({title:'旧稿',sections:[{title:'安排',content:'旧内容'}]});
 assert.equal(workspace.cardsFor(legacy)[0].content,'旧内容','旧保存草案直接显示为卡片');
 const original={stage:'draft',brief,routing:{origin:'北京',destination:'阿拉木图'},draft:cleaned,revision:2,preview:null};
@@ -56,7 +67,7 @@ assert.deepEqual(workspace.groupsFor(cleaned).map(g=>g.place),['伊宁','阿拉�
 assert.equal(workspace.groupsFor({...cleaned,cards:[cleaned.cards[0],cleaned.cards[1],cleaned.cards[0]]}).length,3,'重访城市不被合并到前面的停留');
 assert.ok(workspace.changes(cleaned,updated).includes('更新 1 张安排卡'),'变更摘要来自实际内容差异');
 assert.ok(workspace.changes({...cleaned,route:['北京','阿拉木图']},cleaned).includes('加入 伊宁'));
-assert.ok(workspace.transportHtml(cleaned.route,plan.candidates[0]).includes('暂无通过时效筛选'),'不匹配的旧候选不支持新段的方式');
+assert.ok(workspace.transportHtml(cleaned.route,plan.candidates[0]).includes('优先查询地图路线，缺口再补充资料'),'不匹配的旧候选不支持新段的方式');
 assert.ok(!workspace.transportHtml(cleaned.route,plan.candidates[0]).includes('已核实'));
 const locked={...original,requirements:{required_stops:['伊宁'],trip_days:10,verified_cross_border_only:false}};
 const lockedPreview=await conversationTurn({text:'如果只有7天呢',conversation:locked},null,{search:async()=>[],model:async()=>response({intent_action:'preview',draft:seven,requirements_patch:{trip_days:7}})});
@@ -74,7 +85,7 @@ assert.equal(removedCity.status,'ok');assert.deepEqual(removedCity.conversation.
 const verifiedOnly=await conversationTurn({text:'跨境交通必须经过核实',conversation:locked},null,{search:async()=>[],model:async()=>response({requirements_patch:{verified_cross_border_only:true}})});
 assert.equal(verifiedOnly.conversation.requirements.verified_cross_border_only,true);
 assert.ok(verifiedOnly.conversation.draft.pending.some(p=>p.includes('尚不能证明')),'保存核实要求与宣称核实完成分开');
-const question=await conversationTurn({text:'先讨论不用改',conversation:locked},null,{search:async()=>[],model:async()=>response({intent_action:'question',requirements_patch:{remove_stops:['伊宁'],trip_days:3,verified_cross_border_only:true}})});
+const question=await conversationTurn({text:'先讨论不用改',conversation:locked},null,{search:async()=>[],model:async opts=>opts.kind==='conversation_condition_update'?{}:response({intent_action:'question',requirements_patch:{remove_stops:['伊宁'],trip_days:3,verified_cross_border_only:true}})});
 assert.deepEqual(question.conversation.requirements,locked.requirements,'纯问答不改硬要求');
 let intentCalls=0;
 const recoveredPreview=await conversationTurn({text:'如果只有7天呢',conversation:locked},null,{search:async()=>[],model:async opts=>{
@@ -93,12 +104,14 @@ const shortDraft={...draft,cards:[{...draft.cards[0],label:'第1天'},{...draft.
 const completed={...shortDraft,cards:shortDraft.cards.concat({...draft.cards[1],id:'',label:'第3天',title:'弹性预留'})};
 const completedDays=await conversationTurn({action:'generate',conversation:{...locked,stage:'ready',requirements:{...locked.requirements,trip_days:3}}},null,{search:async()=>[],model:async opts=>response({draft:opts.kind==='conversation_schedule'?completed:shortDraft})});
 assert.equal(completedDays.status,'ok');assert.deepEqual(workspace.dayCoverage(completedDays.conversation.draft,3),{missing:[],outside:[]},'缺失的相对日序经模型补齐，不能声称完整但漏一天');
+const checkReturn=opts=>({classifications:JSON.parse(opts.user).cards.map(c=>({id:c.id,kind:'return_to_origin',quote:c.title}))});
 const returnDraft={...draft,cards:[{...draft.cards[0],title:'市区散步与返程',content:'下午开始返程。'},draft.cards[1]]};
-const scoped=await conversationTurn({text:'调整散步时间',conversation:original},null,{search:async()=>[],model:async opts=>response({draft:opts.kind==='conversation_scope'?draft:returnDraft})});
+const scoped=await conversationTurn({text:'调整散步时间',conversation:original},null,{search:async()=>[],model:async opts=>opts.kind==='conversation_return_check'?checkReturn(opts):response({draft:opts.kind==='conversation_scope'?draft:returnDraft})});
 assert.equal(scoped.status,'ok');assert.equal(scoped.conversation.draft.cards[0].title,draft.cards[0].title,'未确认返程从逐日卡中移出，其他条件保留');
-const returnNotRepaired=await conversationTurn({text:'调整散步时间',conversation:original},null,{search:async()=>[],model:async()=>response({draft:returnDraft})});
+const returnNotRepaired=await conversationTurn({text:'调整散步时间',conversation:original},null,{search:async()=>[],model:async opts=>opts.kind==='conversation_return_check'?checkReturn(opts):response({draft:returnDraft})});
 assert.equal(returnNotRepaired.status,'unavailable','范围修复未完成时保留原稿，不提交擅自安排的返程');
 const scopedPatch=await conversationTurn({text:'最后一天只散步',conversation:original},null,{search:async()=>[],model:async opts=>{
+  if(opts.kind==='conversation_return_check')return checkReturn(opts);
   if(opts.kind==='conversation_scope'){const card=JSON.parse(opts.user).affected[0];return {cards:[{id:card.id,title:'自由散步',content:'按当天节奏散步或休息。'}],reply:'已保留散步和弹性时间。'};}
   return response({draft:returnDraft});
 }});

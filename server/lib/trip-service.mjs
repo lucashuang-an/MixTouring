@@ -1,6 +1,7 @@
 /* Agent服务配置及日期字段；不装载任何地点、交通或路线库。 */
 import {SEARCH_PLANNER_VERSION} from './versions.mjs';
 export function webSearchConfigured(env = process.env) {
+  if(env.TRAVEL_SEARCH_PROVIDER==='deepseek')return {configured:!!(env.DEEPSEEK_KEY || env.DEEPSEEK_API_KEY),basis:'deepseek-search'};
   if(env.TRAVEL_SEARCH_PROVIDER==='tavily')return {configured:!!env.TAVILY_API_KEY,basis:'tavily'};
   if(env.TRAVEL_SEARCH_PROVIDER && env.TRAVEL_SEARCH_PROVIDER!=='current')return {configured:false,basis:'unsupported-provider'};
   if (env.VOLC_SEARCH_API_KEY) return { configured: true, basis: 'volc-search' };

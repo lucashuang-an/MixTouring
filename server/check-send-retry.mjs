@@ -3,6 +3,7 @@
  * 改写后发送、成功后同文再发、undo 单次推送。无网络、无密钥、无浏览器。运行：node server/check-send-retry.mjs */
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import {webcrypto} from 'node:crypto';
 
 const html = readFileSync(new URL('../mixtouring-hifi/pages/trip.html', import.meta.url), 'utf8');
 const start = html.indexOf('async function sendConversation(');
@@ -14,6 +15,7 @@ for (let i = html.indexOf('{', start); i < html.length; i++) {
   else if (html[i] === '}') { depth--; if (depth === 0) { end = i + 1; break; } }
 }
 if (end < 0) { console.error('✗ 函数体提取失败'); process.exit(1); }
+const helperSource=['planningCanonical','planningSnapshotState','planningChanged','planningRequest','planningCommitted'].map(name=>{const at=html.indexOf('function '+name+'(');let n=0;for(let i=html.indexOf('{',at);i<html.length;i++){if(html[i]==='{')n++;else if(html[i]==='}'&&!--n)return html.slice(at,i+1);}throw Error(name);}).join('\n');
 const fnSrc = html.slice(start, end);
 
 let fail = 0, total = 0;
@@ -23,18 +25,19 @@ function makeEnv(postImpl) {
   const elements = {};
   const el = (id) => elements[id] || (elements[id] = { value: '', textContent: '', innerHTML: '', hidden: false, focus() {} });
   const sandbox = {
-    console, JSON, Object, Array, Date, Error, Promise,
+    console, JSON, Object, Array, Date, Error, Promise,AbortController,crypto:webcrypto,sessionStorage:{getItem:()=>null,setItem:()=>{}},
     document: { getElementById: el },
     conversationBusy: false, planning: false,
     conversation: { stage: 'draft', brief: { origin: '', destination: '', summary: '', wishes: [], open_questions: [] }, draft: null, revision: 0 },
     guideMessages: [], guideSequence: 0, guideUndo: [], conversationError: null,
     guideState: {}, guideSnapshot: () => JSON.parse(JSON.stringify({ request: {}, travel: {}, constraints: {}, conversation: null, candidate_key: null, nights: 0, messages: sandbox.guideMessages, undo: sandbox.guideUndo.length })),
     activePlan: { plan_id: 'p1', intent: { origin: '北京', destination: '乌鲁木齐' }, candidates: [] },
+    activePlanSignature:null,planningSignature:()=>null,
     currentCandidate: () => null, visibleRoutes: () => [],
     transportSearchCache: new Map(), liveTransportKey: () => 'k',
     anchors: {}, collectTravel: () => ({}), collectConstraints: () => ({}),
     MTGuide: { clean: (p) => p || {} }, MTSights: { getState: () => ({}), applyPatch() {}, reset() {} },
-    MTRouteWorkspace: { changes: () => [], routeFor: () => [] },
+    MTRouteWorkspace: { changes: () => [], routeFor: () => [], transportRoute:() => [] },
     fillTravel() {}, fillConstraints() {}, renderPreferencePanel() {}, prefMemoryFeedback:'',
     renderGuide() {let seq=Math.max(0,...sandbox.guideMessages.map(m=>m.mid || 0));sandbox.guideMessages.forEach(m=>{if(!m.mid)m.mid=++seq;});}, rememberSession() {}, renderTaskPreview() {}, showWorkspaceView() {},
     openJourney() {}, requestPlan: async () => true, generateConversation: async () => {},
@@ -45,11 +48,11 @@ function makeEnv(postImpl) {
     cancelRouteResearch(){sandbox.routeResearch.cancel();},
     /* R1-C：新输入使旧补查失效；沙箱中补空实现，只验证调用不阻塞发送 */
     cancelGapResearch(){}, lastEvidenceGaps: [],
-    post: postImpl
+    postConversation:postImpl,post: postImpl
   };
   sandbox.globalThis = sandbox;
   sandbox.window = sandbox;
-  vm.createContext(sandbox);
+  vm.createContext(sandbox);vm.runInContext('var planningExecution=null;'+helperSource,sandbox);
   sandbox.sendConversation = vm.runInContext('(' + fnSrc + ')', sandbox);
   return { sandbox, el };
 }
@@ -146,5 +149,67 @@ const okPayload = (reply, extra = {}) => ({ code: 0, data: Object.assign({ statu
   ok(pruned===1 && queued===1 && sandbox.conversation.revision===2,'先提交新草案和查询范围，再派发不阻塞回复的增量补查');
 }
 
+
+/* ready不触发工具；仅执行服务端的明确动作，并拒绝旧revision。 */
+for(const [next,expected] of [[null,0],[{type:'none',revision:1},0],[{type:'generate',revision:1},1],[{type:'discover_routes',revision:1},1],[{type:'generate',revision:0},0]]){
+  const {sandbox}=makeEnv(async()=>okPayload('已记录。',{next_action:next,conversation:{stage:'ready',revision:1,brief:{},draft:null,routing:{}}}));
+  sandbox.activePlan=null;let generated=0,searched=0;
+  sandbox.generateConversation=async()=>{generated++;};sandbox.requestPlan=async()=>{searched++;};
+  await sandbox.sendConversation('先记录条件');
+  ok(generated===expected && searched===0,'前端只执行当前revision对应的服务端动作：'+JSON.stringify(next));
+}
+
 console.log(fail === 0 ? `\n✓ 对话失败重发回归全部通过（${total} 项断言）` : `\n✗ 失败 ${fail} 项（共 ${total} 项断言）`);
 if (fail) process.exit(1);
+
+// 完整请求身份：仅键顺序不同可重用，检索与历史变化必须换请求ID。
+{
+ const {sandbox}=makeEnv(async()=>okPayload('ok'));
+ const a=sandbox.planningRequest('chat','继续',null,{},null,{text:'继续',messages:[],retrieval_ids:['a']});
+ const b=sandbox.planningRequest('chat','继续',null,{},null,{retrieval_ids:['a'],messages:[],text:'继续'});
+ const c=sandbox.planningRequest('chat','继续',null,{},null,{text:'继续',messages:[],retrieval_ids:['b']});
+ ok(a.request_id===b.request_id,'请求键顺序变化不会破坏幂等身份');ok(a.request_id!==c.request_id,'检索身份变化时创建新请求');
+}
+
+{
+ let captured;const {sandbox}=makeEnv(async(url,body)=>{captured=body;return okPayload('保持原方案。');});
+ const old={mid:1,role:'assistant',text:'原始回答',version:{draft:{content:'x'.repeat(10000)}},sources:[{excerpt:'不需要重发的来源'}]};
+ sandbox.guideMessages.push(old);await sandbox.sendConversation('先聊聊');
+ ok(captured.messages[0].text===old.text && captured.messages[0].mid===old.mid,'历史消息文本与出处身份完整发送');
+ ok(!captured.messages[0].version&&!captured.messages[0].sources,'请求不重复携带历史行程与来源卡片');
+ ok(sandbox.guideMessages[0].version===old.version,'精简请求不删除本地历史版本');
+}
+if(fail)process.exit(1);
+
+// 在异步偏好写入期间停止，不能先把新草案或撤销快照提交给界面。
+{
+ let ready,release;const started=new Promise(r=>ready=r),gate=new Promise(r=>release=r);
+ const context={enabled:true,store_id:'store',revision:1};
+ const {sandbox}=makeEnv(async()=>okPayload('已更新',{conversation:{stage:'draft',revision:2,draft:{title:'新稿'}},preference_memory_upserts:[{key:'pace',value:'simple',source_message_mid:1}],preference_memory_context:context}));
+ sandbox.MTPreferences={snapshotForRequest:()=>context,applyUpserts:async(a,b,c,options)=>{ready();await gate;return {ok:options.isCurrent(),reason:'stale_response'};}};
+ const before=sandbox.conversation,pending=sandbox.sendConversation('以后记住慢游');await started;
+ ok(sandbox.conversation===before && sandbox.guideUndo.length===0,'异步收尾完成前不提交新稿与撤销记录');
+ const at=html.indexOf('function stopConversation(){'),until=html.indexOf('function postConversation(',at);sandbox.stopConversation=vm.runInContext('('+html.slice(at,until).trim()+')',sandbox);sandbox.stopConversation();release();await pending;
+ ok(sandbox.conversation===before && sandbox.guideUndo.length===0,'收尾期间停止仍保留原稿');
+}
+if(fail)process.exit(1);
+
+{
+ const {sandbox}=makeEnv(async()=>okPayload('共5天，包含返程。',{conversation:JSON.parse(JSON.stringify(sandbox.conversation))}));
+ sandbox.conversation={stage:'draft',revision:7,brief:{},routing:{},requirements:{trip_days:5},draft:{title:'原稿'}};
+ sandbox.guideSnapshot=()=>JSON.parse(JSON.stringify({request:{},conversation:sandbox.conversation,preferences:{},travel:{},constraints:{},sights:{},messages:sandbox.guideMessages}));
+ sandbox.guideUndo.push({marker:'真正的上次修改'});await sandbox.sendConversation('只问现在几天，不改稿');
+ ok(sandbox.guideUndo.length===1 && sandbox.guideUndo[0].marker==='真正的上次修改','纯问答不会挡住撤销上次真正修改');
+ ok(sandbox.planningChanged(sandbox.guideSnapshot(),{conversation:sandbox.conversation,patch:{constraints:{budget_max_cny:5000}}}),'明确条件变化仍保留撤销快照');
+}
+if(fail)process.exit(1);
+{
+ const {sandbox}=makeEnv(async()=>okPayload('ok'));
+ const current={request:{},conversation:{stage:'draft',draft:{title:'现稿'}},travel:{},constraints:{},preferences:{},sights:{}};
+ const older={...current,conversation:{stage:'draft',draft:{title:'上次修改前'}}};let restored;
+ sandbox.guideSnapshot=()=>current;sandbox.guideUndo=[older,JSON.parse(JSON.stringify(current)),JSON.parse(JSON.stringify(current))];sandbox.restoreGuideSnapshot=value=>{restored=value;};
+ const at=html.indexOf('function undoGuide() {'),until=html.indexOf('function collectConstraints()',at);sandbox.undoGuide=vm.runInContext('('+html.slice(at,until).trim()+')',sandbox);
+ ok(sandbox.undoGuide()===true && restored.conversation.draft.title==='上次修改前','撤销跳过旧版本遗留的纯问答快照');
+ ok(sandbox.undoGuide()===false,'没有真实修改时明确返回不可撤销');
+}
+if(fail)process.exit(1);

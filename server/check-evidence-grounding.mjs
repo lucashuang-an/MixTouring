@@ -8,7 +8,7 @@ const row=(excerpt,over={})=>({url:'https://example.gov.cn/article',title:'交�
 const make=(sources,extra={})=>buildEvidenceCatalog({sources,routing,now,retrieval:{purpose:'transport'},...extra});
 const reply='来源记载北京到阿拉木图开通直飞，本次日期仍待确认。',quote='北京到阿拉木图开通直飞。',cat=make([row(quote)]);
 const claim=(catalog=cat,text=reply,q=catalog.entries[0].excerpt)=>({text,allowed_use:'source_reference',supports:[{source_id:catalog.entries[0].id,quote:q}]});
-const supported=async({user})=>({items:JSON.parse(user).claims.map(c=>({id:c.id,decision:'supported',reason:'原句支持限定后的资料参考'}))});
+const supported=async({user})=>({items:JSON.parse(user).claims.map(c=>({id:c.id,decision:'supported',relation:'supports',reason:'原句支持限定后的资料参考'}))});
 const check=async(catalog,text=reply,claims=[claim(catalog,text)],model=supported)=>validateEvidenceClaims(text,catalog,{claims,assessment:await assessEvidenceClaims(text,catalog,claims,model)});
 assert.equal(cat.entries[0].id,sourceId(row(quote)));
 assert.equal((await check(cat)).grounded.length,1);
@@ -55,13 +55,13 @@ const compoundClaims=[claim(hours,compound)];
 const partialAssessment=await assessEvidenceClaims(compound,hours,compoundClaims,async({user})=>{
   const input=JSON.parse(user);checkedParts=input.claims.map(c=>c.claim.text);
   assert.equal(input.source_catalog.length,1,'分句共享相同可见来源目录');
-  return {items:input.claims.map(c=>({id:c.id,decision:c.claim.text.includes('一张票')?'unsupported':'supported',reason:'时间信息不能证明票券范围'}))};
+  return {items:input.claims.map(c=>({id:c.id,decision:c.claim.text.includes('一张票')?'unsupported':'supported',relation:c.claim.text.includes('一张票')?'missing':'supports',reason:'时间信息不能证明票券范围'}))};
 });
 assert.equal(checkedParts.length,2,'完整枚举真实反例的两个分句');
 assert.equal(validateEvidenceClaims(compound,hours,{claims:compoundClaims,assessment:partialAssessment}).grounded.length,0,'半句有出处不能放行整句');
 for(const mode of ['missing','duplicate']){
   const assessment=await assessEvidenceClaims(compound,hours,compoundClaims,async({user})=>{
-    const first={id:JSON.parse(user).claims[0].id,decision:'supported',reason:'只回答前半句'};
+    const first={id:JSON.parse(user).claims[0].id,decision:'supported',relation:'supports',reason:'只回答前半句'};
     return {items:mode==='missing'?[first]:[first,first]};
   });
   assert.equal(validateEvidenceClaims(compound,hours,{claims:compoundClaims,assessment}).grounded.length,0,'漏交或重复分句不得通过');
@@ -126,7 +126,7 @@ assert.equal((await check(personalArticle,personalText,[claim(personalArticle,pe
 assert.equal((await check(personalArticle,personalText,[{...claim(personalArticle,personalText),allowed_use:'travel_experience'}])).grounded.length,1);
 console.log('✓ 否定、疑问、假设、转折和有出处经验正常表达通过');
 
-for(const model of [async()=>null,async()=>({items:[]}),async()=>{throw Error('不记录原始故障');},async({user})=>({items:[{id:JSON.parse(user).claims[0].id,decision:'supported',reason:''}]}),async({user})=>{const r={id:JSON.parse(user).claims[0].id,decision:'supported',reason:'重复'};return {items:[r,r]};}])assert.equal((await check(cat,reply,[claim()],model)).grounded.length,0);
+for(const model of [async()=>null,async()=>({items:[]}),async()=>{throw Error('不记录原始故障');},async({user})=>({items:[{id:JSON.parse(user).claims[0].id,decision:'supported',relation:'supports',reason:''}]}),async({user})=>{const r={id:JSON.parse(user).claims[0].id,decision:'supported',relation:'supports',reason:'重复'};return {items:[r,r]};}])assert.equal((await check(cat,reply,[claim()],model)).grounded.length,0);
 const assessment=await assessEvidenceClaims(reply,cat,[claim()],supported),changed=structuredClone(cat);changed.entries[0].excerpt='北京到阿拉木图尚未开通直飞。';
 assert.equal(validateEvidenceClaims(reply,changed,{claims:[claim()],assessment}).grounded.length,0);
 const changedReply='来源记载北京到阿拉木图每天直飞，本次日期仍待确认。';assert.equal(validateEvidenceClaims(changedReply,cat,{claims:[claim(cat,changedReply)],assessment}).grounded.length,0);

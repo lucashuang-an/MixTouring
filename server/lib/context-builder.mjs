@@ -10,7 +10,7 @@ export const CONTEXT_BUDGET_CHARS = 24000;
 
 const str = (v, n) => typeof v === 'string' ? v.trim().slice(0, n) : '';
 
-/** 增量摘要条目：绑定源消息范围（mid）与旅行 revision+条件指纹；不匹配即失效（stale），
+/** 增量摘要条目：绑定源消息范围（mid）与旅行 源消息内容+条件指纹；不匹配即失效（stale），
  *  失效摘要不进入 prompt 也不删除（M05：撤销/旧版本后旧摘要不复活）。 */
 export function cleanSummaries(raw = {}) {
   /* G3(复审 P2):区分缺失、损坏与未知版本——未知格式保留原始对象,不进入模型、
@@ -30,6 +30,7 @@ export function cleanSummaries(raw = {}) {
       to_mid: Number.isSafeInteger(s?.to_mid) ? s.to_mid : 0,
       revision: Number.isSafeInteger(s?.revision) ? s.revision : 0,
       condition_hash: str(s?.condition_hash, 200),
+      source_hash: str(s?.source_hash, 64),
       text: str(s?.text, 2000)
     })).filter(s => s.id !== 'sum_0' && s.text && s.to_mid >= s.from_mid)
   };
@@ -39,15 +40,22 @@ export function nextSummaryId(summaries) {
   return 'sum_' + (summaries.items.reduce((max, s) => Math.max(max, Number(s.id.replace(/^sum_/, '')) || 0), 0) + 1);
 }
 
-/** 条件指纹：revision 或结构化条件变化使旧摘要失效（字段变化失效传播）。 */
-export function summaryFingerprint(revision, conditionSignature) { return revision + '|' + createHash('sha256').update(String(conditionSignature || '')).digest('hex'); }
+/** 条件指纹：结构化条件变化使旧摘要失效；草案 revision 仅作记录（字段变化失效传播）。 */
+export function summaryFingerprint(revision, conditionSignature) { return 'summary-v2|' + createHash('sha256').update(String(conditionSignature || '')).digest('hex'); }
 
-export function isStale(summary, fingerprint) { return summary.condition_hash !== fingerprint; }
+export function summarySourceHash(messages, fromMid, toMid) {
+  const range=messages.filter(m=>Number.isSafeInteger(m.mid) && m.mid>=fromMid && m.mid<=toMid).sort((a,b)=>a.mid-b.mid);
+  if(!range.length || range[0].mid!==fromMid || range.at(-1).mid!==toMid || new Set(range.map(m=>m.mid)).size!==range.length)return '';
+  return createHash('sha256').update(JSON.stringify(range.map(({mid,role,text})=>({mid,role,text})))).digest('hex');
+}
+export function isStale(summary, fingerprint, messages=[]) {
+  return summary.condition_hash!==fingerprint || !summary.source_hash || summary.source_hash!==summarySourceHash(messages,summary.from_mid,summary.to_mid);
+}
 
 /** 待摘要范围：已滑出近期窗口、且未被任何有效摘要覆盖的最旧消息（按 mid）。
  *  失效摘要覆盖的范围视为未摘要（旧摘要已不可用），需要重新提炼。 */
 export function summarizeBacklog(messages, summaries, fingerprint, window = RECENT_WINDOW) {
-  const valid = summaries.items.filter(s => !isStale(s, fingerprint));
+  const valid = summaries.items.filter(s => !isStale(s, fingerprint, messages));
   const sorted = messages.slice().sort((a, b) => (a.mid || 0) - (b.mid || 0));
   if (sorted.length <= window) return { pending: [] };
   const overflow = sorted.slice(0, sorted.length - window);
@@ -56,11 +64,11 @@ export function summarizeBacklog(messages, summaries, fingerprint, window = RECE
 }
 
 /** 合并新摘要（同批一段）。失败由调用方处理：不写入则原范围下次重试。 */
-export function appendSummary(summaries, { fromMid, toMid, text }, fingerprint, revision) {
+export function appendSummary(summaries, { fromMid, toMid, text }, fingerprint, revision, messages=[]) {
   if (summaries?.degraded) return summaries;   /* 未知格式：不生成覆盖它的增量 */
   const next = cleanSummaries(summaries);
   next.items.push({ id: nextSummaryId(next), from_mid: fromMid, to_mid: toMid,
-    revision, condition_hash: fingerprint, text: str(text, 2000) });
+    revision, condition_hash: fingerprint, source_hash: summarySourceHash(messages,fromMid,toMid), text: str(text, 2000) });
   return next;
 }
 
@@ -107,7 +115,7 @@ export function buildContext({
   /* 决策索引：当前条目供理由引用（M01）；不复制权威条件值 */
   push('decision_index', decisionIndex.entries.length ? '[已确认的旅行决策]\n' + JSON.stringify(decisionIndex) : '');
   /* 历史：有效摘要先行（短）；近期窗口原文按预算纳入，装不下从最旧开始省略并记录 */
-  const validSummaries = summaries.items.filter(s => !isStale(s, fingerprint));
+  const validSummaries = summaries.items.filter(s => !isStale(s, fingerprint, messages));
   if (validSummaries.length) push('history_summaries', '[更早对话摘要（出处见范围，原文已省略）]\n' +
     validSummaries.map(s => '· [' + s.from_mid + '..' + s.to_mid + '] ' + s.text).join('\n'));
   const recent = messages.slice(-RECENT_WINDOW).filter(m => Number.isSafeInteger(m.mid) && !validSummaries.some(s=>m.mid>=s.from_mid && m.mid<=s.to_mid));
@@ -137,7 +145,7 @@ function buildPayloadContext(payload,{coreRules,rulesVersion,budgetChars}){
       if(seenSources.has(url))return {...(v.link?{link:url}:{url}),reference_only:true};
       seenSources.add(url);
     }
-    return Object.fromEntries(Object.entries(v).filter(([k])=>!hidden.has(k)).map(([k,x])=>[k,clean(x)]));
+    return Object.fromEntries(Object.entries(v).filter(([k])=>!hidden.has(k) && !(typeof v.content==='string' && Array.isArray(v.activities) && ['activities','tips'].includes(k))).map(([k,x])=>[k,clean(x)]));
   };
   const legView=l=>({from:l.from,to:l.to,mode_guess:l.mode_guess || l.mode,evidence_state:l.evidence_state || l.status});
   const routeView=r=>({id:r.id,kind:r.kind,explanation:r.explanation,basis:r.basis,legs:(r.legs || []).map(legView)});
@@ -164,11 +172,27 @@ function buildPayloadContext(payload,{coreRules,rulesVersion,budgetChars}){
   const size=()=>String(coreRules || '').length+JSON.stringify(value).length;
   const target=Math.max(0,budgetChars-1200); // 为清单和省略说明预留空间，最终仍按实际长度检查。
   const omit=id=>{if(!manifest.omitted_ids.includes(id))manifest.omitted_ids.push(id);};
+  const protectedIds=new Set(),placeNames=new Set();
+  const scan=v=>{if(typeof v==='string'){for(const m of v.matchAll(/`([^`\n]{1,80})`/g))placeNames.add(m[1]);return;}
+    if(!v || typeof v!=='object')return;
+    if(typeof v.source_id==='string')protectedIds.add(v.source_id);
+    for(const [k,x]of Object.entries(v))if(!['evidence_catalog','source_catalog','numeric_fact_catalog','local_mobility_index','search_results','visible_search_results','experience_results','visible_experiences','transport_references','manifest'].includes(k))scan(x);
+  };scan(value);
+  // 每个已选地点至少保留一个来源；有精确source_id引用时必须保留该来源。
+  for(const name of placeNames){const entry=value.evidence_catalog?.entries?.find(e=>(e.title+'\n'+e.excerpt).includes(name));if(entry)protectedIds.add(entry.id);}
   // 优先移走最旧原文与重复／补充资料，再缩减决策索引；权威条件与完整草案始终保留。
-  const arrays=['messages','user_messages','search_results','experience_results','visible_search_results','visible_experiences','transport_references','numeric_fact_catalog','evidence_catalog'];
+  const arrays=['messages','user_messages','local_mobility_index','search_results','experience_results','visible_search_results','visible_experiences','transport_references','numeric_fact_catalog','evidence_catalog'];
   for(const key of arrays){
     const a=key==='evidence_catalog'?value[key]?.entries:value[key];
-    while(size()>target && Array.isArray(a) && a.length){a.shift();omit(key);}
+    while(size()>target && Array.isArray(a) && a.length){
+      const index=key==='evidence_catalog'?a.findIndex(e=>!protectedIds.has(e.id)):key==='local_mobility_index'?a.length-1:0;
+      if(index<0)break;
+      a.splice(index,1);omit(key);
+    }
+  }
+  if(Array.isArray(value.local_mobility_index) && Array.isArray(value.evidence_catalog?.entries)){
+    const visibleIds=new Set(value.evidence_catalog.entries.map(e=>e.id));
+    value.local_mobility_index=value.local_mobility_index.filter(row=>visibleIds.has(row.source_id));
   }
   for(const key of ['destination_material','sight_material']){
     if(size()>target && value[key]){value[key]=null;omit(key);}

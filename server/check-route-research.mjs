@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {criticalTransportLeg,researchSelectedRoute} from './lib/route-research.mjs';
 import {transportSearchEvidence} from './lib/transport-search.mjs';
-import {conversationTurn} from './lib/conversation.mjs';
+import {conversationTurn} from './fixtures/confirmed-conversation.mjs';
 import client from '../mixtouring-hifi/assets/route-research.js';
 const now=Date.parse('2026-10-17T08:00:00Z');
 const legs=[{from:'北京',to:'伊宁',mode_guess:'unknown'},{from:'伊宁',to:'阿拉木图',mode_guess:'road'}];
@@ -29,7 +29,7 @@ queries.length=0;await researchSelectedRoute({candidate_id:'direct'},plan,async 
 let captured;
 const brief={origin:'北京',destination:'阿拉木图',summary:'自然与文化，愿坐巴士',wishes:[],open_questions:[]};
 const draft={title:'伊宁停留探索',overview:'先比较跨境衔接，再安排沿途停留',route:['北京','伊宁','阿拉木图'],cards:[{id:'card-start',label:'出发',place:'北京',title:'出发待安排',content:'交通方式仍需确认。'},{id:'card-stay',label:'沿途停留',place:'伊宁',title:'街区体验',content:'交通占用和停留安排分开。'}],pending:['跨境交通本次班期待确认']};
-const generated=await conversationTurn({action:'generate',requested_candidate_id:'via',retrieval_ids:[result.retrieval_id],travel:{outbound_window:result.temporal.target_window},conversation:{stage:'ready',brief,routing:{origin:'北京',destination:'阿拉木图'},requirements:{trip_days:10}}},plan,{now,search:async()=>[],model:async o=>{if(o.kind==='conversation')captured=JSON.parse(o.user);return {brief,reply:'已生成。',preferences:{},travel:{},constraints:{},draft};}});
+const generated=await conversationTurn({action:'generate',requested_candidate_id:'via',retrieval_ids:[result.retrieval_id],travel:{outbound_window:result.temporal.target_window},conversation:{stage:'ready',brief,routing:{origin:'北京',destination:'阿拉木图'},requirements:{trip_days:10}}},plan,{now,search:async()=>[],model:async o=>{if(o.kind==='conversation_schedule')return {draft:{...draft,cards:draft.cards.map((c,i)=>({...c,label:i?'第3—10天':'第1—2天'}))}};if(o.kind==='conversation')captured=JSON.parse(o.user);return {brief,reply:'已生成。',preferences:{},travel:{},constraints:{},draft};}});
 assert.equal(generated.status,'ok');assert.equal(captured.visible_search_results.length,1,'首次生成的资料补充阶段仍使用已选路线');assert.equal(captured.visible_experiences.length,1);assert.ok(generated.sources.some(s=>s.url===result.sources[0].url));
 let resolve,pendingCalls=0,state;
 const worker=client.create({now:()=>now,onChange:s=>{state=s;},request:async(input,signal)=>{pendingCalls++;return new Promise(r=>{resolve=r;});}});

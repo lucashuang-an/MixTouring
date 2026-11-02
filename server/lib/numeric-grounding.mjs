@@ -42,6 +42,10 @@ export function numericOccurrences(text=''){
     const n=m[0].match(new RegExp(AMOUNT))[0],number=numberValue(n);
     const rawUnit=m[0].replace(n,'').replace(/^[多余]/,'').trim(),[field,unit,factor]=UNIT(rawUnit),clause=parts.find(p=>m.index>=p.start && m.index<p.start+p.text.length);
     if(!clause)continue;
+    const before=clause.text.slice(0,m.index-clause.start),after=clause.text.slice(m.index-clause.start+m[0].length);
+    // 数量分类词与纸币图案不是收费；外部景观断言仍由事实核对处理。
+    if(rawUnit==='块' && !PRICE.test(clause.text) && !/花|付|钱|收费|收取/.test(before) && (/区域|片区|田园|板块|分区/.test(before) || /分(?:为|成)|划分|分开安排/.test(before)))continue;
+    if(field==='price' && (/(?:人民币|纸币|钞票).{0,5}$/.test(before) && /^(?:的)?(?:背面|背景|图案)/.test(after) || /^(?:人民币|纸币|钞票)(?:的)?(?:背面|背景|图案)/.test(after)))continue;
     out.push({text:m[0],start:m.index,end:m.index+m[0].length,field,unit,value:Number.isFinite(number)?number*factor:null,unsupported_number:!Number.isFinite(number),range:ranges.some(r=>m.index>=r.index && m.index<r.index+r[0].length),approximate:/[多余]/.test(m[0]),clause:clause.text,clause_start:clause.start});
   }
   for(const m of text.matchAll(UNPARSED_PRICE)){
@@ -125,7 +129,9 @@ function chargeDescriptor(text){
 const chargeItem=text=>chargeDescriptor(text).item;
 function conditionIdentity(f,all,{user=false}={}){
   const {left,right}=ownPhrase(f,all);
-  if(/(?:就是|即为|等于|保证|确保|实际|足够|够买|能买|可买).*(?:票价|价格|费用|耗时|距离|机票)|(?:足够|够买|能买|可买)/.test(right))return null;
+  const budgetTail=/^预算(?:下|内|范围|目标|上限)/.test(right) && !/就是|即为|等于|保证|确保|足够|够买|能买|可买/.test(right);
+  const budgetWithUnknownCost=/预算/.test(left) && /实际(?:费用|花费|开支|票价).{0,8}(?:待查|未知|待核实|尚未核实|需查)/.test(right) && !/就是|即为|等于|保证|确保|足够|够买|能买|可买/.test(right);
+  if(!budgetTail && !budgetWithUnknownCost && /(?:就是|即为|等于|保证|确保|实际|足够|够买|能买|可买).*(?:票价|价格|费用|耗时|距离|机票)|(?:足够|够买|能买|可买)/.test(right))return null;
   const fragment=left.split(/但是|但|不过|然而|而是/).at(-1);
   const wish=/(?:你|用户)(?:希望|要求|接受|愿意|想)|按你(?:的)?(?:要求|目标)/.test(fragment) || user && /我(?:们)?(?:希望|要求|接受|愿意|想|最多)/.test(fragment);
   const attributed=/(?:你|用户)(?:希望|要求|接受|愿意|想|最多|的(?:目标|预算|上限))|按你(?:的)?(?:要求|目标|预算)/.test(fragment) || user && /我(?:们)?(?:希望|要求|接受|愿意|想|最多)/.test(fragment);
@@ -133,7 +139,7 @@ function conditionIdentity(f,all,{user=false}={}){
   if(!wish && /(?:实际|当前|现价|真实|已核实|已确认|保证|确保).*(?:票价|价格|费用|耗时|距离|车程)|(?:票价|价格|费用|耗时|距离|车程).*(?:实际|当前|保证|确保)/.test(fragment))return null;
   if(/(?:票价|价格|费用).*(?:就是|等于|即为).*(?:预算|上限)|(?:预算|上限).*(?:就是|等于|即为).*(?:票价|价格|费用)/.test(fragment))return null;
   if(f.field==='price'){
-    const trailingBudget=new RegExp('^[）)“”"\\s]*(?:以内|以下)?(?:是|为|作为)?(?:你|用户'+(user?'|我':'')+')的(?:预算|目标|上限)').test(right);
+    const trailingBudget=new RegExp('^[）)“”"\\s]*(?:以内|以下)?(?:是|为|作为)?(?:你|用户'+(user?'|我':'')+')的(?:预算|目标|上限)').test(right) || /^[^，。；;]{0,24}预算/.test(right);
     if(!/预算/.test(fragment) && !trailingBudget && !(attributed && CONDITION.test(fragment+right)))return null;
     return {kind:'budget',scope:chargeItem(fragment)==='unspecified'?'trip':chargeItem(fragment)};
   }
@@ -141,6 +147,9 @@ function conditionIdentity(f,all,{user=false}={}){
   return {kind:f.field,scope:/换乘|转机|中转/.test(fragment)?'layover':/游玩|参观|停留/.test(fragment)?'visit':'general'};
 }
 function conditionMatches(f,all,{constraints={},text=''}){
+  const phrase=ownPhrase(f,all);
+  if(f.field==='price' && f.unit==='CNY' && constraints.budget_max_cny===f.value && /^(?:预算|目标)?(?:是否|能否|够不够)/.test(phrase.right) &&
+    !/实际|当前|票价|价格|机票|房价/.test(phrase.left) && !/肯定|当然|一定|保证|确保|(?:但是|但|不过|然而).{0,8}(?:够用|足够|可以)/.test(phrase.right))return {kind:'budget',scope:'trip',key:'budget_max_cny',origin:'current_conditions'};
   const identity=conditionIdentity(f,all);if(!identity)return false;
   if(f.field==='price' && identity.scope==='trip' && f.unit==='CNY' && constraints.budget_max_cny===f.value)return {...identity,key:'budget_max_cny',origin:'current_conditions'};
   if(f.field==='duration' && identity.scope==='layover' && constraints.max_layover_hours*60===f.value)return {...identity,key:'max_layover_hours',origin:'current_conditions'};
@@ -187,7 +196,7 @@ function quantityMeaning(f,all){
 }
 function outputStrings(value){
   const out=[];
-  const walk=(v,path)=>{if(typeof v==='string')out.push({path,text:v});else if(Array.isArray(v))v.forEach((x,i)=>walk(x,path+'.'+i));else if(v && typeof v==='object')for(const [key,x]of Object.entries(v))if(key!=='id')walk(x,path+'.'+key);};
+  const walk=(v,path)=>{if(typeof v==='string')out.push({path,text:v});else if(Array.isArray(v))v.forEach((x,i)=>walk(x,path+'.'+i));else if(v && typeof v==='object')for(const [key,x]of Object.entries(v))if(key!=='id' && !(typeof v.content==='string' && Array.isArray(v.activities) && ['activities','tips'].includes(key)))walk(x,path+'.'+key);};
   if(typeof value?.reply==='string')walk(value.reply,'reply');if(value?.draft)walk(value.draft,'draft');return out;
 }
 export function buildNumericCatalog({sources=[],transport=[],retrieval={},now=Date.now()}={}){
@@ -215,16 +224,21 @@ export function buildNumericCatalog({sources=[],transport=[],retrieval={},now=Da
   }
   return facts.slice(0,32);
 }
-export function validateNumericClaims(value,{catalog=[],constraints={},text=''}={}){
+export function validateNumericClaims(value,{catalog=[],constraints={},text='',includePending=true}={}){
   const rejected=[],grounded=[];
   for(const item of outputStrings(value)){
+    if(!includePending && /^draft\.pending\.\d+$/.test(item.path))continue;
     const occurrences=numericOccurrences(item.text);
     for(const [occurrence,f]of occurrences.entries()){
       if(f.unsupported_number || f.unsupported_unit || f.range || f.approximate){rejected.push({path:item.path,occurrence,text:f.text,reason:'币种、范围或模糊数值缺少可核对的完整事实'});continue;}
       const condition=conditionMatches(f,occurrences,{constraints,text});
       if(condition){grounded.push({path:item.path,occurrence,field:'user_condition',value:f.value,unit:f.unit,condition_ref:condition});continue;}
+      if(/^draft\.pending\.\d+$/.test(item.path) && f.field==='price' && f.unit==='CNY' && f.value===constraints.budget_max_cny &&
+        /(?:全程|总|旅行|全部).{0,6}(?:费用|开支|花费)/.test(f.sentence) && /是否|能否/.test(f.sentence) && !/已确认|已核实|保证|实际为/.test(f.sentence)){
+        grounded.push({path:item.path,occurrence,field:'user_condition',value:f.value,unit:f.unit,condition_ref:{kind:'budget',scope:'trip',key:'budget_max_cny',origin:'current_conditions'}});continue;
+      }
       const prefix=f.clause.slice(0,f.start-f.clause_start);
-      const unknown=[...prefix.matchAll(/(?:无法|不能|尚未|未能).{0,20}(?:确认|证实|判断|证明|核实|支持|断定|推断)|不足以.{0,12}(?:证明|支持)|没有.{0,8}(?:依据|证据).{0,12}(?:确认|证明|断言)/g)].at(-1);
+      const unknown=[...prefix.matchAll(/(?:无法|不能|尚未|未能).{0,20}(?:确认|证实|判断|证明|核实|支持|断定|推断)|不能(?:仅|只)?凭|不足以.{0,12}(?:证明|支持)|没有.{0,8}(?:依据|证据).{0,12}(?:确认|证明|断言)/g)].at(-1);
       if(unknown && !/但是|但|不过|然而|而是|实际上|确实|就是|已经确认/.test(prefix.slice(unknown.index+unknown[0].length)) && numericOccurrences(text).some(x=>x.field===f.field && x.unit===f.unit && x.value===f.value)){
         grounded.push({path:item.path,occurrence,field:'unverified_user_question',value:f.value,unit:f.unit});continue;
       }

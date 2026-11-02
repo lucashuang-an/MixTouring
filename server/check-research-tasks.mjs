@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import tasks from '../mixtouring-hifi/assets/research-tasks.js';
+import workspace from '../mixtouring-hifi/assets/route-workspace.js';
 import save from '../mixtouring-hifi/assets/save-state.js';
 import {resolveTransportSearch,searchTransportSources} from './lib/transport-search.mjs';
 const now=Date.parse('2026-10-18T02:00:00Z');
@@ -48,9 +49,9 @@ assert.equal(refreshed.tasks[2].status,'sources');assert.equal(refreshed.tasks[2
 /* 驱动真实页面的补查函数，验证队列只发选中的腿、旧响应隔离和恢复后端路由。 */
 const html=readFileSync(new URL('../mixtouring-hifi/pages/trip.html',import.meta.url),'utf8');
 const part=html.slice(html.indexOf('function taskScope()'),html.indexOf('function renderResearchProgress()'));
-const env={console,JSON,Date,MTResearchTasks:tasks,conversation:{draft:{route:scope.route}},researchScope:scope,researchTasks:null,researchHydrationKey:null,researchJournalError:false,researchJournal:tasks.journal({getItem:()=>null,setItem(){}}),
+const env={console,JSON,Date,MTResearchTasks:tasks,MTRouteWorkspace:workspace,collectTravel:()=>({}),collectConstraints:()=>({}),currentLegWindow:()=>null,conversation:{draft:{route:scope.route}},researchScope:scope,researchTasks:null,researchHydrationKey:null,researchJournalError:false,researchJournal:tasks.journal({getItem:()=>null,setItem(){}}),
  researchLoopState:{running:false,record:null,binding:null,error:null,interrupted:false,controller:null},restoredGapResearch:null,lastEvidenceGaps:[],
- guideState:{},anchors:{},guideSequence:1,activePlan:{plan_id:'test'},transportSearchCache:new Map(),transportSearchLoading:new Set(),transportSearchErrors:new Set(),currentSearchWindow:()=>null,currentTransportMode:()=> 'unknown',liveTransportKey:(a,b,m)=>JSON.stringify([a,b,m]),sourceToday:()=> '2026-10-18',renderTaskPreview(){},renderGuide(){},rememberSession(){},currentCandidate:()=>null};
+ guideState:{},anchors:{},guideSequence:1,activePlan:{plan_id:'test'},transportSearchCache:new Map(),transportSearchLoading:new Set(),transportSearchErrors:new Set(),currentSearchWindow:()=>null,currentTransportMode:(a,b)=>legs.find(l=>l.from===a&&l.to===b)?.mode || 'unknown',liveTransportKey:(a,b,m)=>JSON.stringify([a,b,m]),sourceToday:()=> '2026-10-18',renderTaskPreview(){},renderGuide(){},rememberSession(){},currentCandidate:()=>null};
 let pendingResolve,requested;env.routeResearch={isPending:()=>false,cancel(){},run:async input=>{requested=input;return new Promise(r=>{pendingResolve=r;});}};
 vm.createContext(env);vm.runInContext(part,env);const running=env.supplementDraftChanges({scope,queries:[legs[2]]},true);
 assert.equal(requested.queries.length,1);assert.equal(requested.queries[0].from,'伊宁');assert.equal(env.researchTasks.tasks[2].status,'running');

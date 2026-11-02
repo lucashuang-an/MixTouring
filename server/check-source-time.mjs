@@ -94,7 +94,7 @@ assert.equal(transportSearchEvidence([live.retrieval_id],{route:['乌鲁木齐',
 const changedQueries=[];
 const changed=await conversationTurn({text:'出发窗改到2027年10月1日至7日',travel:{outbound_window:'2026-10-20 ~ 2026-10-20'}},null,{now,search:async q=>{changedQueries.push(q);return [];},model:async opts=>opts.kind==='conversation_calendar'?{travel:{outbound_window:'2027-10-01 ~ 2027-10-07'}}:{intent_action:'discuss',reply:'已保留新的时间窗。',brief:{origin:'北京',destination:'阿拉木图',summary:'按新时间窗探索',wishes:[],open_questions:[]},ready:true,confirmed:false,travel:{outbound_window:'2027-10-01 ~ 2027-10-07'},preferences:{},constraints:{},sights:{},draft:null}});
 assert.equal(changed.status,'ok');assert.equal(changed.patch.travel.outbound_window,'2027-10-01 ~ 2027-10-07');
-assert.ok(changedQueries.length && changedQueries.every(q=>q.includes('2027-10-01') && !q.includes('2026-10-20')),'先核对日历意图，再按新窗检索');
+assert.equal(changedQueries.length,0,'仅更新日期条件不自动检索');
 const futureQuestions=[];
 const question=await conversationTurn({text:'明年国庆出发怎么样，先查资料不要改行程',travel:{outbound_window:'2026-10-20 ~ 2026-10-20'}},null,{now,search:async q=>{futureQuestions.push(q);return [];},model:async opts=>opts.kind==='conversation_calendar'?{travel:{},search_window:'2027-10-01 ~ 2027-10-07'}:{intent_action:'question',search_window:'2027-10-01 ~ 2027-10-07',reply:'先按咨询的时间查找资料，原日期保留。',brief:{origin:'北京',destination:'阿拉木图',summary:'北京去阿拉木图',wishes:[],open_questions:[]},ready:true,confirmed:false,travel:{},preferences:{},constraints:{},sights:{},draft:null}});
 assert.equal(question.status,'ok');assert.deepEqual(question.patch.travel,{});assert.ok(futureQuestions.length && futureQuestions.every(q=>q.includes('2027-10-01')),'咨询窗口可改变，已确认旅行日期不被改写');

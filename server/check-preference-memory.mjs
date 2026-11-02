@@ -1,3 +1,4 @@
+import {webcrypto} from 'node:crypto';
 /* M2原始反例回归：真实存储脚本、并发标签、拒写、坏格式及前端到实际对话编排。 */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';import vm from 'node:vm';
@@ -69,7 +70,7 @@ for(const raw of ['{损坏',JSON.stringify({schema_version:99,enabled:true,entri
 /* 提取实际前端发送函数，并连接真实conversationTurn；请求快照、用户出处及候选落盘一起验证。 */
 const helper=fs.readFileSync(new URL('./check-send-retry.mjs',import.meta.url),'utf8');
 const setup=helper.slice(helper.indexOf('const html ='),helper.indexOf('const okPayload')).replace("new URL('../mixtouring-hifi/pages/trip.html', import.meta.url)","new URL('../mixtouring-hifi/pages/trip.html', baseUrl)");
-const outer={readFileSync:fs.readFileSync,vm,console,process,URL,baseUrl:import.meta.url};vm.createContext(outer);vm.runInContext(setup+'\nglobalThis.make=makeEnv;',outer);
+const outer={AbortController,webcrypto,readFileSync:fs.readFileSync,vm,console,process,URL,baseUrl:import.meta.url};vm.createContext(outer);vm.runInContext(setup+'\nglobalThis.make=makeEnv;',outer);
 const brief={origin:'北京',destination:'阿拉木图',summary:'讨论走法',wishes:[],open_questions:[]};
 for(const fault of ['throw','malformed']){
  const result=await conversationTurn({text:'以后旅行我都优先火车',current_message:{mid:1,role:'user',text:'以后旅行我都优先火车'},conversation:cleanConversation({brief}),preference_memory:{enabled:true,preferences:[],store_id:'test',revision:1}},null,{search:async()=>[],model:async o=>{

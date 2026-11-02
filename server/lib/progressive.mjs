@@ -28,7 +28,7 @@ async function boundedPlan(input, emit, deps, signal, planner) {
   const data = await planner(input, {
     ...deps,
     signal:bounded,
-    composeJson: (opts) => limited('model_calls', 4, compose, [{ ...opts, signal: bounded }]),
+    composeJson: (opts) => limited('model_calls', 4, compose, [{ ...opts, signal: bounded, canRetry:()=>!bounded.aborted&&counts.model_calls<4, reserveRetry:()=>{if(bounded.aborted||counts.model_calls>=4)return false;counts.model_calls++;return true;} }]),
     searchWeb: async (query, opts = {}) => {
       if (searchStopped) return null;
       const found = await limited('search_calls', 2, search,

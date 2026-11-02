@@ -150,3 +150,6 @@
 @keyframes thinking-pulse { 50% { opacity:.3;transform:scale(.8); } }
 @keyframes card-update { from { background:#FCF1EA;border-color:#C86A4B; } to { background:#fff;border-color:#E8E9EB; } }
 @media(prefers-reduced-motion:reduce) { .trip-page .thinking-dot,.trip-page .itinerary-changed .itinerary-card-body { animation:none; } }
+/* 交通方案的讨论与应用是独立操作，保留清晰的点击间距。 */
+.trip-page .transport-discuss + .transport-discuss { margin-left:20px; }
+.trip-page [data-stop-conversation] { flex-shrink:0; }
