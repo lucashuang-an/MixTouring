@@ -1,0 +1,16 @@
+**
+!AGENTS.md
+!server/
+!server/package.json
+!server/package-lock.json
+!server/index.mjs
+!server/lib/
+!server/lib/**
+!mixtouring-hifi/
+!mixtouring-hifi/**
+**/.env*
+**/*.key
+**/node_modules
+**/logs
+**/.state
+**/.preflight

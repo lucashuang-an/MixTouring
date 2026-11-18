@@ -15,7 +15,7 @@ const execute=async({transientSupportFailure=false,page=source,answer=statement,
     if(['conversation','conversation_review','conversation_evidence_extract','conversation_evidence_repair'].includes(opts.kind))views.push({...JSON.parse(opts.user),model_kind:opts.kind});
     if(opts.kind==='conversation')return {...base,reply:answer,intent_action:draft?'revise':'question',draft,search_query:omitSearchQuery?'':'北京到阿拉木图航班'};
     if(opts.kind==='conversation_review')return {reply:answer,draft,changes:[]};
-    if(opts.kind==='conversation_delivery'){const p=JSON.parse(opts.user),structure=p.structure;assert.ok(Array.isArray(p.numeric_fact_catalog),'交付修复必须共享数字目录');assert.match(opts.schema_prompt,/数字只可/);return {reply:'已整理每日建议。',draft:{...draft,route:structure.route,overview:draft.overview.replace('，本次日期仍待确认',''),cards:draft.cards.map((c,i)=>({...c,id:structure.cards[i].id,label:structure.cards[i].label}))}};}
+    if(opts.kind==='conversation_delivery'){const p=JSON.parse(opts.user),structure=p.structure;assert.ok(Array.isArray(p.numeric_fact_catalog),'交付修复必须共享数字目录');assert.match(opts.schema_prompt,/numeric_fact_catalog/);return {reply:'已整理每日建议。',draft:{...draft,route:structure.route,overview:draft.overview.replace('，本次日期仍待确认',''),cards:draft.cards.map((c,i)=>({...c,id:structure.cards[i].id,label:structure.cards[i].label}))}};}
     if(opts.kind==='conversation_evidence_repair')return repairReply?{reply:repairReply}:null;
     if(opts.kind==='conversation_source_relevance')return reviewFailure?null:{items:JSON.parse(opts.user).candidates.map(s=>({id:s.id,decision:'keep',reason:'相关资料',quote:s.title}))};
     if(opts.kind==='conversation_evidence_extract'){

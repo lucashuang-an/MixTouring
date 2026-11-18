@@ -20,7 +20,7 @@ function fixture({routes=null,reject=false,empty=false,date=null,routeDecision='
     if(options.kind==='search_plan_route_check')return {items:data.candidates.map(c=>({id:c.id,decision:routeDecision,reason:'核对资料方向及用户意图'}))};
     assert.equal(options.kind,'search_plan_routes');
     assert.ok(!options.schema_prompt.includes('已收录'));
-    const source=data.sources[0];
+    const source=data.sources[0] || {id:''};
     return {routes:routes?routes(source):[{stops:[],source_ids:[source.id]},
       {stops:[{name:'河内',name_latin:'Hanoi',country:'VN',source_id:source.id,quote:'从北京经河内去曼谷'}],source_ids:[source.id]}]};
   };
@@ -37,7 +37,7 @@ assert.equal(plan.intent.outbound_window,null);assert.equal(plan.intent.return_w
 const again=await planSearchFirst(input,fixture().deps);assert.deepEqual(again.candidates.map(c=>c.id),plan.candidates.map(c=>c.id),'相同结构稳定ID');
 for(const routeDecision of ['reject','uncertain']){
   const r=await planSearchFirst(input,fixture({routeDecision}).deps);
-  assert.equal(r.candidates.length,1);assert.equal(r.candidates[0].kind,'direct','仅提到城市不代表它适合放到本段途中');
+  assert.equal(r.candidates.length,2);assert.equal(r.candidates[0].kind,'direct','探索方向不再由第二个模型机械否决');
 }
 const comparison=buildRouteComparison(plan,{now,requirements:{trip_days:15}});
 assert.equal(comparison.routes.length,2,'比较页不能再次用内置体验名单隐藏河内');
@@ -51,11 +51,12 @@ assert.ok(history.candidates[1].basis.sources.every(s=>s.temporal.state==='histo
 const detail=buildJourneyDetail(plan,plan.candidates[1].id);
 assert.equal(detail.inbound[0].from,'曼谷');assert.equal(detail.inbound[0].to,'北京');
 assert.equal(detail.inbound[0].mode_guess,null);assert.equal(detail.inbound[0].sources.length,0);assert.equal(detail.transport_references.length,0,'新详情不注入旧客运参考');
-for(const options of [{reject:true},{empty:true},{routes:s=>[{stops:[{name:'万象',source_id:s.id,quote:'捏造万象原句'}],source_ids:[s.id]}]},
-  {routes:()=>[{stops:[],source_ids:['fabricated']}]},
-  {routes:s=>[{stops:[{name:'北京',source_id:s.id,quote:'从北京经河内去曼谷'}],source_ids:[s.id]}]}]){
-  const r=await planSearchFirst(input,fixture(options).deps);assert.equal(r.candidates.length,0);assert.notEqual(r.status,'ok');
-}
+for(const options of [{reject:true},{empty:true}]){const r=await planSearchFirst(input,fixture(options).deps);assert.equal(r.candidates.length,2);assert(r.candidates.every(c=>c.legs.every(l=>l.evidence_state==='explore')));}
+const unsupported=await planSearchFirst(input,fixture({routes:s=>[{stops:[{name:'万象',source_id:s.id,quote:'捏造万象原句'}],source_ids:[s.id]}]}).deps);
+assert.equal(unsupported.candidates.length,1);assert.deepEqual(unsupported.candidates[0].basis.node_quotes,[],'保留候选但不接受伪造引用');
+const invented=await planSearchFirst(input,fixture({routes:()=>[{stops:[],source_ids:['fabricated']}]}).deps);assert.equal(invented.candidates.length,1);assert.deepEqual(invented.candidates[0].basis.sources,[]);
+const duplicate=await planSearchFirst(input,fixture({routes:s=>[{stops:[{name:'北京',source_id:s.id,quote:'从北京经河内去曼谷'}],source_ids:[s.id]}]}).deps);assert.equal(duplicate.candidates.length,0);
+assert(!f.calls.models.includes('conversation_source_relevance'));assert(!f.calls.models.includes('search_plan_route_check'));
 let searches=0;
 const noModel=await planSearchFirst(input,{composeJson:async()=>null,searchWeb:async()=>{searches++;return [row];}});
 assert.equal(noModel.status,'unavailable');assert.equal(noModel.candidates.length,0);assert.equal(searches,0,'模型失败不冒充规则规划成功');
@@ -68,7 +69,7 @@ assert.equal(anchored.anchors.outbound.to_city,'清迈');assert.equal(anchored.c
 const events=[],p=fixture();
 const progressive=await progressivePlan(input,(data,phase)=>events.push({data,phase}),{...p.deps,callJson:async()=>{throw Error('新链路不得走旧模型通道');}});
 assert.equal(progressive.status,'ok');assert.deepEqual(events.map(e=>e.phase),['base','complete']);
-assert.equal(events[0].data.candidates.length,0,'进度不能伪造规则候选');assert.equal(progressive.discovery_metrics.model_calls,4);assert.equal(progressive.discovery_metrics.search_calls,2);
+assert.equal(events[0].data.candidates.length,0,'进度不能伪造规则候选');assert.equal(progressive.discovery_metrics.model_calls,2);assert.equal(progressive.discovery_metrics.search_calls,2);
 const controller=new AbortController(),cancelEvents=[],cancelled=fixture();
 await progressivePlan(input,(_,phase)=>{cancelEvents.push(phase);controller.abort();},cancelled.deps,controller.signal);
 assert.deepEqual(cancelEvents,['base']);assert.equal(cancelled.calls.queries.length,0);
@@ -97,8 +98,12 @@ try{
     const output=await real.deps.composeJson({kind,user:body.messages[1].content,schema_prompt:body.messages[0].content});
     return {ok:true,status:200,json:async()=>({choices:[{message:{content:JSON.stringify(output)}}],usage:{total_tokens:0}})};
   };
-  const result=await progressivePlan(input,()=>{},{nowMs:now});assert.equal(result.status,'ok');assert.equal(httpModel,4);assert.equal(httpSearch,2);
+  const result=await progressivePlan(input,()=>{},{nowMs:now});assert.equal(result.status,'ok');assert.equal(httpModel,2);assert.equal(httpSearch,2);
 }finally{globalThis.fetch=originalFetch;keys.forEach((k,i)=>saved[i]===undefined?delete process.env[k]:process.env[k]=saved[i]);}
 const html=readFileSync(new URL('../mixtouring-hifi/pages/trip.html',import.meta.url),'utf8');
 assert.ok(html.includes("fetch('/api/anywhere/search-plan'"));
 console.log('✓ 搜索规划：库外端点与途中城市、上下文、来源绑定、未知地图、比较/详情、模型失败、预算取消、涉外范围及当前组合HTTP出口通过');
+
+const coveredInput={...input,travel:{trip_type:'one_way'},anchors:{outbound:{mode:'plane',date:'2026-12-01',from_city:'北京',to_city:'曼谷'}}};
+const covered=await planSearchFirst(coveredInput,fixture().deps);assert.equal(covered.status,'ok');assert.equal(covered.anchors.full_cover,true);assert.equal(covered.anchors.return,null);assert.equal(covered.candidates.length,0,'不为已覆盖单程伪造新交通');
+const incompleteRound=await planSearchFirst({...coveredInput,travel:{trip_type:'round_trip'}},fixture().deps);assert.notEqual(incompleteRound.anchors.full_cover,true,'未定返程不冒充全程覆盖');

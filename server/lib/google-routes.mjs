@@ -1,3 +1,4 @@
+import {reserveUpstream} from './upstream-budget.mjs';
 /* 地点间交通参考：仅使用Google返回的道路距离/时长，不用直线距离推算。 */
 import {ProxyAgent} from 'undici';
 const agents=new Map();
@@ -21,7 +22,8 @@ export async function googleRoute(from,to,{mode='TRANSIT',departureTime=null,tra
  try{
   let dispatcher;if(proxy){if(!agents.has(proxy))agents.set(proxy,new ProxyAgent(proxy));dispatcher=agents.get(proxy);}
   const preferred=Array.isArray(transitModes)?[...new Set(transitModes.filter(m=>['BUS','SUBWAY','TRAIN','LIGHT_RAIL','RAIL'].includes(m)))]:[];
-  const response=await fetchImpl('https://routes.googleapis.com/directions/v2:computeRoutes',{method:'POST',redirect:'error',headers:{'Content-Type':'application/json','X-Goog-Api-Key':apiKey,'X-Goog-FieldMask':'routes.distanceMeters,routes.duration,routes.legs.steps.travelMode,routes.legs.steps.transitDetails.transitLine.vehicle.type'},
+    await reserveUpstream('map');
+  const response=await fetchImpl('https://routes.googleapis.com/directions/v2:computeRoutes',{method:'POST',redirect:'manual',headers:{'Content-Type':'application/json','X-Goog-Api-Key':apiKey,'X-Goog-FieldMask':'routes.distanceMeters,routes.duration,routes.legs.steps.travelMode,routes.legs.steps.transitDetails.transitLine.vehicle.type'},
    body:JSON.stringify({origin:{placeId:from.provider_id},destination:{placeId:to.provider_id},travelMode:mode,...(at?{departureTime:at}:{}),...(mode==='TRANSIT'&&preferred.length?{transitPreferences:{allowedTravelModes:preferred}}:{}),...(mode==='DRIVE'?{routingPreference:'TRAFFIC_UNAWARE'}:{}),languageCode:'zh-CN',units:'METRIC'}),
    ...(dispatcher?{dispatcher}:{}),signal:signal?AbortSignal.any([signal,AbortSignal.timeout(12000)]):AbortSignal.timeout(12000)});
   if(!response.ok)return {...result,status:'unavailable',reason:'http_'+response.status};

@@ -1,3 +1,4 @@
+import {deduplicateSentences} from './lib/evidence-spans.mjs';
 import assert from 'node:assert/strict';
 import {evidenceSpans,resolveEvidenceAtoms,planningEvidenceUse,isKnownRoutePlan} from './lib/evidence-spans.mjs';
 import {groundConversationOutput,groundScopedConversationOutput} from './lib/conversation-evidence.mjs';
@@ -47,3 +48,15 @@ const scoped=await groundScopedConversationOutput({reply:'',draft:previous,catal
  return {items:p.claims.map(c=>({id:c.id,decision:'supported',relation:'supports',reason:'当前来源支持改动范围'}))};
 }},{before:previous,cardIds:['card-day-1']});
 assert.equal(scoped.status,'complete');assert.equal(scoped.draft.cards[0].content,previous.cards[0].content);assert.equal(scoped.verification_scope.unchanged,'preserved_not_reverified');assert(!scoped.claims.some(c=>c.sentence.includes('古桥')));
+
+// 英文句号必须隔开规划与运营断言，小数不拆开。
+{
+ const spans=evidenceSpans({id:'english',text:'Plan a relaxed walk. The train runs daily. It costs 12.50 euros.'});
+ assert.ok(spans.some(s=>s.kind==='clause' && s.text==='Plan a relaxed walk.'));
+ assert.ok(spans.some(s=>s.kind==='clause' && s.text==='The train runs daily.'));
+ assert.ok(spans.some(s=>s.kind==='clause' && s.text.includes('12.50')));
+}
+
+assert.equal(deduplicateSentences('先逛老城。下午休息。先逛老城。'),'先逛老城。 下午休息。');
+assert.equal(deduplicateSentences('Walk downtown. Rest afterwards. Walk downtown.'),'Walk downtown. Rest afterwards.');
+assert.equal(deduplicateSentences('上午游览。下午不游览。'),'上午游览。 下午不游览。');

@@ -1,9 +1,14 @@
+const sentenceSegmenter=new Intl.Segmenter('en',{granularity:'sentence'});
+export function evidenceSentences(text,{wholeEnglish=false}={}){
+ const boundary=wholeEnglish?/(?<=[。！？!?；\n])/:/(?<=[。！？!?；;\n])/;
+ return [...sentenceSegmenter.segment(String(text || ''))].flatMap(s=>s.segment.split(boundary)).map(s=>s.trim()).filter(Boolean);
+}
 /* 原文锚点由代码登记；模型选择编号，不能拿来源原句替换被核对文本。 */
 export function evidenceSpans(field){
  const values=[];
  const add=(text,kind)=>{if(text && !values.some(v=>v.text===text))values.push({id:field.id+'@'+values.length,text,kind});};
  for(const m of field.text.matchAll(/`([^`\n]+)`/g))add(m[1],'place');
- for(const m of field.text.matchAll(/[^，,；;。！？!?\n]+/g)){
+ for(const sentence of new Intl.Segmenter('en',{granularity:'sentence'}).segment(field.text))for(const m of sentence.segment.matchAll(/[^，,；;。！？!?\n]+/g)){
   const text=m[0].replace(/^\s*[-*•]\s*/,'').replace(/^(?:清晨|早上|上午|中午|下午|傍晚|晚上|全天|途中|抵达后)[：:]\s*/,'').trim();
   add(text,'clause');
  }
@@ -43,4 +48,21 @@ export function isKnownRoutePlan(text,conditions={}){
  const value=String(text).replace(/`/g,'').replace(/^\s*[-*•]\s*/,'').replace(/^(?:上午|下午|晚上|全天|傍晚|中午)[：:]\s*/,'').replace(/[。；;！!]$/,'').trim();
  // 只匹配无运营承诺、班次、距离、时刻或费用的路线安排；不是交通连接证据。
  return new RegExp('^(?:'+city+'(?:出发)?|(?:前往|抵达|返回|飞往|飞回)'+city+'|(?:从)?'+city+'(?:出发)?(?:前往|抵达|返回|飞往|飞回|飞)'+city+'|去程经'+city+'陆路跨境|回程从'+city+'飞'+city+'|搭乘'+city+'飞'+city+'的航班返程)$').test(value);
+}
+
+export function deduplicateSentences(text){
+ const seen=new Set();return evidenceSentences(text).filter(sentence=>{const key=sentence.normalize('NFKC').replace(/\s+/g,' ').trim().replace(/[。；;.!?！？]+$/,'');if(seen.has(key))return false;seen.add(key);return true;}).join(' ');
+}
+
+// 补丁接回原字段后，只移除连续重复的整句。新的分点仍是独立安排。
+export function cleanPatchedProse(content){
+ let previous='',cursor=0,output='';
+ for(const sentence of evidenceSentences(content)){
+  const start=content.indexOf(sentence,cursor);
+  const key=sentence.normalize('NFKC').toLowerCase().replace(/\s+/g,' ').trim();
+  if(!previous || key!==previous || /^[-*•]/.test(sentence))output+=content.slice(cursor,start)+sentence;
+  previous=key;
+  cursor=start+sentence.length;
+ }
+ return (output+content.slice(cursor)).replace(/\n[ \t]*\n(?:[ \t]*\n)+/g,'\n\n').trim();
 }

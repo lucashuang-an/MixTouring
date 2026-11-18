@@ -21,9 +21,13 @@ for (const page of pages) {
   const html = readFileSync(join(pagesDir, page), 'utf8');
 
   /* 桌面跳转不能落回只有 430px 手机容器的页面。 */
-  if (!html.includes('href="../assets/desktop.css"')) err(page, '缺少桌面响应式样式');
-  if (!html.includes('data-mobile-nav="global"')) err(page, '缺少统一响应式导航');
-  if (!html.includes(page === 'trip.html' ? 'class="trip-shell"' : 'class="app-shell"')) err(page, '缺少桌面内容容器');
+  if(page==='login.html'){
+    for(const marker of ['../assets/auth.css','id="authForm"','autocomplete="username"','autocomplete="current-password"','role="alert"'])if(!html.includes(marker))err(page,'缺少认证页面合同：'+marker);
+  }else{
+    if (!html.includes('href="../assets/desktop.css"')) err(page, '缺少桌面响应式样式');
+    if (!html.includes('data-mobile-nav="global"')) err(page, '缺少统一响应式导航');
+    if (!html.includes(page === 'trip.html' ? 'class="trip-shell"' : 'class="app-shell"')) err(page, '缺少桌面内容容器');
+  }
 
   /* 当前三个主要页面必须真正引用唯一设计令牌，不再保留会漂移的内联副本。 */
   if(['trip.html','library.html','me.html'].includes(page) && (!html.includes('href="../colors_and_type.css"') || html.includes('id="theme-vars"')))err(page,'主要页面没有使用统一设计令牌');

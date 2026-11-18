@@ -1,5 +1,6 @@
 /* 按一段交通与用户日期查近期线索；读到资料也不自动升级班次核实状态。 */
 import {collectTravelSources} from './travel-sources.mjs';
+import {requestOwner,ownsRecord} from './request-owner.mjs';
 import {resultRelevance} from './transport-relevance.mjs';
 import {readPublicPage} from './public-reader.mjs';
 import {randomUUID} from 'node:crypto';
@@ -7,7 +8,7 @@ import {connectionOptions} from './transport-options.mjs';
 import {queryTransportMap} from './transport-map.mjs';
 import {retrievalContext,partitionTimedSources,sourceWindow} from './source-time.mjs';
 const results=new Map();
-export function discardTransportSearch(ids){for(const id of ids)results.delete(id);}
+export function discardTransportSearch(ids){for(const id of ids)if(ownsRecord(results.get(id)))results.delete(id);}
 /* 只读恢复本进程仍有效的记录；不联网、不续期、不采纳客户端计数。 */
 export function resolveTransportSearch({ids=[],legs=[],window=null}={}, {now=Date.now()}={}){
   if(!Array.isArray(ids) || ids.length>20 || ids.some(id=>typeof id!=='string' || id.length>120) || !Array.isArray(legs) || legs.length>12 || legs.some(l=>!l || [l.from,l.to].some(v=>typeof v!=='string' || !v.trim() || v.length>80) || !['unknown','plane','rail','road','drive'].includes(l.mode) || l.window!=null&&!sourceWindow(l.window)))throw Error('查询记录字段无效');
@@ -15,7 +16,7 @@ export function resolveTransportSearch({ids=[],legs=[],window=null}={}, {now=Dat
   const records=[];
   for(const id of new Set(ids)){
     const item=results.get(id),data=item?.data;
-    if(!data || item.expires<=now || Date.parse(data.retrieved_at)>now || !legs.some(l=>!l.locked && l.from===data.from && l.to===data.to && l.mode===data.requested_mode && sourceWindow(l.window || window)===data.temporal.target_window && !!l.exclude_road===!!data.exclude_road && !!l.no_self_drive===!!data.no_self_drive))continue;
+    if(!ownsRecord(item) || !data || item.expires<=now || Date.parse(data.retrieved_at)>now || !legs.some(l=>!l.locked && l.from===data.from && l.to===data.to && l.mode===data.requested_mode && sourceWindow(l.window || window)===data.temporal.target_window && !!l.exclude_road===!!data.exclude_road && !!l.no_self_drive===!!data.no_self_drive))continue;
     const current=structuredClone(data),context=retrievalContext({window:data.temporal.target_window,purpose:'transport',now});
     const transport=partitionTimedSources(current.sources,context),experience=partitionTimedSources(current.experiences,retrievalContext({window:data.temporal.target_window,purpose:'experience',now}));
     current.sources=transport.current;current.experiences=experience.current;
@@ -27,14 +28,14 @@ export function resolveTransportSearch({ids=[],legs=[],window=null}={}, {now=Dat
   return {records};
 }
 export function transportSearchCovered(ids,{from,to,mode,exclude_road=false,no_self_drive=false,window=null,now=Date.now()}){
-  return (Array.isArray(ids)?ids:[]).slice(0,20).some(id=>{const item=results.get(id);return item?.expires>now && item.data.from===from && item.data.to===to && item.data.requested_mode===mode && !!item.data.exclude_road===exclude_road && !!item.data.no_self_drive===!!no_self_drive && sourceWindow(window)===item.data.temporal.target_window;});
+  return (Array.isArray(ids)?ids:[]).slice(0,20).some(id=>{const item=results.get(id);return ownsRecord(item) && item.expires>now && item.data.from===from && item.data.to===to && item.data.requested_mode===mode && !!item.data.exclude_road===exclude_road && !!item.data.no_self_drive===!!no_self_drive && sourceWindow(window)===item.data.temporal.target_window;});
 }
 export function transportSearchEvidence(ids,{route=[],legs=null,window=null,now=Date.now(),purpose='transport'}={}){
   const sources=[];
   /* #29：先逐项校验（存在/未过期/同窗/同方向）再取资料，输入上限只作有界扫描（与客户端缓存上限一致）——
    * 旧无关项不得因排在前面挤占有效项配额。输出配额仍由 partitionTimedSources 后的 slice(0,8) 把守。 */
   for(const id of (Array.isArray(ids)?ids:[]).slice(0,20)){const item=results.get(id);
-    if(!item || item.expires<=now)continue;
+    if(!ownsRecord(item) || item.expires<=now)continue;
     const leg=legs?.find(l=>l.from===item.data.from && l.to===item.data.to && (!l.exclude_road || item.data.exclude_road) && (!l.mode_guess || l.mode_guess==='unknown' || l.mode_guess===item.data.requested_mode));
     if(legs?!leg:!route.slice(1).some((to,i)=>route[i]===item.data.from && to===item.data.to))continue;
     const adjacent=route.slice(1).some((to,i)=>route[i]===item.data.from&&to===item.data.to);
@@ -75,6 +76,6 @@ export async function searchTransportSources({from,to,window=null,mode='unknown'
   while(results.size>=100)results.delete(results.keys().next().value);
   // Google路线数值只给本次面板，不写入恢复缓存或草案证据。刷新后重新调用工具。
   const restorable={...data,connection_options:directions.filter(o=>o.provider!=='Google Maps'),map_attempts:mapped.attempts.map(a=>({...a,status:a.status==='available'?'needs_refresh':a.status,reason:a.status==='available'?'refresh_required':a.reason}))};
-  results.set(data.retrieval_id,{data:structuredClone(restorable),expires:now+900000});
+  results.set(data.retrieval_id,{owner:requestOwner(),data:structuredClone(restorable),expires:now+900000});
   return data;
 }

@@ -1,0 +1,31 @@
+import assert from 'node:assert/strict';
+import {DatabaseSync} from 'node:sqlite';
+import {randomUUID} from 'node:crypto';
+import {createCloudState} from './lib/cloud-state.mjs';
+import {createPlanningSessions} from './lib/planning-session.mjs';
+import {publicHttp} from './lib/cloud-http.mjs';
+import {withRuntimeServices} from './lib/runtime-services.mjs';
+import {reserveUpstream} from './lib/upstream-budget.mjs';
+const db=new DatabaseSync(':memory:');
+const storage={sql:{exec(query,...args){const statement=db.prepare(query);return statement.columns().length?statement.all(...args):(statement.run(...args),[]);}},transactionSync(fn){db.exec('BEGIN');try{const value=fn();db.exec('COMMIT');return value;}catch(error){db.exec('ROLLBACK');throw error;}}};
+try{
+  let state=createCloudState(storage);const now=Date.parse('2026-11-12T00:00:00Z');
+  assert.equal(state.reserve('model',{limit:2},now).calls,1);
+  state=createCloudState(storage);assert.equal(state.reserve('search',{limit:2},now-86400000).calls,2);
+  assert.throws(()=>state.reserve('map',{limit:2},now),{code:'UPSTREAM_BUDGET_EXCEEDED'});
+  assert.equal(state.reserve('model',{limit:2},now+86400000).calls,1);
+  let called=false,release;const wait=new Promise(r=>release=r);
+  const pending=withRuntimeServices({reserveUpstream:()=>wait},async()=>{await reserveUpstream('model');called=true;});
+  await Promise.resolve();assert.equal(called,false);release();await pending;assert.equal(called,true);
+  const token=randomUUID(),input={planning_session_id:randomUUID(),request_id:randomUUID(),resume_token:token,_access_user:'alice',text:'生成',conversation:{revision:0}};
+  const make=()=>createPlanningSessions({storage:state,rulesVersion:'test'});
+  const result=await make().run(input,{execute:async()=>({status:'ok',reply:'保存',conversation:{revision:1,notes:'测试'.repeat(90000)}})});
+  assert.equal(result.status,'ok');assert.equal(await make().load(token,'bob'),null);
+  const restored=await make().run(input,{execute:async()=>{throw Error('不应重复执行');}});assert.equal(restored.status,'ok');assert.equal(restored.conversation.revision,1);
+  state.prune(Date.now()+2*86400000);assert.equal(await make().load(token,'alice'),null);
+  const url=new URL('https://example.com');let calls=0;
+  const redirect=await publicHttp(url,{fetchImpl:async(u,o)=>{calls++;assert.equal(o.redirect,'manual');assert.equal(o.headers.authorization,undefined);return new Response(null,{status:302,headers:{location:'http://127.0.0.1'}});}});
+  assert.equal(calls,1);assert.equal(redirect.status,302);
+  await assert.rejects(publicHttp(url,{maxBytes:3,fetchImpl:async()=>new Response('abcd',{headers:{'content-type':'text/html'}})}),{reader_code:'body_too_large'});
+  console.log('✓ 云端持久预算、时钟回拨、检查点分块／重建恢复／身份隔离及HTTP边界通过');
+}finally{db.close();}

@@ -22,7 +22,7 @@ export function conversationStream(execute,signal){
  stream.once('close',()=>signal?.removeEventListener('abort',abort));
  if(signal?.aborted){signal.removeEventListener('abort',abort);abort();return stream;}
  const send=value=>{if(signal?.aborted||stream.destroyed||stream.writableEnded)return false;try{stream.write(JSON.stringify(value)+'\n');return true;}catch{return false;}};
- Promise.resolve().then(()=>signal?.aborted?null:execute(event=>{const label=progressLabel(event);if(label&&label!==previous){previous=label;send({type:'progress',label});}}))
+ stream.completion=Promise.resolve().then(()=>signal?.aborted?null:execute(event=>{const label=progressLabel(event);if(label&&label!==previous){previous=label;send({type:'progress',label});}}))
  .then(response=>{if(!send({type:'result',response}))send({type:'result',response:{code:1,msg:'回复未能完整传输，原方案已保留。'}});},()=>send({type:'result',response:{code:1,msg:'本轮未完成，原方案已保留。'}})).finally(()=>{signal?.removeEventListener('abort',abort);stream.end();}).catch(()=>stream.destroy());
  return stream;
 }

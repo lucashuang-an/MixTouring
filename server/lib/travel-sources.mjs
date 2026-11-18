@@ -43,7 +43,7 @@ function cleanResult(raw,now=Date.now(),task={}){
     ...(raw.date_basis==='provider_estimate'?{estimated_date:String(raw.estimated_date || '').slice(0,100),estimated_date_basis:'provider_estimate'}:{}),
     published_at:sourceDay(published),published_raw:published || null,date_basis:published?'search_index':'unknown',read_status:'search_excerpt',checked_at:new Date(now).toISOString()};
 }
-export async function collectTravelSources({destination='',query='',question='',international=false,foreignQuery='',travel={},window=null,purpose='experience',itinerary_stops=[],include_day_tours=false,connection_modes=[]},search,{useCache=true,cacheScope=null,forceRefresh=false,readPage=null,now=Date.now(),signal=null,queryPlans=null,diagnostics=false,assessSources=null}={}){
+export async function collectTravelSources({destination='',query='',question='',international=false,foreignQuery='',travel={},window=null,purpose='experience',itinerary_stops=[],itinerary_focus='',itinerary_language=null,cityQueriesOnly=false,include_day_tours=false,connection_modes=[]},search,{useCache=true,cacheScope=null,forceRefresh=false,readPage=null,now=Date.now(),signal=null,queryPlans=null,diagnostics=false,assessSources=null}={}){
   const temporal=retrievalContext({travel,window,purpose,now});
   const stamp=temporal.target_window?' '+temporal.target_window.replaceAll(' ',''):'';
   const task={destination:String(destination).trim(),query:String(query).trim(),question:String(question).trim().slice(0,2000),foreignQuery:String(foreignQuery).trim(),purpose,international:!!international,
@@ -84,8 +84,15 @@ export async function collectTravelSources({destination='',query='',question='',
   // 固定探针仅供内部基线工具注入，不接受 HTTP 入参；默认产品检索计划与筛选保持原样。
   if(queryPlans!==null && (!Array.isArray(queryPlans) || !queryPlans.length || queryPlans.length>8 || queryPlans.some(q=>!q || typeof q.text!=='string' || !q.text.trim() || q.text.length>100 || !/^[a-z0-9.-]+$/.test(q.domain || '') || !Array.isArray(q.kinds) || !q.kinds.length || q.kinds.some(k=>!['experience','guide','official'].includes(k)))))throw Error('基线查询计划无效');
   const stops=[...new Set((Array.isArray(itinerary_stops)?itinerary_stops:[]).filter(s=>typeof s==='string' && s.trim()).map(s=>s.trim().slice(0,80)))].slice(0,3);
-  const scoped=purpose==='experience' && !explicitDomains.length && stops.length>1?
-    stops.map(city=>({...defaults[0],text:(city+' 深度游记 地标 街区 公园 当地文化 特色体验').slice(0,100),language:'zh',sourceLimit:4})).concat(defaults.slice(1).map(q=>({...q,sourceLimit:4}))):defaults;
+  const focusedEnglish=itinerary_language==='en';
+  const interests=String(itinerary_focus || '').trim();
+  const stopQuery=city=>{
+    const channel=focusedEnglish?{channel:'目的地游览资料',domains:null,domain:null,language:'en'}:{language:'zh'};
+    const theme=interests || (focusedEnglish?'neighborhood walks and local culture':'深度游记 地标 街区 公园 当地文化 特色体验');
+    return {...defaults[0],...channel,...(focusedEnglish?{startDate:null}:{}),text:(city+' '+theme).slice(0,100),sourceLimit:4};
+  };
+  const scoped=purpose==='experience' && !explicitDomains.length && stops.length && (stops.length>1 || interests)?
+    stops.map(stopQuery).concat(cityQueriesOnly?[]:defaults.slice(1).map(q=>({...q,sourceLimit:4}))):defaults;
   if(include_day_tours && international && purpose==='experience' && !explicitDomains.length && !queryPlans){
     scoped.push({channel:'当地游与接送',text:fit(english,60)+' day tour small group pickup transfer',language:'en',domains:['getyourguide.com','viator.com','klook.com'],domainMode:'prefer',kinds:['guide','experience'],sourceLimit:4});
   }
@@ -130,6 +137,15 @@ export async function collectTravelSources({destination='',query='',question='',
       source.direct_input=true;seen.set(source.url,source);pool.unshift(source);return {source};});
     queryEntries.push(entries);queryDiagnostics.push({query:'用户指定公开网页',raw_count:entries.length,domain_hit_count:entries.length});
     channels.push({channel:'用户指定公开网页',status:'empty',query:'用户明确提供的公开地址'});
+  }
+  // 多城查询交错送审，同样的读取及目录容量可以先覆盖不同城市。
+  if(scoped!==defaults && stops.length>1 && !queryPlans && !directUrls.length && !connectionQueries.length){
+    const ordered=new Set();
+    const groups=queryEntries.slice(0,stops.length);
+    for(let rank=0;rank<Math.max(...groups.map(rows=>rows.length));rank++){
+      for(const rows of groups){const hit=rows[rank];if(hit?.source && !hit.reason)ordered.add(hit.source);}
+    }
+    pool=[...new Set([...ordered,...pool])];
   }
   const candidates=partitionTimedSources(pool,temporal);
   // 少量读取日期不明或近期结果的原文，不触碰登录态，不把验证页当正文。

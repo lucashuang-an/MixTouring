@@ -1,3 +1,4 @@
+import {repairReturnSummary,unconfirmedReturnFields} from './lib/return-scope.mjs';
 import assert from 'node:assert/strict';
 import {unconfirmedReturnCards} from './lib/return-scope.mjs';
 const cards=[{id:'card-1',place:'乐山',title:'苏稽慢逛',content:'下午游览后返程，回到乐山住处休息。'},{id:'card-2',place:'乐山',title:'继续慢逛',content:'本次不返回成都，回程另行安排。'},{id:'card-3',place:'乐山',title:'返回成都',content:'下午从乐山返回成都。'}];
@@ -23,3 +24,18 @@ const result=await conversationTurn({text:'保留当地游览后回住处的安�
  return {intent_action:'revise',reply:'保留当地安排。',brief:before.brief,routing,ready:true,requirements_patch:{},preferences:{},travel:{},constraints:{},sights:{},draft:localDraft};
 }});
 assert.equal(result.status,'ok',result.reply);assert.equal(destructiveRepairs,0);assert.equal(result.conversation.draft.cards[0].content,cards[0].content);assert.equal(result.conversation.draft.cards[1].content,cards[1].content);
+
+for(const [origin,destination] of [['大阪','京都'],['Berlin','Prague']]){
+ const original={route:[origin,destination],overview:'最后一天再返程。',cards:[{id:'d1',label:'第1天',place:destination,title:'散步',content:'下午在城区散步。'}],sections:[{title:'当地交通',content:'游览后回到住处。'}]};
+ const repaired=await repairReturnSummary(original,{origin,destination},async o=>{const p=JSON.parse(o.user);if(o.kind==='conversation_return_summary')return {fields:p.fields.map(f=>({path:f.path,text:'最后一天在城区散步收尾。'}))};return {classifications:p.cards.map(c=>({id:c.id,quote:c.content,kind:c.content.includes('再返程')?'return_to_origin':'local_return'}))};});
+ assert.equal(repaired.overview,'最后一天在城区散步收尾。');assert.deepEqual(repaired.cards,original.cards);assert.deepEqual(repaired.sections,original.sections);
+}
+
+let quoteAttempts=0;
+const recovered=await unconfirmedReturnCards(draft,routing,async o=>{
+ const valid=await classify(o);
+ if(++quoteAttempts===1)valid.classifications[0].quote='改写过的引文';
+ else assert.equal(JSON.parse(o.user).validation_error,'quote_not_verbatim:card-1');
+ return valid;
+});
+assert.equal(quoteAttempts,2);assert.deepEqual(recovered.map(c=>c.id),['card-3']);

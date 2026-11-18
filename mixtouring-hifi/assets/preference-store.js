@@ -12,7 +12,7 @@
   function validValue(k,v){return Object.prototype.hasOwnProperty.call(VALUES,k) && VALUES[k].indexOf(v)>=0;}
   function read(){
     var raw;
-    try{raw=localStorage.getItem(KEY);}catch(e){return {state:empty(),raw:null,health:'read_failed'};}
+    try{raw=(globalThis.MTLocalStorage || localStorage).getItem(KEY);}catch(e){return {state:empty(),raw:null,health:'read_failed'};}
     if(raw===null)return {state:empty(),raw:null,health:'ready'};
     try{
       var p=JSON.parse(raw);
@@ -58,7 +58,7 @@
       if(check.raw!==current.raw){refresh();epoch++;notify();return {ok:false,reason:'stale_response'};}
       if(!next.store_id || next.store_id==='legacy')next.store_id='device_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2);
       next.revision=state.revision+1;
-      try{localStorage.setItem(KEY,JSON.stringify(next));}
+      try{(globalThis.MTLocalStorage || localStorage).setItem(KEY,JSON.stringify(next));}
       catch(e){sessionPaused=true;epoch++;return failure('write_failed');}
       state=next;health='ready';loaded=true;lastError=null;epoch++;notify();return outcome;
     });
@@ -87,6 +87,10 @@
       var result=await transaction(function(next){var changed=next.enabled!==(value===true);next.enabled=value===true;return {ok:true,changed:changed};});
       if(result.ok){sessionPaused=false;lastError=null;notify();}
       return result.ok;
+    },
+    clear:function(){
+      epoch++;
+      return transaction(function(next){next.entries=[];next.store_id='cleared_'+Date.now()+'_'+Math.random();return {ok:true,changed:1};});
     },
     remove:function(id){
       epoch++;

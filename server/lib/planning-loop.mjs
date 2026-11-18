@@ -19,6 +19,24 @@ export function explicitDayScope(text,draft){
  const numbers=mentionedDays(text);
  return (draft?.cards || []).filter(c=>[...mentionedDays(c.label)].some(day=>numbers.has(day))).map(c=>c.id);
 }
+// 提到日期不是编辑授权：保留、否定与条件句只进入只读集合。
+export function revisionDayScope(text,draft,decision){
+ const writable=new Set(),readonly=new Set();
+ const clauses=String(text).split(/[。！？!?；;\n]|\.(?!\d)|[，,]/i);
+ for(const clause of clauses){const ids=explicitDayScope(clause,draft);if(!ids.length)continue;
+  const protectedClause=/(?:不变|原样|别动|不动|不要(?:改|动)|不(?:修改|改动|调整|改)|保持|保留原|如果|假如|若要|先问|\b(?:unchanged|untouched|keep|leave|do not|don't|if|unless)\b)/i.test(clause);
+  ids.forEach(id=>(protectedClause?readonly:writable).add(id));
+ }
+ // 主模型已在理解本轮意图时给出语义范围，支持相对日序；代码核对ID与本轮原话出处。
+ if(decision && Array.isArray(decision.editable) && Array.isArray(decision.readonly)){
+  const rows=[...decision.editable,...decision.readonly];
+  if(rows.length && new Set(rows.map(r=>r?.id)).size===rows.length && rows.every(r=>draft.cards.some(c=>c.id===r?.id) && typeof r.quote==='string' && r.quote.trim().length>=2 && String(text).includes(r.quote))){
+   writable.clear();decision.editable.forEach(r=>writable.add(r.id));decision.readonly.forEach(r=>readonly.add(r.id));
+  }
+ }
+ readonly.forEach(id=>writable.delete(id));
+ return {editable:[...writable],readonly:[...readonly]};
+}
 export function dayOnlyPreferenceScope(text,draft){
  if(!explicitDayScope(text,draft).length)return false;
  const scope='(?:全程|整体|整趟|这趟|所有天|每天|长期|以后|今后)';

@@ -7,7 +7,7 @@ import {webSearchConfigured} from './trip-service.mjs';
 import {buildTravelIntent,extractConstraints,sanitizeConstraints,constraintChips,sanitizeAnchors} from './anywhere.mjs';
 import {countryScope} from './place-scope.mjs';
 import {collectTravelSources,articleIdentity} from './travel-sources.mjs';
-import {relevanceReviewer,sourceId} from './source-relevance.mjs';
+import {sourceId} from './source-relevance.mjs';
 import {SEARCH_PLANNER_VERSION} from './versions.mjs';
 
 const str=(v,n=80)=>typeof v==='string'?v.trim().slice(0,n):'';
@@ -71,7 +71,7 @@ export async function planSearchFirst(input={},deps={}){
       if(!data.places.some(p=>p.name===name))data.places.push(endpoints.origin);
     }
     if(endpoints.origin.name===endpoints.destination.name){
-      if(anchors.return?.from_city===endpoints.destination.name){data.status='ok';data.anchors.full_cover=true;return data;}
+      if(data.intent.trip_type==='one_way' || anchors.return?.from_city===endpoints.destination.name){data.status='ok';data.anchors.full_cover=true;data.planning_notice='已定交通已覆盖本次移动，可继续安排目的地体验。';return data;}
       return fail('去程已到达目的地；可继续安排当地体验，并单独核对返程接驳。','needs_intent');
     }
   }
@@ -102,10 +102,8 @@ export async function planSearchFirst(input={},deps={}){
   const seen=new Set(),pool=[...collected.sources,...collected.experiences,...collected.archive]
     .filter(s=>!seen.has(articleIdentity(s.url)) && seen.add(articleIdentity(s.url)))
     .slice(0,10).map(s=>({...s,id:sourceId(s)}));
-  // 历史材料也做同一批相关性核对，只用于探索，不能因其处于 archive 跳过审查。
-  const reviewed=pool.length?await relevanceReviewer(model)({destination:from.name+' '+to.name,question:[text,context].join('\n'),purpose:'transport'},pool,{signal}):null;
-  const sources=pool.filter(s=>reviewed?.items?.some(r=>r.id===s.id && r.decision==='keep'));
-  if(!sources.length)return data.candidates.length?userStructure():fail(collected.status==='unavailable'?'检索或相关性核对暂不可用，请重试；原输入与安排仍保留。':'本轮尚无可用于组合走法的相关资料，可以补充更具体的方向后重试。','partial');
+  // 资料供探索参考；不因相关性模型失败或查无来源删除用户路线。
+  const sources=pool;
   const result=await model({kind:'search_plan_routes',timeoutMs:12000,signal,
     schema_prompt:agentPrompt('search.routes'),
     user:JSON.stringify({origin:from.name,destination:to.name,intent:{text,context,constraints,travel:travel.intent},sources:sources.map(({id,title,excerpt,temporal})=>({id,title,excerpt,temporal}))})});
@@ -114,11 +112,11 @@ export async function planSearchFirst(input={},deps={}){
   for(const proposal of (Array.isArray(result.routes)?result.routes:[]).slice(0,6)){
     if(!Array.isArray(proposal?.stops) || proposal.stops.length>3 || !Array.isArray(proposal.source_ids))continue;
     const support=sources.filter(s=>proposal.source_ids.includes(s.id));
-    if(!support.length && (proposal.stops.length || proposal.source_ids.length))continue;
+
     const stops=[];
     for(const stop of proposal.stops){
       const name=str(stop?.name),quote=str(stop?.quote,500),source=support.find(s=>s.id===stop?.source_id);
-    if(!name || countryScope(name) || ![name,str(stop.name_latin)].filter(Boolean).some(n=>quote.toLowerCase().includes(n.toLowerCase())) || !source || !(source.title+'\n'+source.excerpt).includes(quote))break;
+    if(!name || countryScope(name))break;
       stops.push(intentPlace(stop,name));
     }
     if(stops.length!==proposal.stops.length)continue;
@@ -129,26 +127,17 @@ export async function planSearchFirst(input={},deps={}){
     for(const p of stops)if(!data.places.some(x=>x.name===p.name))data.places.push(p);
     const refs=support.map(s=>({title:s.title,link:s.url,date:s.published_at,temporal:s.temporal,allowed_use:'exploration_only'}));
     data.candidates.push({id:'cand-search-'+id(names),kind:stops.length?'discovered':'direct',builder:'search+llm',
-      hypothesis:true,transfers:stops.length,basis:{rule:stops.length?'search-discovery':'requested-direction',sources:stops.length?refs:[],node_quotes:proposal.stops.map(s=>({name:str(s.name),name_latin:str(s.name_latin),source_id:str(s.source_id),quote:str(s.quote,500)}))},
+      hypothesis:true,transfers:stops.length,basis:{rule:stops.length?'search-discovery':'requested-direction',sources:stops.length?refs:[],node_quotes:proposal.stops.filter(stop=>{const source=support.find(s=>s.id===stop.source_id);return source && str(stop.quote,500) && (source.title+'\n'+source.excerpt).includes(stop.quote);}).map(s=>({name:str(s.name),name_latin:str(s.name_latin),source_id:str(s.source_id),quote:str(s.quote,500)}))},
       legs:nodes.slice(0,-1).map((p,i)=>searchLeg(p,nodes[i+1],i+1)),
-      explanation:stops.length?'依据本轮资料提出经'+stops.map(p=>p.name).join('、')+'的探索方向；逐段连接、班期与接驳待查。':'直达方向作为比较基准；是否存在适用的客运服务仍待查。',
+      explanation:stops.length?'建议比较经'+stops.map(p=>p.name).join('、')+'的探索方向；逐段连接、班期与接驳待查。':'直达方向作为比较基准；是否存在适用的客运服务仍待查。',
       why_explore:'比较路线结构及沿途停留的取舍，资料不证明本次日期可成行。',
       uncertain_leg:nodes.slice(0,-1).map((p,i)=>p.name+' → '+nodes[i+1].name+'（连接待查）').join('；'),
       next_checks:['逐段核对客运连接、方向、班期和站点','按用户日期独立核对返程及接驳'],tradeoffs:[],fragile_legs:[]});
     if(data.candidates.length===3)break;
   }
-  const alternatives=data.candidates.filter(c=>c.kind!=='direct' && c.builder!=='user+ai');
-  if(alternatives.length){
-    // 出现城市不代表适合放在本段途中。核对用户顺序及来源方向，不把目的地之后的游玩倒放。
-    const checked=await model({kind:'search_plan_route_check',timeoutMs:10000,signal,
-      schema_prompt:agentPrompt('search.route_check'),
-      user:JSON.stringify({origin:from.name,destination:to.name,text,context,candidates:alternatives.map(c=>({id:c.id,route:c.legs.map(l=>l.from).concat(c.legs.at(-1).to),node_quotes:c.basis.node_quotes})),sources:sources.map(({id,title,excerpt})=>({id,title,excerpt}))})});
-    const items=Array.isArray(checked?.items)?checked.items:[];
-    data.candidates=data.candidates.filter(c=>c.kind==='direct' || c.builder==='user+ai' || items.filter(i=>i.id===c.id).length===1 && items.find(i=>i.id===c.id)?.decision==='keep');
-  }
   if(signal?.aborted)return fail('规划已取消，原输入与安排仍保留。','cancelled');
   if(!data.candidates.length)return fail('本轮资料尚不能形成可比较的走法；可以继续细化方向或补查。','partial');
   data.status='ok';
-  data.planning_notice='以下是本轮资料支持的探索结构，地图位置、逐段客运连接与当期安排仍待核验。';
+  data.planning_notice='以下是可继续讨论的探索结构，地图位置、逐段客运连接与当期安排仍待核验。';
   return data;
 }

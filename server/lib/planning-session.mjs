@@ -5,20 +5,22 @@ import {randomUUID} from 'node:crypto';
 import {planningHash} from './planning-state.mjs';
 import workspace from '../../mixtouring-hifi/assets/route-workspace.js';
 const uuid=s=>typeof s==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(s);
+// 同一恢复编号在不同邀请身份下必须对应不同文件；本机历史文件沿用原路径。
+const checkpointId=(token,owner)=>owner?planningHash(owner)+'_'+token:token;
 const identity=input=>planningHash(Object.fromEntries(Object.entries(input).filter(([key])=>!['planning_session_id','request_id','resume_token','progressive'].includes(key))));
 const unavailable=(input,message='本轮已取消，原稿保留。')=>({status:'unavailable',reply:message,conversation:input.conversation,run:{status:'interrupted'},task:{state:'active'}});
-export function createPlanningSessions({directory,rulesVersion,ttlMs=86400000,clock=Date.now,maxSessions=64,maxRequestsPerSession=8}={}){
+export function createPlanningSessions({directory,storage,rulesVersion,ttlMs=86400000,clock=Date.now,maxSessions=64,maxRequestsPerSession=8}={}){
  const sessions=new Map(),locks=new Map();let lastSweep=-Infinity,sweeping=null;
  const locked=(token,fn)=>{const previous=locks.get(token)||Promise.resolve();const next=previous.catch(()=>{}).then(fn);locks.set(token,next);return next.finally(()=>{if(locks.get(token)===next)locks.delete(token);});};
  const trim=()=>{for(const [sid,s]of sessions)if(!s.pending&&clock()-s.touched>=ttlMs)sessions.delete(sid);};
- async function save(token,value){return locked(token,async()=>{await mkdir(directory,{recursive:true});const temporary=join(directory,token+'.'+randomUUID()+'.tmp');try{await writeFile(temporary,JSON.stringify(value),{mode:0o600});await rename(temporary,join(directory,token+'.json'));}finally{await unlink(temporary).catch(()=>{});}});}
+ async function save(token,value){return locked(token,async()=>{if(storage)return storage.save(token,value);await mkdir(directory,{recursive:true});const temporary=join(directory,token+'.'+randomUUID()+'.tmp');try{await writeFile(temporary,JSON.stringify(value),{mode:0o600});await rename(temporary,join(directory,token+'.json'));}finally{await unlink(temporary).catch(()=>{});}});}
  async function read(token){try{const file=join(directory,token+'.json');const stat=await lstat(file);if(!stat.isFile()||stat.size>8*1024*1024)return null;const d=JSON.parse(await readFile(file,'utf8'));return d.schema_version===1&&Number.isFinite(d.expires_at)&&d.expires_at>clock()&&['structure_ready','facts_checked','validated','committed'].includes(d.stage)&&typeof d.signature==='string'&&(d.stage!=='committed'||d.conversation&&typeof d.conversation==='object'&&!Array.isArray(d.conversation))?d:null;}catch{return null;}}
- async function load(token){return uuid(token)?locked(token,()=>read(token)):null;}
+ async function load(token,owner=null){const id=checkpointId(token,owner);return uuid(token)?locked(id,()=>storage?storage.read(id,clock()):read(id)):null;}
  async function prune(){
   trim();if(sweeping)return sweeping;lastSweep=clock();
-  sweeping=(async()=>{let files;try{files=await readdir(directory);}catch{return;}
+  sweeping=(async()=>{if(storage){await storage.prune(clock());return;}let files;try{files=await readdir(directory);}catch{return;}
    for(const name of files){
-    const token=name.slice(0,36);if(!uuid(token)||!(name===token+'.json'||new RegExp('^'+token+'\\.[a-f0-9-]{36}\\.tmp$').test(name)))continue;
+    const token=name.match(/^((?:[a-f0-9]{64}_)?[a-f0-9-]{36})(?:\.json|\.[a-f0-9-]{36}\.tmp)$/)?.[1];if(!token||!uuid(token.slice(-36)))continue;
     await locked(token,async()=>{try{const path=join(directory,name),stat=await lstat(path);if(!stat.isFile())return;
      let expired=clock()-stat.mtimeMs>=ttlMs;
      if(name.endsWith('.json')){try{const d=JSON.parse(await readFile(path,'utf8'));expired=Number.isFinite(d.expires_at)?d.expires_at<=clock():expired;}catch{}}
@@ -38,7 +40,8 @@ export function createPlanningSessions({directory,rulesVersion,ttlMs=86400000,cl
   if(signal?.aborted)return unavailable(input);
   if(!uuid(input.planning_session_id)||!uuid(input.request_id))return execute(input,{signal});
   trim();if(clock()-lastSweep>=60000)void prune();
-  const sid=input.planning_session_id,rid=input.request_id,signature=identity(input),base=planningHash(input.conversation||null);
+  const owner=input._access_user || null;
+  const sid=(owner || '')+':'+input.planning_session_id,rid=input.request_id,signature=identity(input),base=planningHash(input.conversation||null);
   let session=sessions.get(sid);
   if(!session){
    while(sessions.size>=maxSessions){const idle=[...sessions].filter(([,s])=>!s.pending).sort((a,b)=>a[1].touched-b[1].touched)[0];if(!idle)return unavailable(input,'当前请求较多，请稍后重试，原稿保留。');sessions.delete(idle[0]);}
@@ -58,10 +61,11 @@ export function createPlanningSessions({directory,rulesVersion,ttlMs=86400000,cl
   session.controller?.abort();const controller=new AbortController();session.controller=controller;const generation=++session.generation;session.pending++;
   const combined=signal?AbortSignal.any([signal,controller.signal]):controller.signal;
   let token=uuid(input.resume_token)?input.resume_token:randomUUID();
+  const saveCheckpoint=value=>save(checkpointId(token,owner),value);
   const active=()=>!combined.aborted&&generation===session.generation;
   const entry={signature,signal:combined,settled:false};
   const promise=(async()=>{
-   const saved=input.resume_token?await load(input.resume_token):null;
+   const saved=input.resume_token?await load(input.resume_token,owner):null;
    if(!active())return unavailable(input);
    const resume=saved&&saved.signature===signature&&saved.rules_version===rulesVersion?saved:null;
    if(saved&&!resume)token=randomUUID();
@@ -69,16 +73,16 @@ export function createPlanningSessions({directory,rulesVersion,ttlMs=86400000,cl
     session.base=planningHash(resume.conversation);
     return restored(resume,token);
    }
-   const onCheckpoint=async data=>{if(!active())return;await save(token,checkpoint(signature,data.stage,{draft:workspace.cleanDraft(data.draft)}));};
+   const onCheckpoint=async data=>{if(!active())return;await saveCheckpoint(checkpoint(signature,data.stage,{draft:workspace.cleanDraft(data.draft)}));};
    const result=await execute(input,{signal:combined,resumeDraft:resume?.draft || null,onCheckpoint});
    if(!active())return {...unavailable(input),resume_token:token};
    if(result.status==='ok'&&(!result.conversation||typeof result.conversation!=='object'||Array.isArray(result.conversation)))return {...unavailable(input,'回复状态不完整，原稿保留，可重试。'),resume_token:token};
    if(result.status==='ok'){
     let release;session.committing=new Promise(resolve=>{release=resolve;});
     try{
-     await save(token,checkpoint(signature,'committed',{conversation:result.conversation,patch:result.patch,actions:actionMetadata(result),response_text:typeof result.reply==='string'?result.reply.slice(0,12000):'',had_sources:!!result.sources?.length}));
+     await saveCheckpoint(checkpoint(signature,'committed',{conversation:result.conversation,patch:result.patch,actions:actionMetadata(result),response_text:typeof result.reply==='string'?result.reply.slice(0,12000):'',had_sources:!!result.sources?.length}));
      if(!active()){
-      await save(token,checkpoint(signature,'structure_ready',{draft:workspace.cleanDraft(result.conversation?.draft)}));
+      await saveCheckpoint(checkpoint(signature,'structure_ready',{draft:workspace.cleanDraft(result.conversation?.draft)}));
       return {...unavailable(input),resume_token:token};
      }
      session.base=planningHash(result.conversation||null);

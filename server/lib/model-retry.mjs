@@ -6,6 +6,7 @@ export function retryAfterMs(value,now=Date.now()){
  const date=Date.parse(text);return Number.isFinite(date)?Math.max(0,date-now):null;
 }
 export function classifyModelFailure({status=null,error,signal,retryAfter=null,now=Date.now()}={}){
+ if(error?.code==='UPSTREAM_BUDGET_EXCEEDED')return {reason_code:'budget_exceeded',retryable:false,http_status:null};
  if(signal?.aborted)return {reason_code:signal.reason?.name==='TimeoutError'?'deadline':'cancelled',retryable:false,http_status:status,retry_after_ms:null};
  const serverError=Number.isInteger(status)&&status>=500&&status<=599,temporary=[408,425,429].includes(status)||serverError&&![501,505,511].includes(status);
  const reason=status===429?'rate_limited':status===408?'request_timeout':serverError&&temporary?'service_unavailable':temporary?'temporary_request':status>=400?'http_rejected':error?.name==='SyntaxError'?'invalid_response':error?.name==='TimeoutError'?'timeout':'network_or_timeout';

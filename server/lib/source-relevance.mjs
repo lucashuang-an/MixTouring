@@ -21,7 +21,7 @@ export function relevanceReviewer(model){
       user:JSON.stringify({task,candidates:views})};
     try{response=await model(request);
       // 只补试明确可恢复的失败；内容过滤、格式错误及原因未明的null不原样重复。
-      if(response==null && failure?.retryable===true && !signal?.aborted)response=await model(request);
+      if(response==null && failure?.retryable===true && !failure.retry_handled && !signal?.aborted)response=await model(request);
     }catch(error){reason_code=signal?.aborted?'cancelled':error?.code==='CONTEXT_BUDGET_EXCEEDED'?'context_budget':'model_unavailable';}
     const items=Array.isArray(response?.items)?response.items:[],counts=new Map();
     for(const item of items)counts.set(item?.id,(counts.get(item?.id)||0)+1);

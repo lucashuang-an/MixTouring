@@ -1,5 +1,6 @@
 /* G3 探索行程详情：只消费服务端本次规划的候选，不把浏览器传来的路线当事实。 */
 import { randomBytes } from 'node:crypto';
+import {requestOwner,ownsRecord} from './request-owner.mjs';
 import {searchLeg} from './search-planner.mjs';
 
 const plans = new Map();
@@ -10,7 +11,7 @@ export function registerJourneyPlan(plan, now = Date.now()) {
   for (const [id, entry] of plans) if (entry.expires_at <= now) plans.delete(id);
   while (plans.size >= MAX_PLANS) plans.delete(plans.keys().next().value);
   const id = 'jpl_' + randomBytes(12).toString('hex');
-  plans.set(id, { plan, expires_at: now + TTL_MS });
+  plans.set(id, { owner:requestOwner(), plan, expires_at: now + TTL_MS });
   return id;
 }
 
@@ -92,6 +93,7 @@ export function buildJourneyDetail(plan, candidateId, stopoverNights = 0) {
 
 export function journeyDetailFromPlanId(planId, candidateId, stopoverNights = 0, now = Date.now()) {
   const entry = plans.get(planId);
+  if (!ownsRecord(entry)) throw new Error('规划已失效，请重新规划');
   if (!entry || entry.expires_at <= now) {
     if (entry) plans.delete(planId);
     throw new Error('规划已失效，请重新规划');
@@ -102,6 +104,7 @@ export function journeyDetailFromPlanId(planId, candidateId, stopoverNights = 0,
 /** 对话追问只读取服务端保存的本次规划，避免采纳浏览器提交的候选事实。 */
 export function guidePlanFromId(planId, now = Date.now()) {
   const entry = plans.get(planId);
+  if (!ownsRecord(entry)) return null;
   if (!entry || entry.expires_at <= now) {
     if (entry) plans.delete(planId);
     return null;

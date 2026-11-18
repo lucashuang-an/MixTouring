@@ -212,3 +212,17 @@ console.log('✓ AI 对话确认、多轮上下文、改口、失败恢复、来
 const outputDiagnostics=[];
 const emptyReply=await conversationTurn({text:'先聊聊'},null,{model:async()=>result({reply:''}),onTrace:e=>outputDiagnostics.push(e)});
 assert.equal(emptyReply.status,'unavailable');assert.ok(outputDiagnostics.some(e=>e.stage==='output_contract' && e.missing_fields.includes('reply')),'输出失败必须区分缺字段与数值拒绝');
+
+// 字段不匹配时把具体错误交还模型，保留未被结构支持的用户需求。
+{
+ let attempts=0;
+ const corrected=await conversationTurn({text:'Two travelers, separate beds; just note that.'},null,{model:async opts=>{
+  const p=JSON.parse(opts.user);
+  if(opts.kind==='conversation_condition_update')return p.proposed;
+  if(opts.kind==='conversation_calendar')return {travel:{}};
+  attempts++;
+  if(attempts===2)assert.match(p.field_validation_error.reason,/lodging_stays/);
+  return {intent_action:'discuss',planning:{action:'ask'},reply:'Noted.',brief:{origin:'Amsterdam',destination:'Brussels',wishes:['separate beds']},routing:{origin:'Amsterdam',destination:'Brussels'},requirements_patch:{},preferences:{},travel:{traveler_count:2},constraints:attempts===1?{lodging_stays:{separate_beds:true}}:{},sights:{}};
+ }});
+ assert.equal(corrected.status,'ok');assert.equal(attempts,2);assert.equal(corrected.patch.travel.traveler_count,2);assert.ok(corrected.conversation.brief.wishes.includes('separate beds'));
+}

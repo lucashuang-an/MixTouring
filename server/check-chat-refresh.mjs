@@ -261,8 +261,10 @@ const msgs = () => [
   const restored=sandbox.historicalMessages([previous])[0];
   ok(restored.evidence_historical===true && previous.evidence_historical!==true && sandbox.claimEvidence(restored).includes('时效需重查'),
     '保存恢复把旧引用降为历史，原消息对象不被改写');
+  sandbox.URL=URL;
+  sandbox.sourceCards=vm.runInContext('('+html.slice(html.indexOf('function sourceCards('),html.indexOf('function historicalMessages('))+')',sandbox);
   const archive=sandbox.claimEvidence({historical_sources:[{url:'https://example.gov.cn/old',title:'日期未明资料'}]});
-  ok(archive.includes('历史或日期未明的资料线索') && !archive.includes('结论与出处'),'历史线索与当前支持结论分开展示');
+  ok(archive.includes('历史资料 · 时效未复核') && archive.includes('历史或日期未明，仅供探索') && !archive.includes('结论与出处'),'历史线索与当前支持结论分开展示');
 }
 
 console.log(fail === 0 ? `\n✓ 聊天刷新阅读位置回归全部通过（${total} 项断言）` : `\n✗ 失败 ${fail} 项（共 ${total} 项断言）`);

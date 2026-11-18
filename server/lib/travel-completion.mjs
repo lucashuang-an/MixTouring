@@ -19,6 +19,7 @@ export function checkTravelDelivery({draft,requirements={},routing={},numeric,ev
   if(requireEvidence)add('evidence_check',!!evidence && ['complete','partial'].includes(evidence.status));
   const allocation=draft?allocationReview(draft,confirmedOutline,stayLocks):{changes:[],hard_issues:[]};
   if(draft && stayLocks.length)add('locked_stays',!allocation.hard_issues.length,allocation.hard_issues);
+  if(draft && confirmedOutline?.preserve_allocation)add('confirmed_allocation',!allocation.hard_issues.length,allocation.hard_issues);
   const valid=checks.every(c=>c.status==='passed');
   if(quality)add('itinerary_quality',quality.status==='passed',quality.issues || []);
   return {valid,passed:valid && (!quality || quality.status==='passed'),checks,allocation_changes:allocation.changes};

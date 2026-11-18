@@ -110,3 +110,32 @@ const longDraft={...draft,overview:'城市慢逛',cards:Array.from({length:40},(
 let overflow=false;
 const longResult=await ensureItineraryQuality({draft:longDraft,current:{requirements:{trip_days:40}},model:async o=>{try{buildContext({payload:JSON.parse(o.user),coreRules:o.schema_prompt});}catch(e){overflow=e.code==='CONTEXT_BUDGET_EXCEEDED';throw e;}return null;},verify:async()=>({accepted:false})});
 assert.equal(overflow,false,'长稿分批请求不得超过单次上下文预算');assert.equal(longResult.status,'unreviewed');assert.deepEqual(longResult.draft,longDraft);assert.equal(longResult.checked,false);
+
+// 实际英文补丁复述邻句时，仍按原分点保留正文；孤立续句不能被宽松评审放行。
+{
+ const {cleanPatchedProse}=await import('./lib/evidence-spans.mjs');
+ const text='- Morning: Travel to town;\nallow extra time. Allow extra time.\n- Afternoon: Allow extra time.';
+ assert.equal(cleanPatchedProse(text),'- Morning: Travel to town;\nallow extra time.\n- Afternoon: Allow extra time.');
+ for(const broken of ['Book ahead.\n\n otherwise the surrounding streets are worth a walk.',text]){
+  const d={...draft,cards:[{...cards[1],content:broken}]};
+  const checked=await ensureItineraryQuality({draft:d,current:{},canCall:n=>n===1,model:async()=>({cards:[{id:cards[1].id,role:'activity',activity_present:true,title_matches:true}],summary_matches:true,issues:[]})});
+  assert.equal(checked.status,'needs_repair');assert.ok(checked.issues.some(i=>i.code==='body_coherence'));
+ }
+}
+
+// 质量修复返回后，按证据核对的最终正文复审，并锁住其他日卡。
+{
+ const damaged={...cards[1],content:'- Morning: Start in the park.\n\n otherwise continue around the block.'};
+ const sample={...draft,cards:[damaged,cards[2]]};
+ const fixedContent='- Morning: Take a slow walk through the park.';
+ const model=async opts=>{
+   if(opts.kind==='conversation_quality_review')return {cards:sample.cards.map(c=>({id:c.id,role:'activity',activity_present:true,title_matches:true})),summary_matches:true,issues:[]};
+   const payload=JSON.parse(opts.user);
+   assert.deepEqual(payload.targets.map(c=>c.id),[damaged.id]);
+   return {cards:[{id:damaged.id,title:damaged.title,content:fixedContent}]};
+ };
+ const repaired=await ensureItineraryQuality({draft:sample,current:{},model,verify:async candidate=>({accepted:true,draft:candidate})});
+ assert.equal(repaired.status,'passed');assert.equal(repaired.draft.cards[0].content,fixedContent);assert.deepEqual(repaired.draft.cards[1],cards[2]);
+ const degraded=await ensureItineraryQuality({draft:sample,current:{},model,verify:async()=>({accepted:true,draft:sample})});
+ assert.equal(degraded.status,'needs_repair');
+}

@@ -1,9 +1,10 @@
+import {evidenceSentences} from './evidence-spans.mjs';
 import {qualityReviewPayload,needsQualityBatches,reviewLongItinerary} from './quality-batches.mjs';
 /* 最终成稿质量：内部一致性不是外部事实证明；补丁仍须独立过证据与数字校验。 */
 import {buildContext} from './context-builder.mjs';
 import {AGENT_RULES_VERSION,agentPrompt} from './agent-prompts.mjs';
 import workspace from '../../mixtouring-hifi/assets/route-workspace.js';
-const codes=new Set(['missing_activity','title_mismatch','summary_mismatch','cross_day_conflict','condition_conflict']);
+const codes=new Set(['missing_activity','title_mismatch','summary_mismatch','cross_day_conflict','condition_conflict','body_coherence']);
 const copy=v=>structuredClone(v);
 const issue=(code,ids,reason,quote='')=>({code,card_ids:ids,reason,quote});
 const note=/^(提醒|提示|Tips|小贴士|补充|交通说明|注意)[：:]/i;
@@ -50,6 +51,12 @@ export async function ensureItineraryQuality({draft,current,model,catalog,getCat
   const syncAttempts=new Set();
   async function assess(value,mustHaveActivity=[]){
     const deterministic=hollowDayIssues(value);
+    for(const card of value.cards){
+      const sentences=evidenceSentences(card.content);
+      const repeat=sentences.find((sentence,i)=>i>0 && !/^[-*•]/.test(sentence) && sentence.toLowerCase()===sentences[i-1].toLowerCase());
+      const orphan=String(card.content).match(/(?:^|\n\s*\n)\s*(otherwise\b[^\n]*)/);
+      if(repeat || orphan)deterministic.push(issue('body_coherence',[card.id],'相邻正文重复或孤立的续句失去上文',repeat || orphan[1]));
+    }
     if(!semantic)return {status:deterministic.length?'needs_repair':'passed',issues:deterministic,cards:[]};
     if(!canCall(1))return {status:'unreviewed',issues:deterministic,cards:[]};
     try{

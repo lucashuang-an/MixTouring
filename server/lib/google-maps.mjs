@@ -1,3 +1,4 @@
+import {reserveUpstream} from './upstream-budget.mjs';
 import {planDayTravel} from './google-routes.mjs';
 import {composeJson,composeConfigured} from './llm.mjs';
 import {agentPrompt} from './agent-prompts.mjs';
@@ -18,7 +19,8 @@ export async function googlePlace(name,{query=name,aliases=[],country=null,cente
  if(signal?.aborted)return missing('cancelled');
  try{
   let dispatcher;if(proxy){if(!dispatchers.has(proxy))dispatchers.set(proxy,new ProxyAgent(proxy));dispatcher=dispatchers.get(proxy);}
-  const response=await fetchImpl(endpoint,{method:'POST',redirect:'error',headers:{'Content-Type':'application/json','X-Goog-Api-Key':apiKey,'X-Goog-FieldMask':mask},
+    await reserveUpstream('map');
+  const response=await fetchImpl(endpoint,{method:'POST',redirect:'manual',headers:{'Content-Type':'application/json','X-Goog-Api-Key':apiKey,'X-Goog-FieldMask':mask},
    body:JSON.stringify({textQuery:query,languageCode:language,pageSize:3,...(country?{regionCode:country}:{}),...(center?{locationBias:{circle:{center:{latitude:center.lat,longitude:center.lon},radius:50000}}}:{})}),
    ...(dispatcher?{dispatcher}:{}),signal:signal?AbortSignal.any([signal,AbortSignal.timeout(12000)]):AbortSignal.timeout(12000)});
   if(!response.ok)return missing('http_'+response.status);
@@ -32,7 +34,7 @@ export async function googlePlace(name,{query=name,aliases=[],country=null,cente
   const p=matches[0];
   return {name,lat:p.location.latitude,lon:p.location.longitude,matched_name:p.displayName?.text || name,country:countryOf(p),provider:'Google Maps',provider_id:p.id,
    match_basis:exact.length?'name':'single_query_result',business_status:p.businessStatus || null,source_url:googlePlaceUrl(name,p.id),attributions:(p.attributions||[]).map(a=>a.provider).filter(a=>typeof a==='string')};
- }catch{return missing(signal?.aborted?'cancelled':'network_unavailable');}
+ }catch(error){return missing(signal?.aborted?'cancelled':error.code==='UPSTREAM_BUDGET_EXCEEDED'?'budget_exceeded':'network_unavailable');}
 }
 const result=points=>({points,provider:'Google Maps',attribution:'Google Maps',cacheable:false,status:points.length&&points.every(p=>p.lat!=null)?'complete':'partial'});
 const requestMemo=(cache,key,execute)=>{if(!cache)return execute();if(!cache.has(key))cache.set(key,Promise.resolve().then(execute));return cache.get(key);};
@@ -76,7 +78,8 @@ export async function googleStaticMap(ids,{signal,fetchImpl=fetch,apiKey=process
   url.search=new URLSearchParams({size:'640x320',scale:'2',format:'png',language:'zh-CN',key:apiKey}).toString();
   [...new Set(ids)].forEach((id,i)=>url.searchParams.append('markers','label:'+String.fromCharCode(65+i)+'|place_id:'+id));
   let dispatcher;if(proxy){if(!dispatchers.has(proxy))dispatchers.set(proxy,new ProxyAgent(proxy));dispatcher=dispatchers.get(proxy);}
-  const response=await fetchImpl(url,{redirect:'error',...(dispatcher?{dispatcher}:{}),signal:signal?AbortSignal.any([signal,AbortSignal.timeout(15000)]):AbortSignal.timeout(15000)});
+    await reserveUpstream('map');
+  const response=await fetchImpl(url,{redirect:'manual',...(dispatcher?{dispatcher}:{}),signal:signal?AbortSignal.any([signal,AbortSignal.timeout(15000)]):AbortSignal.timeout(15000)});
   if(!response.ok || !response.headers.get('content-type')?.startsWith('image/png')){await response.body?.cancel();return {status:502,reason:'google_map_unavailable',upstream_status:response.status};}
   const data=Buffer.from(await response.arrayBuffer());if(data.length>4*1024*1024)return {status:502,reason:'image_too_large'};
   return {status:200,data};

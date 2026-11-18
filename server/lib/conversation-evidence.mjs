@@ -3,9 +3,9 @@ import {agentPrompt,AGENT_RULES_VERSION} from './agent-prompts.mjs';
 import {buildContext} from './context-builder.mjs';
 import {assessEvidenceClaims,operationalAssertions,validateEvidenceClaims,isPendingChecklist} from './evidence-grounding.mjs';
 import workspace from '../../mixtouring-hifi/assets/route-workspace.js';
-import {evidenceSpans,resolveEvidenceAtoms,planningEvidenceUse,isKnownRoutePlan} from './evidence-spans.mjs';
+import {cleanPatchedProse,evidenceSentences,evidenceSpans,resolveEvidenceAtoms,planningEvidenceUse,isKnownRoutePlan} from './evidence-spans.mjs';
 
-const sentences=text=>String(text || '').split(/(?<=[。！？!?；;\n])/).map(s=>s.trim()).filter(Boolean);
+const sentences=evidenceSentences;
 const assertedTravelFact=text=>/(?:公交|班车|火车|航班|地铁|景区|接驳|门票|住宿).{0,30}(?:比较轻松|方便|通常|必须|直达|开放)|(?:通常|一般|必须).{0,40}(?:中转|接驳|公交|班车|景区)/.test(text);
 // 待查清单的范围从句首开始，不能让句尾一个“待查”覆盖前面的肯定事实。
 const pendingOnly=isPendingChecklist;
@@ -15,7 +15,7 @@ const unavailableContent=(text,catalog)=>!catalog?.entries?.length &&
   !/但是|然而|不过|可是|但|却|已确认|已确定|保证|肯定|必定/.test(text) && !operationalAssertions(text).length;
 export function evidenceFields(reply,draft,{includePending=true}={}){
   const fields=[];
-  const add=(path,text)=>sentences(text).forEach((sentence,index)=>fields.push({id:path+'#'+index,path,text:sentence}));
+  const add=(path,text)=>sentences(text,{wholeEnglish:/^draft\.cards\[\d+\]\.content$/.test(path)}).forEach((sentence,index)=>fields.push({id:path+'#'+index,path,text:sentence}));
   add('reply',reply);
   if(draft){
     add('draft.overview',draft.overview);
@@ -140,7 +140,7 @@ export async function groundConversationOutput({reply,draft,catalog,model,signal
             rejected_assertions:rejectedAtoms.map(c=>({text:c.sentence,reason:c.reason || '缺少完整支持'})),
             adjacent_readonly:{before:siblings.slice(Math.max(0,i-2),i).map(v=>v.text),after:siblings.slice(i+1,i+3).map(v=>v.text)}};
         });
-        const base={reply,draft},fix={fields:[]},schema=agentPrompt('conversation.delivery_patch')+'\n'+agentPrompt('conversation.delivery'),requests=[];
+        const base={reply,draft},fix={fields:[]},schema=agentPrompt('conversation.delivery_patch'),requests=[];
         const compactCatalog={...catalog,entries:catalog.entries.map(e=>({id:e.id,title:e.title,excerpt:e.excerpt,kind:e.kind,allowed_use:e.allowed_use}))};
         const preparePatch=fields=>{
           try{const built=buildContext({payload:{conditions,fields,removed_statements:fields.flatMap(f=>f.rejected_assertions.map(a=>a.text)),evidence_catalog:compactCatalog,
@@ -173,12 +173,17 @@ export async function groundConversationOutput({reply,draft,catalog,model,signal
         if(checked.status==='partial'){
           const refused=new Set(checked.gaps || []);
           for(const f of fix.fields){
-            const safe=sentences(f.text).filter(sentence=>!refused.has(sentence)).join('\n');
+            const safe=sentences(f.text,{wholeEnglish:true}).filter(sentence=>!refused.has(sentence) && !sentences(sentence).some(clause=>refused.has(clause))).join('\n');
             const unit=units.find(u=>u.id===f.path),chain=keys(unit.path),leaf=chain.pop(),parent=chain.reduce((v,k)=>v[k],next);
             parent[leaf]=parent[leaf].replace(f.text.trim(),safe).trim();
           }
         }
         // 引用合并只保留未改字段的原核对与补丁新核对；不以原结果担保修改后的句子。
+        for(const path of paths){
+          if(!/^draft\.cards\[\d+\]\.content$/.test(path))continue;
+          const chain=keys(path),leaf=chain.pop(),parent=chain.reduce((v,k)=>v[k],next);
+          parent[leaf]=cleanPatchedProse(parent[leaf]);
+        }
         const safeFields=evidenceFields(next.reply,next.draft,{includePending:false}),safeText=new Set(safeFields.map(f=>f.text));
         const unchanged=new Set(safeFields.filter(f=>verifiedText.has(f.text)).map(f=>f.text));
         const retained=result.grounded.flatMap(c=>origins.has(c.sentence)?[...origins.get(c.sentence)].map(sentence=>({...c,sentence})):c).filter(c=>unchanged.has(c.sentence));

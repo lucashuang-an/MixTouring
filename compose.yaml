@@ -1,0 +1,29 @@
+name: mixtouring-beta
+services:
+  mixtouring:
+    build: .
+    image: mixtouring:${MT_RELEASE_TAG:?Set an immutable release tag}
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 155s
+    ports:
+      - "127.0.0.1:${MT_PORT:-3000}:3000"
+    env_file:
+      - ${MT_RUNTIME_ENV_FILE:?Set the path to the runtime secrets file}
+    environment:
+      MT_PUBLIC: "1"
+      MIXTOURING_HOST: "0.0.0.0"
+      NODE_ENV: production
+    volumes:
+      - private-state:/app/server/.state
+      - private-logs:/app/server/logs
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+volumes:
+  private-state:
+  private-logs:

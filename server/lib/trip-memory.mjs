@@ -140,3 +140,17 @@ export function sanitizeRecalledPreferences(raw) {
     store_id:typeof raw.store_id==='string' && raw.store_id.length<=120?raw.store_id:null,
     revision:Number.isSafeInteger(raw.revision) && raw.revision>=0?raw.revision:null };
 }
+
+/** 只修正可观察的记忆完成宣称；保存回执由浏览器写入结果负责。 */
+export function preferenceReplyReceipt(reply, {text='',enabled=false}={}) {
+  if(!/(长期|记住|记忆|以后|今后|remember|long.term|future)/i.test(text))return reply;
+  const english=/[a-z]{2,}/i.test(text)&&!/[\u3400-\u9fff]/.test(text);
+  const receipt=english?(enabled?'Your preference request has been received; check the memory panel for the save result.':'Long-term memory is off, so this request will not be saved for future trips.'):(enabled?'收到你的长期偏好要求，实际保存结果请查看记忆面板。':'长期记忆当前未开启，本轮不会保存跨旅行偏好。');
+  let replaced=false;
+  return String(reply || '').replace(/[^。！？.!?\n]+[。！？.!?]?/g,sentence=>{
+    if(/(?:你希望|你的要求|你要求|you (?:want|asked))/i.test(sentence))return sentence;
+    const claims=/(?:记下了|记住了|已(?:经)?(?:保存|记录).{0,12}(?:偏好|记忆)|(?:以后|之后|今后).{0,14}(?:都会|会更|会优先|都优先)|I(?:'ve| have) (?:saved|remembered)|I(?:'ll| will) (?:always |remember))/i.test(sentence);
+    if(!claims)return sentence;
+    if(replaced)return '';replaced=true;return receipt;
+  });
+}

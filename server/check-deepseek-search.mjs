@@ -9,7 +9,7 @@ assert.equal(webSearchConfigured({TRAVEL_SEARCH_PROVIDER:'deepseek',DEEPSEEK_KEY
 try{
  process.env.DEEPSEEK_KEY='fixture-new';delete process.env.DEEPSEEK_API_KEY;process.env.TAVILY_API_KEY='fixture-tavily';process.env.TRAVEL_SEARCH_PROVIDER='tavily';process.env.TRAVEL_CHINESE_SEARCH_PROVIDER='deepseek';process.env.TRAVEL_SEARCH_MODE='hybrid';
  const calls=[];
- globalThis.fetch=async(url,o)=>{calls.push(url);assert.equal(o.headers.authorization,'Bearer fixture-new');assert.equal(o.redirect,'error');const b=JSON.parse(o.body);assert(b.query.includes('lang:zh'));assert.equal(b.need_content,false);return {ok:true,status:200,json:async()=>({results:[row]})};};
+ globalThis.fetch=async(url,o)=>{calls.push(url);assert.equal(o.headers.authorization,'Bearer fixture-new');assert.equal(o.redirect,'manual');const b=JSON.parse(o.body);assert(b.query.includes('lang:zh'));assert.equal(b.need_content,false);return {ok:true,status:200,json:async()=>({results:[row]})};};
  const r=await searchWebDetailed('海岸散步',{language:'zh'});assert.equal(r.provider,'deepseek-search');assert.equal(r.results[0].content,'原始摘要');assert.equal(r.results[0].date,null);assert.equal(calls.length,1);
  assert.equal(sourceSearchProvider('zh'),'deepseek');assert.equal(sourceSearchProvider('en'),'tavily');
  globalThis.fetch=async(url)=>{calls.push(url);return url.includes('deepseek')?{ok:false,status:429}:{ok:true,status:200,json:async()=>({results:[{title:row.title,url:row.url,content:'补充摘要'}]})};};

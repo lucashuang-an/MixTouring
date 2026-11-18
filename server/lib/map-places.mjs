@@ -1,3 +1,4 @@
+import {reserveUpstream} from './upstream-budget.mjs';
 import {googleMapsEnabled,resolveGoogleCities} from './google-maps.mjs';
 /* 在线地图城市定位；坐标只取地理服务，不取模型生成值，不证明交通连接。 */
 const cache=new Map();
@@ -13,6 +14,7 @@ export async function resolveMapPlaces(names,places=[],{signal,fetchImpl=fetch,n
     try{
       const apiKey=process.env.OPEN_METEO_API_KEY;
       const query=new URLSearchParams({name:hint?.name_latin || name,count:'10',language:'en',format:'json',...(country?{countryCode:country}:{}),...(apiKey?{apikey:apiKey}:{})});
+      if(apiKey)await reserveUpstream('map');
       const response=await fetchImpl((apiKey?'https://customer-geocoding-api.open-meteo.com':'https://geocoding-api.open-meteo.com')+'/v1/search?'+query,{signal:signal?AbortSignal.any([signal,AbortSignal.timeout(4500)]):AbortSignal.timeout(4500)});
       if(!response.ok)return missing;
       const body=await response.json(),norm=s=>String(s || '').toLowerCase().replace(/\s/g,'').replace(/市$|city$/,'');

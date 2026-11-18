@@ -1,3 +1,4 @@
+import {revisionDayScope} from './lib/planning-loop.mjs';
 import assert from 'node:assert/strict';
 import {planWorkspace,taskContract,assessDelivery,applyDayPatch,invalidation,routeMatchesIntent} from './lib/planning-state.mjs';
 import {evaluateDay,routeFactCatalog,supportsRouteFact} from './lib/planning-mobility.mjs';
@@ -79,3 +80,27 @@ const local=await conversationTurn({action:'chat',text:'第2天轻松一点，�
 assert.equal(local.status,'ok');assert.deepEqual(local.patch.preferences,{});assert.equal(wholeReview,0);assert.equal(local.conversation.draft.cards[0].content,draft.cards[0].content);
 
 assert.equal(assessDelivery(taskContract({conditions:{requirements:{verified_cross_border_only:true}}}),{content:true,grounding:true,mobility:'supported',schedule:'fits_under_assumptions'}).passed,false,'明确要求核实跨境时，初稿完整不能替代日期交通证据');
+
+const scoped={cards:Array.from({length:5},(_,i)=>({id:'day-'+(i+1),label:'第'+(i+1)+'天'}))};
+assert.deepEqual(revisionDayScope('只调整第2天，下午休息。第1天和第3天完全不变。',scoped),{editable:['day-2'],readonly:['day-1','day-3']});
+assert.deepEqual(revisionDayScope('第1天不改；修改第3至4天；如果要动第5天先问我。',scoped),{editable:['day-3','day-4'],readonly:['day-1','day-5']});
+assert.deepEqual(revisionDayScope('Change day 2. Keep day 1 and day 3 unchanged.',scoped),{editable:['day-2'],readonly:['day-1','day-3']});
+assert.deepEqual(revisionDayScope('Change days 2-4. Leave day 5 untouched.',scoped),{editable:['day-2','day-3','day-4'],readonly:['day-5']});
+assert.deepEqual(revisionDayScope('只改第2天，其他不变。',scoped).editable,['day-2']);
+
+assert.deepEqual(revisionDayScope('最后一天改为休息，第一天保持原样',scoped,{editable:[{id:'day-5',quote:'最后一天改为休息'}],readonly:[{id:'day-1',quote:'第一天保持原样'}]}),{editable:['day-5'],readonly:['day-1']});
+assert.deepEqual(revisionDayScope('第2天不变',scoped,{editable:[{id:'day-2',quote:'第2天不变'}],readonly:[]}).editable,[],'语义范围不得覆盖明确只读日期');
+{
+ const {conversationTurn:turn,cleanConversation:clean}=await import('./lib/conversation.mjs');
+ const base=clean({stage:'draft',revision:1,brief:{origin:'甲城',destination:'乙城',summary:'三天',wishes:[],open_questions:[]},routing:{origin:'甲城',destination:'乙城'},requirements:{trip_days:3},draft:{title:'城市慢游',overview:'在城区游览。',route:['甲城','乙城'],cards:Array.from({length:3},(_,i)=>({id:'card-day-'+(i+1),label:'第'+(i+1)+'天',place:'乙城',title:'城区游览',content:'上午在城区散步。下午在住处休息。'})),sections:[],pending:[]}});
+ const common={intent_action:'revise',reply:'局部调整。',brief:base.brief,routing:base.routing,ready:true,requirements_patch:{},preferences:{},travel:{},constraints:{},sights:{},draft:base.draft};let reviews=0;
+ const r=await turn({text:'只改第2天下午休息，第1天和第3天完全不变。',conversation:base,travel:{trip_type:'one_way'},constraints:{lodging_stays:[{city:'乙城',date:'2026-11-10'}]}},null,{search:async()=>[],model:async o=>{
+  const p=JSON.parse(o.user);
+  if(o.kind==='conversation_condition_update')return p.proposed;
+  if(o.kind==='conversation_calendar')return {travel:{}};
+  if(o.kind==='conversation_local_revision')return {reply:'只改第二天。',cards:[{id:'card-day-2',title:'休息',content:'全天在住处休息。'}],summary_fields:[]};
+  if(o.kind==='conversation_review'){reviews++;return {reply:'已校对。',draft:{...base.draft,cards:base.draft.cards.map(c=>({...c,content:'全天在住处休息。'}))}};}
+  return common;
+ }});
+ assert.equal(r.status,'ok',r.reply);assert.ok(reviews>0);assert.equal(r.conversation.draft.cards[0].content,base.draft.cards[0].content);assert.equal(r.conversation.draft.cards[2].content,base.draft.cards[2].content);assert.notEqual(r.conversation.draft.cards[1].content,base.draft.cards[1].content);
+}

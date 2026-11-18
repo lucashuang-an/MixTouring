@@ -1,5 +1,6 @@
 /* 只读公开网页摘录：限时限量，拒绝本机／内网、跳转内网及验证页，不使用登录态。 */
 import {lookup} from 'node:dns/promises';
+import {publicHttp} from './cloud-http.mjs';
 import {isIP} from 'node:net';
 import https from 'node:https';
 import http from 'node:http';
@@ -49,7 +50,16 @@ export function extractPublicPage(html){
   published ||=sourceDay(content.slice(0,1200).match(/(?:发布时间|发布日期|发布于|Published on)[：:\s]*(\d{4}[-年/]\d{1,2}[-月/]\d{1,2}(?:日)?)/i)?.[1]);
   return {title:plain(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || '').slice(0,160),excerpt:content.slice(0,24000),published_at:published,updated_at:updated,read_status:'page_excerpt',extractor:article?.textContent?.trim().length>=200?'readability':'plain',truncated:content.length>24000};
 }
-export async function readPublicPage(value,{timeoutMs=6000,maxBytes=524288,resolve=lookup,signal}={}){
+const cloudLookup=async host=>{
+  const results=await Promise.all(['A','AAAA'].map(async type=>{
+    const res=await fetch('https://cloudflare-dns.com/dns-query?'+new URLSearchParams({name:host,type}),{headers:{accept:'application/dns-json'},redirect:'manual',signal:AbortSignal.timeout(5000)});
+    if(!res.ok)throw Error('DNS query failed');const result=await res.json();
+    if(result.Status!==0&&result.Status!==3)throw Error('DNS query failed');
+    return (result.Answer||[]).filter(a=>[1,28].includes(a.type)).map(a=>({address:a.data,family:a.type===1?4:6}));
+  }));
+  return results.flat();
+};
+export async function readPublicPage(value,{timeoutMs=6000,maxBytes=524288,resolve=process.env.MT_RUNTIME==='cloudflare'?cloudLookup:lookup,signal}={}){
   const started=Date.now(),diagnostics={phase:'validation',http_status:null,content_type:'unknown',redirects:0,elapsed_ms:0};
   const messages={unsafe_url:'仅支持公开网页地址',unsafe_address:'地址不是公开网络地址',dns_error:'域名解析失败',network_error:'公开网页连接失败',timeout:'读取超时',cancelled:'读取已取消',non_html:'网页不是可读HTML',body_too_large:'网页超过读取上限',decode_error:'网页编码不可读取',verification_required:'网页要求验证，未读取内容',login_required:'网页需要登录，未读取文章',empty_body:'未取得可读正文',too_many_redirects:'网页跳转过多'};
   const fail=code=>Object.assign(Error(messages[code] || '网页不可公开读取'),{reader_code:code});
@@ -66,7 +76,17 @@ export async function readPublicPage(value,{timeoutMs=6000,maxBytes=524288,resol
       if(!addresses.length || addresses.some(a=>!publicAddress(a.address)))throw fail('unsafe_address');
       const chosen=addresses.find(a=>a.family===4) || addresses[0];
       diagnostics.phase='http';diagnostics.http_status=null;diagnostics.content_type='unknown';
-      const response=await new Promise((accept,reject)=>{
+      const response=process.env.MT_RUNTIME==='cloudflare'?await (async()=>{
+        const res=await publicHttp(url,{signal:controller.signal,maxBytes});
+        diagnostics.http_status=res.status;
+        const type=String(res.headers['content-type']||'').split(';')[0].trim().toLowerCase();
+        diagnostics.content_type=type==='text/html'?'html':type==='application/xhtml+xml'?'xhtml':type?'other':'unknown';
+        if([301,302,303,307,308].includes(res.status))return {redirect:res.headers.location};
+        if(res.status!==200)throw fail('http_'+res.status);
+        if(!['html','xhtml'].includes(diagnostics.content_type))throw fail('non_html');
+        diagnostics.phase='decode';const header=String(res.headers['content-type'])+' '+res.body.subarray(0,2048).toString('ascii');
+        return {html:new TextDecoder(/gbk|gb2312|gb18030/i.test(header)?'gb18030':'utf-8').decode(res.body)};
+      })():await new Promise((accept,reject)=>{
         const request=(url.protocol==='https:'?https:http).get(url,{agent:false,headers:{'user-agent':'MixTouring-PublicReader/1.0','accept':'text/html,application/xhtml+xml'},signal:controller.signal,lookup:(_host,opts,done)=>opts?.all?done(null,[chosen]):done(null,chosen.address,chosen.family)},res=>{
           diagnostics.http_status=res.statusCode;
           const type=String(res.headers['content-type'] || '').split(';')[0].trim().toLowerCase();

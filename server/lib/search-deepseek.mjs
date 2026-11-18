@@ -1,3 +1,4 @@
+import {reserveUpstream} from './upstream-budget.mjs';
 /* DeepSeek独立搜索API；火山模型key不在此复用。结果仍进入统一来源和证据核对。 */
 import {searchAttempt} from './search-diagnostics.mjs';
 export async function searchDeepSeek(query,{limit=5,timeoutMs=12000,signal,domains,domainMode='restrict',language,startDate,endDate,onAttempt,fetchImpl=fetch,key=process.env.DEEPSEEK_KEY || process.env.DEEPSEEK_API_KEY}={}){
@@ -14,7 +15,8 @@ export async function searchDeepSeek(query,{limit=5,timeoutMs=12000,signal,domai
   const text=[...String(query).trim()].slice(0,remaining).join('')+(suffix?' '+suffix:'');
   let status=null;
   try{
-    const res=await fetchImpl('https://api.deepseek.com/v1/tools/search',{method:'POST',redirect:'error',headers:{'content-type':'application/json',authorization:'Bearer '+key},
+    await reserveUpstream('search');
+    const res=await fetchImpl('https://api.deepseek.com/v1/tools/search',{method:'POST',redirect:'manual',headers:{'content-type':'application/json',authorization:'Bearer '+key},
       body:JSON.stringify({query:text,count:Math.min(10,Math.max(1,limit)),need_content:false}),signal:signal?AbortSignal.any([signal,AbortSignal.timeout(timeoutMs)]):AbortSignal.timeout(timeoutMs)});
     status=res.status;if(!res.ok)throw Error('HTTP '+status);
     const body=await res.json();if(signal?.aborted)throw Error('cancelled');if(!Array.isArray(body.results))throw Error('invalid_response');

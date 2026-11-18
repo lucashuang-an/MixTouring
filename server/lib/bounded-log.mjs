@@ -2,6 +2,12 @@
 import {appendFileSync,writeFileSync,mkdirSync,openSync,closeSync,existsSync,statSync,readFileSync,renameSync,unlinkSync} from 'node:fs';
 import {dirname} from 'node:path';
 export function appendBoundedJsonl(path,record,{maxBytes=8*1024*1024,archives=3,maxRecordBytes=1024*1024}={}){
+ if(process.env.MT_RUNTIME==='cloudflare'){
+  // 云端只记录运行指标，不上传用户要求、模型正文或来源摘录。
+  const allowed=['at','task_id','status','provider','model','kind','operation','duration_ms','input_tokens','output_tokens','total_tokens','reason_code','http_status','provider_error_code','elapsed_ms','prompt_tokens','completion_tokens','reasoning_effort'];
+  console.log(JSON.stringify({event:'agent_metric',...Object.fromEntries(allowed.filter(k=>Object.hasOwn(record,k)).map(k=>[k,record[k]]))}));
+  return true;
+ }
  const lock=path+'.lock';let fd;
  try{
   mkdirSync(dirname(path),{recursive:true});

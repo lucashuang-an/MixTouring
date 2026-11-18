@@ -43,3 +43,23 @@ const generated=await conversationTurn({action:'generate',conversation:{stage:'r
 assert.equal(generated.status,'ok');assert.equal(fills,1);assert.ok(events.some(e=>e.stage==='activity_gap' && e.status==='prepared'));
 assert.equal(generated.conversation.draft.cards[1].content,baseDraft.cards[1].content);assert.equal(generated.conversation.draft.cards[0].place,'测试城');assert.ok(queries.length<=4);
 console.log('✓ 日地图真实坐标来源、同名消歧、范围限制、城市重查、活动缺口与保存状态');
+
+// 实际页面缓存回调不能销毁当前地图节点。
+const {parseHTML}=await import('linkedom');const vm=await import('node:vm');const fs=await import('node:fs');
+const page=fs.readFileSync(new URL('../mixtouring-hifi/pages/trip.html',import.meta.url),'utf8');
+const mapUI=await import('../mixtouring-hifi/assets/day-map-ui.js');
+const {document}=parseHTML('<html><body><article id="day"><button id="load"></button><div class="day-map-panel"><div class="day-poi-map"></div><p class="day-map-caption"></p></div></article></body></html>');
+let renders=0,writes=0;const node=document.getElementById('day'),button=document.getElementById('load');
+const env={document,AbortController,Date,URLSearchParams,MTDayMap:mapUI.default,guideSequence:1,dayMaps:{},lastRequest:{},conversation:{},renderTaskPreview(){node.remove();},syncResearchTasks(){},persistResearchTasks(){},sessionStorage:{setItem(){writes++;}},SESSION_KEY:'test',guideSnapshot(){return {};},guideUndo:[],location:{search:''},MTDiscovery:{renderMap(){renders++;}},post:async()=>({data:{points:[],status:'partial'}})};
+globalThis.document=document;
+vm.createContext(env);vm.runInContext(page.slice(page.indexOf('    function showDayMap('),page.indexOf('    function renderTaskPreview('))+page.slice(page.indexOf('    function rememberSession('),page.indexOf('    function fillTravel(')),env);
+await env.showDayMap({place:'任意城市',activities:[{places:[{name:'任意地点'}]}]},{},node,button);
+assert.equal(node.isConnected,true);assert.equal(renders,1);assert.equal(writes,1);assert.equal(button.disabled,false);delete globalThis.document;
+
+// 未定日期不再预填明天；单地点不展示交通表单。
+{
+ const {document}=parseHTML('<article><button></button><div class="day-map-panel"><div class="day-poi-map"></div><p class="day-map-caption"></p></div></article>');
+ globalThis.document=document;const node=document.querySelector('article');let request;
+ await mapUI.default.show({card:{place:'测试城',activities:[{places:[{name:'公园'}]}]},draft:{},node,button:node.querySelector('button'),cache:{},request:async body=>{request=body;return {data:{provider:'Google Maps',points:[{name:'公园',lat:1,lon:2}],cacheable:false}};},renderMap(){}});
+ assert.equal(request.transport_mode,'WALK');assert.equal(request.departure_time,null);assert.equal(node.querySelector('.day-travel-controls'),null);delete globalThis.document;
+}

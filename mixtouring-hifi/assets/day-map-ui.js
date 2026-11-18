@@ -9,7 +9,6 @@
   }
   function snapshots(values){return Object.fromEntries(Object.entries(values || {}).map(function(entry){return [entry[0],snapshot(entry[1])];}));}
   function routeSequence(card){return (card.activities || []).flatMap(function(a){return (a.places || []).map(function(p){return p.name;});}).filter(function(name,i,a){return i===0 || name!==a[i-1];});}
-  function localReferenceTime(){var d=new Date();d.setDate(d.getDate()+1);d.setHours(9,0,0,0);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')+'T09:00';}
   function minutes(seconds){var n=Math.ceil(seconds/60);return n>=60?Math.floor(n/60)+'小时'+(n%60?n%60+'分钟':''):n+'分钟';}
   function distance(m){return m>=1000?(m/1000).toFixed(1)+'公里':Math.round(m)+'米';}
   function scheduleHtml(data){
@@ -53,7 +52,7 @@
   async function show(options){
     var card=options.card,node=options.node,button=options.button,hint=(options.draft.map_places || []).find(function(p){return p.name===card.place;}) || null,binding=keyFor(card,hint);
     var panel=node.querySelector('.day-map-panel'),host=panel.querySelector('.day-poi-map'),caption=panel.querySelector('.day-map-caption');
-    var sequence=routeSequence(card),mode=options.transportMode || panel._transportMode || 'TRANSIT',localTime=options.departureLocal===undefined?(panel._departureLocal || localReferenceTime()):options.departureLocal;
+    var sequence=routeSequence(card),mode=options.transportMode || panel._transportMode || 'WALK',localTime=options.departureLocal===undefined?(panel._departureLocal || ''):options.departureLocal;
     var departure=localTime && Number.isFinite(Date.parse(localTime))?new Date(localTime).toISOString():null;
     binding.key=JSON.stringify([binding.key,sequence,mode,departure]);
     panel._transportMode=mode;panel._departureLocal=localTime;var oldTransport=panel.querySelector('.day-transport');if(oldTransport)oldTransport.hidden=true;
@@ -74,11 +73,11 @@
       var missing=result.points.filter(function(p){return p.lat==null;});
       if(missing.length){var links=document.createElement('div');links.className='day-map-search-links';
         missing.forEach(function(p){var a=document.createElement('a');a.textContent=p.name;a.href=result.provider==='Google Maps'?'https://www.google.com/maps/search/?'+new URLSearchParams({api:'1',query:card.place+' '+p.name}):'https://www.openstreetmap.org/search?'+new URLSearchParams({query:card.place+' '+p.name});a.target='_blank';a.rel='noopener noreferrer';links.appendChild(a);});caption.appendChild(links);}
-      if(result.provider==='Google Maps'){
+      if(result.provider==='Google Maps' && new Set(sequence).size>=2){
         var transport=panel.querySelector('.day-transport');if(!transport){transport=document.createElement('div');transport.className='day-transport';panel.appendChild(transport);}
-        transport.hidden=false;transport.innerHTML='<div class="day-travel-controls"><label>交通方式<select aria-label="交通方式"><option value="TRANSIT">公交</option><option value="WALK">步行</option><option value="DRIVE">车行（打车／接送参考）</option></select></label><label>参考出发时间（本机时区）<input type="datetime-local" aria-label="参考出发时间"></label><button type="button" class="mt-text-button">更新交通参考</button><span class="day-travel-stale" role="status"></span></div>'+transportHtml(result.transport);
+        transport.hidden=false;transport.innerHTML='<div class="day-travel-controls"><label>交通方式<select aria-label="交通方式"><option value="TRANSIT">公交</option><option value="WALK">步行</option><option value="DRIVE">车行（打车／接送参考）</option></select></label><label>公交查询时间（'+esc(Intl.DateTimeFormat().resolvedOptions().timeZone)+'，非行程日期）<input type="datetime-local" aria-label="参考出发时间"></label><button type="button" class="mt-text-button">更新交通参考</button><span class="day-travel-stale" role="status"></span></div>'+transportHtml(result.transport);
         var select=transport.querySelector('select'),date=transport.querySelector('input'),update=transport.querySelector('button');select.value=mode;date.value=localTime;date.disabled=mode!=='TRANSIT';var markDirty=function(){transport.querySelector('.day-travel-stale').textContent=select.value!==mode || select.value==='TRANSIT' && date.value!==localTime?'条件已改变，请更新交通参考。':'';};select.onchange=function(){date.disabled=select.value!=='TRANSIT';markDirty();};date.onchange=markDirty;
-        update.onclick=function(){update.disabled=true;show(Object.assign({},options,{transportMode:select.value,departureLocal:date.value}));};
+        update.onclick=function(){if(select.value==='TRANSIT'&&!date.value){date.required=true;date.reportValidity();return;}update.disabled=true;show(Object.assign({},options,{transportMode:select.value,departureLocal:date.value}));};
         addScheduleForm(transport,options,sequence,mode,localTime,current,controller);
       }
       button.textContent='查看当天地图与交通';

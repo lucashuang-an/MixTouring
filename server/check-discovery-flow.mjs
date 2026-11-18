@@ -7,7 +7,7 @@ const html=readFileSync(new URL('../mixtouring-hifi/pages/trip.html',import.meta
 const fn=(name,end)=>html.slice(html.indexOf(name),html.indexOf(end,html.indexOf(name)));
 let generated=[],rendered=0,posts=0;
 const plan={plan_id:'test-plan',candidates:[{id:'baseline'},{id:'via'}]};
-const env={MTRouteWorkspace:workspace,conversationBusy:false,planning:false,routeResearch:{isPending:()=>false},supplementChosenRoute:async()=>({status:'complete'}),conversation:{stage:'ready',draft:null},guideSequence:0,guideMessages:[],lastRequest:{},activeCandidate:null,activePlan:null,activePlanSignature:'test',planningSignature:()=> 'test',conversationError:null,conversationController:null,
+const env={reasoningSelect:{value:'low'},MTRouteWorkspace:workspace,conversationBusy:false,planning:false,routeResearch:{isPending:()=>false},supplementChosenRoute:async()=>({status:'complete'}),conversation:{stage:'ready',draft:null},guideSequence:0,guideMessages:[],lastRequest:{},activeCandidate:null,activePlan:null,activePlanSignature:'test',planningSignature:()=> 'test',conversationError:null,conversationController:null,
  document:{getElementById:()=>({value:''})},renderGuide(){},rememberSession(){},showWorkspaceView(v){assert.equal(v,'route');},renderRouteDecision(){rendered++;},
  collectTravel:()=>({}),collectConstraints:()=>({}),anchors:{},post:async()=>{posts++;return {code:0,data:{status:'ok',conversation:{stage:'ready'},routing:{origin:'北京',destination:'阿拉木图'}}};},
  requestPlan:async()=>{env.activePlan=plan;return true;},sendConversation(...args){generated.push(args);},currentComparison:()=>({routes:[{id:'baseline',eligible:true,route:['北京','阿拉木图'],variants:[{id:'baseline'}]},{id:'via',eligible:true,route:['北京','伊宁','阿拉木图'],variants:[{id:'via'},{id:'via-rail'}]}]})};

@@ -41,7 +41,7 @@ try{
     {url:'https://reddit.com/r/travel/comments/1',title:'重复结果'}],usage:{credits:0}})};};
   const available=await searchWebDetailed('site:reddit.com Almaty travel',{language:'en',run_id:'adapter-test'});
   assert.equal(available.provider,'tavily');assert.equal(available.results.length,1);assert.equal(available.results[0].date,null);assert.equal(available.results[0].date_basis,'provider_estimate');assert.ok(available.results[0].estimated_date);assert.equal(available.attempts[0].usage.api_credits,0);assert.equal(available.cost.amount,null);
-  assert.equal(calls[0].url,'https://api.tavily.com/search');assert.equal(calls[0].opts.redirect,'error');
+  assert.equal(calls[0].url,'https://api.tavily.com/search');assert.equal(calls[0].opts.redirect,'manual');
   const body=JSON.parse(calls[0].opts.body);assert.deepEqual(body.include_domains,['reddit.com']);assert.equal(body.include_domains_mode,'restrict');assert.equal(body.language,'en');assert.equal(body.include_answer,false);assert.equal(body.include_raw_content,false);assert.equal(body.auto_parameters,false);
   assert.ok(!JSON.stringify(available).includes('test-key'));assert.ok(!JSON.stringify(available).includes('不应采用'));
   await collectTravelSources({purpose:'experience'},searchWeb,{useCache:false,now:Date.parse('2026-10-20T02:00Z'),queryPlans:[{channel:'真实出口',domain:'reddit.com',text:'Almaty travel',kinds:['experience'],language:'en'}]});

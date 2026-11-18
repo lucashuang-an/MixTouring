@@ -51,7 +51,7 @@ step='question';r=await send('先不要改稿');assert.deepEqual(r.conversation.
 step='propose';optionCount=1;input={preferences:{},travel:{trip_type:'round_trip'},constraints:{},sights:{},messages:[],conversation:cleanConversation({brief:base})};
 r=await send('天数未定，先给两种建议');assert.equal(r.task_status,'partial');assert.match(r.reply,/目前有1种/);assert.equal(r.conversation.requirements.trip_days,null);assert.match(r.reply,/建议共5天/);
 step='confirm';r=await send('按这份方案生成');assert.equal(r.conversation.requirements.trip_days,5);assert.equal(r.next_action.type,'generate');
-// 建议分配可调整并告知；用户明确锁定的相同分配必须拦截。
+// 最终检查保留偏离分配的初稿，但必须标记待完善，不能冒充已按确认方案交付。
 for(const hard of [false,true]){
  const brief={origin:'上海',destination:'大阪',summary:'经京都七日往返',wishes:[],open_questions:[]};
  const outline={id:'chosen',title:'京都—大阪',description:'城市旅行。',route:['上海','京都','大阪'],outbound_days:1,return_days:1,segments:[{place:'京都',days:2,scope:''},{place:'大阪',days:3,scope:''}],memberships:[]};
@@ -60,9 +60,10 @@ for(const hard of [false,true]){
  const altered={...five,title:'两城七日',route:outline.route,cards:['上海','京都','京都','京都','京都','大阪','上海'].map((place,i)=>({id:'card-day-'+(i+1),place,label:'第'+(i+1)+'天',title:i===0?'出发':i===6?'返回上海':'公园散步',content:i===0?'从上海出发。':i===6?'返回上海。':'上午：在`公园`散步。'}))};
  const callback=async o=>o.kind==='conversation_calendar'?{travel:{}}:o.kind==='conversation_condition_update'?JSON.parse(o.user).proposed:o.kind==='planning_confirmation'?{generate:true,quote:'按这份方案生成'}:{...patches,intent_action:'confirm',confirmed:true,reply:'准备编排。',brief,ready:true,planning:{action:'confirm',selected_id:'chosen'},draft:altered};
  const confirmed=await conversationTurn({text:'按这份方案生成',conversation:before,...current},null,{model:callback});assert.equal(confirmed.request_generation,true);
- const delivered=await conversationTurn({action:'generate',text:'生成',conversation:confirmed.conversation,...current},null,{model:callback,search:async()=>[]});
- if(hard){assert.equal(delivered.status,'unavailable');assert.equal(delivered.conversation.draft,null);assert.match(delivered.reply,/停留天数/);}
- else {assert.equal(delivered.status,'ok');assert.match(delivered.reply,/京都由2天调整为4天/);assert.match(delivered.reply,/大阪由3天调整为1天/);}
+ const delivered=await conversationTurn({action:'generate',text:'生成',conversation:confirmed.conversation,...current},null,{deliveryReview:'final',model:async o=>o.kind==='conversation_final_review'?{issues:[{id:'allocation',decision:'issue',kind:'user_requirement',severity:'major',reason:'停留天数偏离已确认方案',card_ids:[],resolved:false}],changes:[],reply:'停留天数需要调整。'}:callback(o),search:async()=>[]});
+ assert.equal(delivered.status,'ok');assert.equal(delivered.task_status,'partial');assert.equal(delivered.delivery_validation.passed,false);assert.equal(delivered.conversation.draft.cards.length,7);assert.match(delivered.reply,/停留|分配/);
+ assert(delivered.delivery_validation.checks.some(c=>c.name===(hard?'locked_stays':'confirmed_allocation') && c.status==='failed'));
+ assert.deepEqual(delivered.conversation.discussion.stay_locks,before.discussion.stay_locks);
 }
 console.log('✓ 完整链路：讨论、两个城市玩法、选择与确认、生成、局部改稿、撤销、保存恢复；建议天数与硬锁定分别验收');
 // 驱动真实前端范围函数：旧快照只有去程时，也必须重建返程，而不是按钮空操作。

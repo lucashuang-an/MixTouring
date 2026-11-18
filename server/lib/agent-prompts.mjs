@@ -3,12 +3,13 @@ import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 
 export const AGENT_PROMPT_IDS=Object.freeze([
+  'conversation.final_review',
   'planning.transport_scope','planning.transport_authorization','conversation.transport_revision','planning.transport_review',
-  'planning.outline','planning.confirmation','planning.directions',
+  'planning.intake_review','planning.outline','planning.confirmation','planning.directions',
   'planning.route_decision','planning.route_structure','conversation.local_revision','conversation.quality_sync',
-  'conversation.quality_batch','conversation.quality_global','conversation.quality_review','conversation.quality_repair','conversation.intake','conversation.main','conversation.numeric_rules','conversation.digest','conversation.preference_intent',
+  'conversation.quality_batch','conversation.quality_global','conversation.quality_review','conversation.quality_repair','conversation.intake','conversation.response_language','conversation.light_edit','conversation.main','conversation.numeric_rules','conversation.digest','conversation.preference_intent',
   'conversation.intent','conversation.understand','conversation.discuss','conversation.numeric_repair','conversation.condition_update','conversation.delivery','conversation.delivery_repair','conversation.compose','conversation.calendar','conversation.review','conversation.scope',
-  'conversation.return_check','conversation.schedule','conversation.question_review','conversation.evidence_rules',
+  'conversation.return_check','conversation.return_summary','conversation.schedule','conversation.question_review','conversation.evidence_rules',
   'conversation.selected_route','conversation.generate','conversation.memory_context',
   'conversation.preference_context','conversation.experience_boundary','conversation.field_correction',
   'conversation.operation_context','conversation.background_context','conversation.source_context',

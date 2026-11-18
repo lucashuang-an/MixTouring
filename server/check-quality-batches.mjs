@@ -6,7 +6,7 @@ const reminder='返程前确认好随身行李与交通衔接，留出充裕时�
 const original='- 上午：在公园散步。\n- 下午：在公园散步。\n- 提醒：'+reminder+reminder;
 assert.equal(workspace.dedupeNotes(original),original.replace(reminder+reminder,reminder));
 for(const unchanged of ['- 上午：先返回，再出发。先返回，再出发。','- 提醒：不要赶路。需要赶路时早点出发。','- 提醒：休息。\n- 下午：休息。\n- 提醒：休息。'])assert.equal(workspace.dedupeNotes(unchanged),unchanged);
-const long={title:'四十日',overview:'街区慢逛',route:['甲城','乙城'],sections:[],pending:[],cards:Array.from({length:40},(_,i)=>({id:'card-day-'+(i+1),place:'乙城',label:'第'+(i+1)+'天',title:'街区散步',content:'上午：在街区散步，按体力休息。\n下午：留在当地慢逛，不赶项目。'+('这里保留当天的完整活动描述。'.repeat(65))}))};
+const long={title:'四十日',overview:'街区慢逛',route:['甲城','乙城'],sections:[],pending:[],cards:Array.from({length:40},(_,i)=>({id:'card-day-'+(i+1),place:'乙城',label:'第'+(i+1)+'天',title:'街区散步',content:'上午：在街区散步，按体力休息。\n下午：留在当地慢逛，不赶项目。'+Array.from({length:65},(_,n)=>`这里保留当天第${n+1}段完整活动描述。`).join('')}))};
 const baseline=JSON.stringify(long),batches=[],globals=[];
 function review(p){return {cards:p.draft.cards.map(c=>({id:c.id,role:'activity',activity_present:true,title_matches:true})),summary_matches:true,issues:[],continuity:p.scope_ids.map(id=>({id,quotes:['上午：在街区散步，按体力休息。']}))};}
 const model=async o=>{buildContext({payload:JSON.parse(o.user),coreRules:o.schema_prompt});const p=JSON.parse(o.user);

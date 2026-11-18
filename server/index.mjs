@@ -1,8 +1,15 @@
+import {upstreamBudgetConfig} from './lib/upstream-budget.mjs';
+import {reasoningEffort} from './lib/model-settings.mjs';
+import {runtimeServices} from './lib/runtime-services.mjs';
+import {createAccessPolicy} from './lib/access-policy.mjs';
+import {withRequestOwner} from './lib/request-owner.mjs';
+import {ITINERARY_REVIEW_MODE} from './lib/light-edit.mjs';
 import {withModelUsageContext} from './lib/model-usage.mjs';
 import {INPUT_LAYOUT_POLICY} from './lib/input-layout.mjs';
 import {RUNTIME_VERSION} from './lib/runtime-version.mjs';
 import {appendBoundedJsonl} from './lib/bounded-log.mjs';
 import {readJsonBody} from './lib/http-body.mjs';
+import {nodeAccounts} from './lib/account-node.mjs';
 import {conversationStream} from './lib/conversation-stream.mjs';
 import {googleStaticMap} from './lib/google-maps.mjs';
 /* 搜索驱动的旅行Agent服务；无预置地点、方案或离线生成器。 */
@@ -13,7 +20,7 @@ import {randomUUID} from 'node:crypto';
 import {runMapTool} from './lib/map-tool.mjs';
 import {fileURLToPath} from 'node:url';
 import {dirname,join,normalize,sep,resolve} from 'node:path';
-import {composeConfigured,webSearchStatus,searchWeb} from './lib/llm.mjs';
+import {composeConfigured,composeModelInfo,webSearchStatus,searchWeb} from './lib/llm.mjs';
 import {capabilities,webSearchConfigured} from './lib/trip-service.mjs';
 import {registerJourneyPlan,journeyDetailFromPlanId,guidePlanFromId} from './lib/journey.mjs';
 import {conversationTurn} from './lib/conversation.mjs';
@@ -31,13 +38,16 @@ const root=join(dirname(fileURLToPath(import.meta.url)),'..');
 const planningSessions=createPlanningSessions({directory:join(root,'server','logs','planning-checkpoints'),rulesVersion:AGENT_RULES_VERSION});
 const PORT=Number(process.env.PORT) || 3000;
 const BIND_HOST=process.env.MIXTOURING_HOST || '127.0.0.1';
+if((process.env.NODE_ENV==='production'||!['127.0.0.1','::1','localhost'].includes(BIND_HOST))&&process.env.MT_PUBLIC!=='1')throw Error('公开监听或生产模式必须启用MT_PUBLIC=1');
+let draining=false;
 export const app=new Koa();
 app.use(async(ctx,next)=>{try{await next();}catch(error){const exposed=error.expose&&[400,408,413,415].includes(error.status);if(!exposed)console.error('✗ 请求失败：'+error.message);ctx.status=exposed?error.status:500;ctx.body={code:1,msg:exposed?error.message:'服务内部错误'};}});
 export async function apiRouter(ctx,next){
-  if(!ctx.path.startsWith('/api/') && ctx.path!=='/healthz')return next();
+  if(!ctx.path.startsWith('/api/') && ctx.path!=='/healthz' && ctx.path!=='/readyz')return next();
   ctx.type='application/json; charset=utf-8';ctx.set('Cache-Control','no-store');const path=ctx.path;
-  if(path==='/healthz'){ctx.body={status:'ok',runtime_version:RUNTIME_VERSION,agent_rules_version:AGENT_RULES_VERSION,input_layouts:INPUT_LAYOUT_POLICY};return;}
-  if(path==='/api/capabilities'){ctx.body={code:0,data:{...capabilities(composeConfigured(),webSearchConfigured().configured,webSearchStatus().status),runtime_version:RUNTIME_VERSION,agent_rules_version:AGENT_RULES_VERSION,input_layouts:INPUT_LAYOUT_POLICY}};return;}
+  if(path==='/readyz'){const ready=!draining&&composeConfigured()&&webSearchConfigured().configured;ctx.status=ready?200:503;ctx.body={status:ready?'ready':'unavailable'};return;}
+  if(path==='/healthz'){ctx.body={status:'ok',runtime_version:RUNTIME_VERSION,agent_rules_version:AGENT_RULES_VERSION,input_layouts:INPUT_LAYOUT_POLICY,itinerary_review:ITINERARY_REVIEW_MODE};return;}
+  if(path==='/api/capabilities'){ctx.body={code:0,data:{...capabilities(composeConfigured(),webSearchConfigured().configured,webSearchStatus().status),model:composeConfigured()?composeModelInfo():null,runtime_version:RUNTIME_VERSION,agent_rules_version:AGENT_RULES_VERSION,input_layouts:INPUT_LAYOUT_POLICY,itinerary_review:ITINERARY_REVIEW_MODE}};return;}
   if (['/api/anywhere/plan','/api/anywhere/search-plan'].includes(path) && ctx.method === 'POST') {
     const body = await readBody(ctx);
     if (!body || (!String(body.text || '').trim() && !String(body.origin || '').trim() && !String(body.destination || '').trim())) {
@@ -51,7 +61,7 @@ export async function apiRouter(ctx,next){
       ctx.body = stream;
       ctx.res.once('close', () => controller.abort());
       const planner=progressivePlan;
-      planner(body, (data, phase) => {
+      ctx.state.apiWork=planner(body, (data, phase) => {
         if (controller.signal.aborted) return;
         if (data.candidates.length || data.anchors?.full_cover || data.planning_mode!=='search_first' && (data.intent?.origin_place && data.intent?.destination_place)) data.plan_id = registerJourneyPlan(data);
         stream.write(JSON.stringify({ code: 0, phase, data }) + '\n');
@@ -75,13 +85,15 @@ export async function apiRouter(ctx,next){
     /* #32：客户端断开（提交阶段断开或等待回复时断开）取消下游模型/检索；正常完成不取消 */
     const signal = createRequestSignal(ctx.req, ctx.res);
     const body = await readBody(ctx) || {};
+    body.reasoning_effort=reasoningEffort(body.reasoning_effort);
+    if(ctx.state.accessUser)body._access_user=ctx.state.accessUser;else delete body._access_user;
     const action=body.action===undefined?'chat':body.action;
     if(!['chat','prepare','generate','accept_preview','discard_preview'].includes(action)||body.text!==undefined&&typeof body.text!=='string')throw Object.assign(Error('对话请求字段无效。'),{status:400,expose:true});
     if(action==='chat'&&!body.text?.trim())throw Object.assign(Error('请先输入你的旅行想法。'),{status:400,expose:true});
     const taskId=ctx.state?.modelUsageTaskId || randomUUID(),events=[];
     const execute=async (progress=()=>{})=>{
     const observe=event=>{events.push({at:new Date().toISOString(),...event});progress(event);};
-    const plan=guidePlanFromId(body.plan_id),data=await planningSessions.run(body,{signal,execute:(request,execution)=>conversationTurn(request,plan,{...execution,taskId,
+    const plan=guidePlanFromId(body.plan_id),data=await (runtimeServices()?.planningSessions || planningSessions).run(body,{signal,execute:(request,execution)=>conversationTurn(request,plan,{...execution,taskId,
       onTrace:observe,onModelUsage:value=>observe({stage:'model_usage',...value}),onSourceAudit:items=>observe({stage:'source_audit',items}),
       onSourceCollection:value=>observe({stage:'source_collection',...value})})});
     data.trace_id=taskId;
@@ -165,10 +177,14 @@ export async function apiRouter(ctx,next){
 
   ctx.status=410;ctx.body={code:1,msg:'此旧接口已退役，请使用旅行对话与搜索规划。'};
 }
+app.use(async(ctx,next)=>{if(draining&&ctx.path.startsWith('/api/')){ctx.status=503;ctx.body={code:1,msg:'服务正在重启，请稍后重试'};return;}return next();});
+upstreamBudgetConfig();
+app.use(nodeAccounts());
+app.use(createAccessPolicy());
 app.use(async(ctx,next)=>{
   if(!ctx.path.startsWith('/api/'))return next();
   const taskId=randomUUID();ctx.state.modelUsageTaskId=taskId;
-  return withModelUsageContext({task_id:taskId,operation:ctx.path},next);
+  return withRequestOwner(ctx.state.accessUser,()=>withModelUsageContext({task_id:taskId,operation:ctx.path},next));
 });
 app.use(apiRouter);
 function readBody(ctx) {
@@ -208,4 +224,17 @@ app.use(async (ctx, next) => {
   ctx.body = readFileSync(file);
 });
 
-if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url))app.listen(PORT,BIND_HOST,()=>console.log('✓ MixTouring旅行Agent已启动：http://'+BIND_HOST+':'+PORT));
+if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)){
+  const server=app.listen(PORT,BIND_HOST,()=>console.log('✓ MixTouring旅行Agent已启动：http://'+BIND_HOST+':'+PORT));
+  server.headersTimeout=15000;
+  server.requestTimeout=40000;
+  const shutdown=()=>{
+    if(draining)return;
+    draining=true;
+    const deadline=setTimeout(()=>{server.closeAllConnections();process.exit(1);},150000);
+    deadline.unref();
+    server.close(()=>{clearTimeout(deadline);process.exit(0);});
+  };
+  process.once('SIGTERM',shutdown);
+  process.once('SIGINT',shutdown);
+}

@@ -1,3 +1,4 @@
+import {reserveUpstream} from './upstream-budget.mjs';
 import {classifyModelFailure,runModelAttempts} from './model-retry.mjs';
 import {prepareInputLayout} from './input-layout.mjs';
 import {createUsageObservation} from './model-usage.mjs';
@@ -16,6 +17,8 @@ import { searchVolc,volcSearchModel } from './search-volc.mjs';
 import {searchTavily} from './search-tavily.mjs';
 import {searchDeepSeek} from './search-deepseek.mjs';
 import {searchAttempt,detailedSearch} from './search-diagnostics.mjs';
+import {ProxyAgent} from 'undici';
+import {currentModelSettings,reasoningEffort,modelStageTimeout} from './model-settings.mjs';
 
 const VOLC_CHAT = 'https://ark.cn-beijing.volces.com/api/v3/chat/completions';
 
@@ -32,8 +35,17 @@ export function llmConfigured() {
   return !!KEY;
 }
 const deepseekKey=()=>process.env.DEEPSEEK_KEY || process.env.DEEPSEEK_API_KEY || '';
-export function composeModelInfo(){return deepseekKey()?{provider:'deepseek',model:process.env.DEEPSEEK_MODEL || 'deepseek-flash'}:process.env.VOLC_SEARCH_API_KEY?{provider:'volc',model:process.env.VOLC_COMPOSE_MODEL || process.env.VOLC_SEARCH_MODEL || 'deepseek-v4-flash-ga-260731'}:{provider:'compatible',model:MODEL};}
-export function composeConfigured(){return !!deepseekKey() || !!process.env.VOLC_SEARCH_API_KEY || !!KEY;}
+const openaiKey=()=>process.env.OPENAI_API_KEY || process.env.OPENAI_KEY || '';
+const openaiSelected=()=>process.env.MT_COMPOSE_PROVIDER==='openai' || !process.env.MT_COMPOSE_PROVIDER && !!openaiKey();
+let openaiProxy=null,openaiProxyUrl=null;
+function openaiDispatcher(){
+  const url=process.env.OPENAI_PROXY_URL;
+  if(!url)return undefined;
+  if(url!==openaiProxyUrl){openaiProxy?.close().catch(()=>{});openaiProxy=new ProxyAgent(url);openaiProxyUrl=url;}
+  return openaiProxy;
+}
+export function composeModelInfo(){return openaiSelected()?{provider:'openai',model:process.env.OPENAI_MODEL || 'gpt-6.1-sol'}:deepseekKey()?{provider:'deepseek',model:process.env.DEEPSEEK_MODEL || 'deepseek-flash'}:process.env.VOLC_SEARCH_API_KEY?{provider:'volc',model:process.env.VOLC_COMPOSE_MODEL || process.env.VOLC_SEARCH_MODEL || 'deepseek-v4-flash-ga-260731'}:{provider:'compatible',model:MODEL};}
+export function composeConfigured(){return openaiSelected()?!!openaiKey():!!deepseekKey() || !!process.env.VOLC_SEARCH_API_KEY || !!KEY;}
 
 // 兼容旧对象/null返回值，同时通过回调保留可用于重试决策的失败原因。
 export function decodeModelJson(body,opts={}){
@@ -158,6 +170,7 @@ export async function searchWeb(query, options = {}) {
   }
   const started=Date.now();let httpStatus=null;
   try {
+    await reserveUpstream('search');
     const res = await fetch(`${BASE}/web_search`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${KEY}` },
@@ -203,7 +216,7 @@ export async function searchWeb(query, options = {}) {
 }
 export function searchWebDetailed(query,options={}){return detailedSearch(searchWeb,query,options);}
 
-/** 结构化主模型统一出口。DeepSeek专用key优先，其次火山，最后旧兼容通道。
+/** 结构化主模型统一出口。显式OpenAI配置优先，否则DeepSeek、火山、旧兼容通道。
  * 已选供应商失败不切换账户；请求仍统一执行JSON、取消、用量与失败分类。
  */
 async function sendModelJson(opts,{provider,model,url,key,webSearch=false,defaultTimeout=12000}){
@@ -214,19 +227,27 @@ async function sendModelJson(opts,{provider,model,url,key,webSearch=false,defaul
       const request=modelRequest(attemptOpts,provider,model);let responseBody=null,httpStatus=null,retryAfter=null;
       try{
         const body={model,temperature:webSearch?.3:.2,messages:request.messages};
-        if(provider!=='compatible')body.thinking={type:'disabled'};
+        if(provider==='openai'){
+          delete body.temperature;
+          body.reasoning_effort=reasoningEffort(opts.reasoningEffort ?? currentModelSettings().effort);
+          body.store=false;
+        }else if(provider!=='compatible')body.thinking={type:'disabled'};
         if(webSearch)body.tools=[{type:'web_search',web_search:{enable:true,search_count:5}}];else body.response_format={type:'json_object'};
-        const timeout=AbortSignal.timeout(timeoutMs),res=await fetch(url,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${key}`},body:JSON.stringify(body),signal:opts.signal?AbortSignal.any([opts.signal,timeout]):timeout});
+        await reserveUpstream(webSearch?'search':'model');
+        const timeout=AbortSignal.timeout(timeoutMs),res=await fetch(url,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${key}`},body:JSON.stringify(body),...(provider==='openai' && process.env.OPENAI_PROXY_URL?{dispatcher:openaiDispatcher()}:{}),signal:opts.signal?AbortSignal.any([opts.signal,timeout]):timeout});
         httpStatus=res.status ?? null;retryAfter=res.headers?.get?.('retry-after') || null;
-        if(!res.ok)throw new Error(provider+' HTTP '+res.status);
+        if(!res.ok){
+          try{const errorBody=await res.json();const code=errorBody?.error?.code || errorBody?.error?.type;if(typeof code==='string' && /^[a-zA-Z0-9_-]{1,80}$/.test(code))responseBody={error:{code}};}catch{}
+          throw new Error(provider+' HTTP '+res.status);
+        }
         responseBody=await res.json();let failure=null;
         const value=decodeModelJson(responseBody,{onFailure:f=>failure=f});
         request.finish({body:responseBody,status:value===null?'invalid_output':'success',httpStatus,reason:failure?.reason_code || null});
         // 空输出等结构问题不是HTTP重试；保留原有结构修复的判断。
         return {value,failure,decoded_failure:true};
       }catch(error){
-        const failure=classifyModelFailure({status:httpStatus,error,signal:opts.signal,retryAfter});
-        request.finish({body:responseBody,status:opts.signal?.aborted?'cancelled':'error',httpStatus,reason:failure.reason_code});
+        const failure={...classifyModelFailure({status:httpStatus,error,signal:opts.signal,retryAfter}),provider_error_code:responseBody?.error?.code || null};
+        request.finish({body:responseBody,status:opts.signal?.aborted?'cancelled':'error',httpStatus,reason:failure.reason_code,providerErrorCode:failure.provider_error_code});
         return {value:null,failure};
       }
     }});
@@ -235,6 +256,12 @@ async function sendModelJson(opts,{provider,model,url,key,webSearch=false,defaul
 }
 export async function composeJson(opts){
   const {provider,model}=composeModelInfo();if(provider==='compatible')return callJson(opts);
+  if(provider==='openai'){
+    const scoped=currentModelSettings();
+    if(scoped.deadlineAt)opts={...opts,reasoningEffort:scoped.effort,timeoutMs:modelStageTimeout(opts,scoped.effort,scoped.deadlineAt-Date.now())};
+    if(!openaiKey()){const request=modelRequest(opts,provider,model);request.finish({status:'unconfigured',reason:'unconfigured'});opts.onFailure?.({reason_code:'unconfigured',retryable:false});return null;}
+    return sendModelJson(opts,{provider,model,url:'https://api.openai.com/v1/chat/completions',key:openaiKey()});
+  }
   return sendModelJson(opts,{provider,model,url:provider==='deepseek'?'https://api.deepseek.com/chat/completions':VOLC_CHAT,key:provider==='deepseek'?deepseekKey():process.env.VOLC_SEARCH_API_KEY});
 }
 export async function callJson(opts){

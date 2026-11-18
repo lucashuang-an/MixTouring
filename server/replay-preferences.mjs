@@ -17,6 +17,8 @@ async function send(text){
   const user={mid:++mid,role:'user',text},request=store.snapshotForRequest();
   const r=await conversationTurn({...state,text,current_message:user,preference_memory:request},null,deps);
   assert.equal(r.status,'ok',r.reply);
+  assert.doesNotMatch(r.reply,/(?:我|已|已经)?记下了|已经?记住|已保存.*偏好|已记录.*长期/,'模型不能先于本机落盘宣称已记住');
+  if(!request.enabled)assert.doesNotMatch(r.reply,/(?:以后|之后|今后).{0,14}(?:都会|会更|会优先|都优先)/,'关闭时不能承诺未来沿用');
   let applied=null;
   if(r.preference_memory_upserts?.length)applied=await store.applyUpserts(r.preference_memory_upserts,user.mid,request);
   assert.ok(!applied || applied.ok,'正常版本的偏好写入成功');
@@ -48,5 +50,8 @@ try{
   await store.setEnabled(false);fresh();
   const off=await send('以后旅行更重视自然，目的地未定，先讨论。');assert.deepEqual(off.preference_memory_upserts,[]);assert.equal(store.isEnabled(),false);
   assert.equal(store.entries().filter(e=>e.status==='active').length,1,'关闭后保留已有记录，但不记新内容');
+  fresh();const disabledRecall=await send('只查询：我的长期交通偏好是什么？不推荐路线。');
+  assert.match(disabledRecall.reply,/未开启|未启用|关闭/,'关闭时应解释不可读取，而不是无记录');
+  assert.doesNotMatch(disabledRecall.reply,/没有记录|尚未记录/);
   report.status='passed';report.finished_at=new Date().toISOString();persist();console.log(JSON.stringify({status:report.status,calls:report.calls.length,output}));
 }catch(error){report.status='failed';report.error=error.message;persist();console.error(error.stack);process.exitCode=1;}

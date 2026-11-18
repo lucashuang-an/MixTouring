@@ -57,7 +57,7 @@ const wrong=await conversationTurn({text:'请给一个方案',conversation:fixed
  if(o.kind==='planning_outline')return {options:[{...option,segments:[{place:'大阪',days:2,scope:''}]}]};
  return {intent_action:'discuss',reply:'整理方案。',brief:{...fixed.brief,destination:'大阪'},routing:{origin:'东京',destination:'大阪'},ready:true,planning:{action:'propose',scopes:[]},requirements_patch:{},preferences:{},travel:{},constraints:{},sights:{}};
 }});
-assert.equal(wrong.status,'ok');assert.equal(wrong.conversation.brief.destination,'京都');assert.equal(wrong.conversation.discussion.options.length,0);assert.equal(wrong.task_status,'partial');assert.match(wrong.reply,/条件/);
+assert.equal(wrong.status,'ok');assert.equal(wrong.conversation.brief.destination,'京都');assert.equal(wrong.conversation.discussion.options.length,0);assert.equal(wrong.task_status,'partial');assert.match(wrong.reply,/目的地/);
 let negationChecked=false;
 const negation='不要把“京都必须两天”当成硬要求';
 const rejectedLock=await conversationTurn({text:negation,conversation:fixed},null,{model:async o=>{

@@ -3,6 +3,11 @@ import {readFileSync,writeFileSync,mkdirSync,existsSync} from 'node:fs';
 import {dirname} from 'node:path';
 import {randomBytes} from 'node:crypto';
 export function loadOrCreateKey(path,{legacyPath}={}){
+ if(process.env.MT_PLANNING_AUTH_KEY){
+  if(!/^[a-f0-9]{64}$/.test(process.env.MT_PLANNING_AUTH_KEY))throw Error('规划授权Secret格式无效');
+  return Buffer.from(process.env.MT_PLANNING_AUTH_KEY,'hex');
+ }
+ if(process.env.MT_RUNTIME==='cloudflare')throw Error('缺少规划授权Secret');
  mkdirSync(dirname(path),{recursive:true});
  if(!existsSync(path)){
   let key=randomBytes(32);

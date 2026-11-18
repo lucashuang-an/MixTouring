@@ -28,6 +28,7 @@ function makeEnv(postImpl) {
     console, JSON, Object, Array, Date, Error, Promise,AbortController,crypto:webcrypto,sessionStorage:{getItem:()=>null,setItem:()=>{}},
     document: { getElementById: el },
     conversationBusy: false, planning: false,
+    reasoningSelect:{value:'high',disabled:false},
     conversation: { stage: 'draft', brief: { origin: '', destination: '', summary: '', wishes: [], open_questions: [] }, draft: null, revision: 0 },
     guideMessages: [], guideSequence: 0, guideUndo: [], conversationError: null,
     guideState: {}, guideSnapshot: () => JSON.parse(JSON.stringify({ request: {}, travel: {}, constraints: {}, conversation: null, candidate_key: null, nights: 0, messages: sandbox.guideMessages, undo: sandbox.guideUndo.length })),
@@ -71,6 +72,7 @@ const okPayload = (reply, extra = {}) => ({ code: 0, data: Object.assign({ statu
   await sandbox.sendConversation('查一下北京到乌鲁木齐的火车');
   ok(sandbox.guideMessages.length === 1 && sandbox.guideMessages[0].role === 'user' && sandbox.guideMessages[0].pending === true,
     '#28 断网后：用户消息恰好一条且标记未决');
+  ok(payloads[0].reasoning_effort==='high','推理选择进入真实发送请求');
   ok(payloads[0].current_message?.mid===sandbox.guideMessages[0].mid && payloads[0].current_message?.role==='user',
     'M1：本轮用户消息身份与原话独立传入，不混入历史助手');
   ok(sandbox.conversationError && sandbox.conversationError.text === '查一下北京到乌鲁木齐的火车',
@@ -206,10 +208,11 @@ if(fail)process.exit(1);
 {
  const {sandbox}=makeEnv(async()=>okPayload('ok'));
  const current={request:{},conversation:{stage:'draft',draft:{title:'现稿'}},travel:{},constraints:{},preferences:{},sights:{}};
- const older={...current,conversation:{stage:'draft',draft:{title:'上次修改前'}}};let restored;
+ const older={...current,conversation:{stage:'draft',draft:{title:'上次修改前'},preview:{draft:{title:'曾待采用的预览'}}}};let restored;
  sandbox.guideSnapshot=()=>current;sandbox.guideUndo=[older,JSON.parse(JSON.stringify(current)),JSON.parse(JSON.stringify(current))];sandbox.restoreGuideSnapshot=value=>{restored=value;};
  const at=html.indexOf('function undoGuide() {'),until=html.indexOf('function collectConstraints()',at);sandbox.undoGuide=vm.runInContext('('+html.slice(at,until).trim()+')',sandbox);
  ok(sandbox.undoGuide()===true && restored.conversation.draft.title==='上次修改前','撤销跳过旧版本遗留的纯问答快照');
+ ok(restored.conversation.preview===null && older.conversation.preview.draft.title==='曾待采用的预览','撤销采用恢复原稿并退出预览，不改写原快照');
  ok(sandbox.undoGuide()===false,'没有真实修改时明确返回不可撤销');
 }
 if(fail)process.exit(1);

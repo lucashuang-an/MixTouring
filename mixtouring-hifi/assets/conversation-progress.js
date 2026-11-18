@@ -2,7 +2,7 @@
  'use strict';
  async function request(url,body,signal,onProgress,options){
   options=options || {};
-  var controller=new AbortController(),timer=setTimeout(function(){controller.abort(new Error('回复超时，原方案已保留，请重试。'));},options.timeoutMs || 150000);
+  var controller=new AbortController(),timer=setTimeout(function(){controller.abort(new Error('回复超时，原方案已保留，请重试。'));},options.timeoutMs || 780000);
   var abort=function(){controller.abort(signal.reason);},reader=null;
   var abortReader=function(){if(reader)reader.cancel().catch(function(){});};
   if(signal){if(signal.aborted)abort();else signal.addEventListener('abort',abort,{once:true});}

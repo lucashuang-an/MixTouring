@@ -1,4 +1,5 @@
 import {researchTaskSatisfied} from './travel-completion.mjs';
+import {requestOwner,ownsRecord} from './request-owner.mjs';
 import {createAgentRuntime} from './agent-runtime.mjs';
 import {agentPrompt} from './agent-prompts.mjs';
 /* R1-C 有界补查：从已记录缺口出发，在同一任务预算内检索、读取、整合并做证据核对；
@@ -89,7 +90,7 @@ export function planFitsTask(plan,task){
 }
 
 const registry=new Map();
-export function discardResearchLoop(ids){for(const id of ids)registry.delete(id);}
+export function discardResearchLoop(ids){for(const id of ids)if(ownsRecord(registry.get(id)))registry.delete(id);}
 /* 只读恢复本进程仍有效的记录；不联网、不续期、不采纳客户端改写。
  * 支持按编号或按任务身份恢复：取消中断的请求拿不到编号，用同一绑定身份找回最新部分结果。 */
 export function resolveResearchLoop({task_id=null,task=null}={}, {now=Date.now()}={}){
@@ -99,13 +100,13 @@ export function resolveResearchLoop({task_id=null,task=null}={}, {now=Date.now()
   const rebuilt=task?researchLoopTask(task,now):null;
   if(id){
     const item=registry.get(id);
-    if(!item || item.expires<=now)return {record:null};
+    if(!ownsRecord(item) || item.expires<=now)return {record:null};
     if(rebuilt && researchLoopSignature(rebuilt)!==item.signature)return {record:null,mismatch:true};
     return {record:{...structuredClone(item.data),restored_lookup:true}};
   }
   const signature=researchLoopSignature(rebuilt);
   let match=null;
-  for(const item of registry.values())if(item.signature===signature && item.expires>now && (!match || item.expires>=match.expires))match=item;
+  for(const item of registry.values())if(ownsRecord(item) && item.signature===signature && item.expires>now && (!match || item.expires>=match.expires))match=item;
   if(!match)return {record:null};
   return {record:{...structuredClone(match.data),restored_lookup:true}};
 }
@@ -344,7 +345,7 @@ export async function runResearchLoop(raw,deps={}){
       limits,note:'补查只登记资料与经验线索及经核对的支持结论；班次、票价与日期适用性仍未核实，不升级为可执行，也不修改已确认条件或草案。'};
     for(const [id,item] of registry)if(item.expires<=clock())registry.delete(id);
     while(registry.size>=REGISTRY_MAX)registry.delete(registry.keys().next().value);
-    registry.set(task.id,{signature:researchLoopSignature(task),data:structuredClone(record),expires:clock()+TASK_TTL});
+    registry.set(task.id,{owner:requestOwner(),signature:researchLoopSignature(task),data:structuredClone(record),expires:clock()+TASK_TTL});
     return record;
   }finally{clearTimeout(timer);}
 }

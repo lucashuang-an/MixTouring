@@ -60,8 +60,11 @@ try{
 
  // 启动指纹用于区分旧实例；环境和签名密钥不得进入指纹输入。
  const codeRoot=join(directory,'version-test');await mkdir(join(codeRoot,'server','lib'),{recursive:true});
+ await mkdir(join(codeRoot,'mixtouring-hifi','assets'),{recursive:true});
+ for(const file of ['index.html','assets/app.js','assets/app.css','assets/hero.png'])await writeFile(join(codeRoot,'mixtouring-hifi',file),'original');
  for(const file of ['AGENTS.md','server/index.mjs','server/package.json','server/package-lock.json','server/lib/module.mjs'])await writeFile(join(codeRoot,file),'fixture');
  const version=backendVersion(codeRoot);await writeFile(join(codeRoot,'server','.env'),'fixture-secret');await writeFile(join(codeRoot,'server','private.key'),'fixture-key');assert.equal(backendVersion(codeRoot),version);await writeFile(join(codeRoot,'server','lib','module.mjs'),'changed');assert.notEqual(backendVersion(codeRoot),version);
+ for(const file of ['index.html','assets/app.js','assets/app.css','assets/hero.png']){const before=backendVersion(codeRoot);await writeFile(join(codeRoot,'mixtouring-hifi',file),'changed');assert.notEqual(backendVersion(codeRoot),before,'静态资源变化也必须使运行版本变化');}
  // 日志有界且超大记录保留明确截断标记，不产生半行JSON。
  const log=join(directory,'events.jsonl');for(let i=0;i<20;i++)assert(appendBoundedJsonl(log,{i,payload:'x'.repeat(180)},{maxBytes:512,maxRecordBytes:256,archives:2}));
  const files=(await readdir(directory)).filter(n=>n.startsWith('events.jsonl'));assert(files.length<=3);for(const name of files){const content=await readFile(join(directory,name),'utf8');assert(Buffer.byteLength(content)<=512);content.trim().split('\n').forEach(line=>JSON.parse(line));}

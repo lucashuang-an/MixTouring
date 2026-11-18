@@ -1,3 +1,4 @@
+import {reserveUpstream} from './upstream-budget.mjs';
 /* Tavily Search 显式适配：不消费生成答案／raw_content，不自动转其他付费服务。 */
 import {searchAttempt} from './search-diagnostics.mjs';
 import {publicUrl} from './public-reader.mjs';
@@ -16,7 +17,8 @@ export async function searchTavily(query,{limit=5,timeoutMs=12000,signal,onAttem
   const cooldown=states.get(key);if(cooldown?.until>Date.now()){emit({status:'skipped',reason_code:cooldown.reason});return null;}
   let httpStatus=null;
   try{
-    const res=await fetch(ENDPOINT,{method:'POST',redirect:'error',headers:{'content-type':'application/json',authorization:'Bearer '+key},signal:signal?AbortSignal.any([signal,AbortSignal.timeout(timeoutMs)]):AbortSignal.timeout(timeoutMs),
+    await reserveUpstream('search');
+    const res=await fetch(ENDPOINT,{method:'POST',redirect:'manual',headers:{'content-type':'application/json',authorization:'Bearer '+key},signal:signal?AbortSignal.any([signal,AbortSignal.timeout(timeoutMs)]):AbortSignal.timeout(timeoutMs),
       body:JSON.stringify({query:text,search_depth:'basic',topic:'general',max_results:limit,include_answer:false,include_raw_content:false,include_images:false,include_usage:true,include_published_date:true,filter_by_published_date:false,auto_parameters:false,
         ...(sites.length?{include_domains:[...new Set(sites)],include_domains_mode:domainMode}:{}),...(['zh','en','ja'].includes(language)?{language}:{}),
         ...(startDate?{start_date:startDate}:{}),...(endDate?{end_date:endDate}:{})})});

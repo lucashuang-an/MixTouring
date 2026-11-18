@@ -29,7 +29,7 @@
     var seen = new Set(), old = before && before.cards || [];
     var cards = (Array.isArray(raw.cards) ? raw.cards : []).slice(0, 60).map(function (c) {
       if (!c || typeof c !== 'object') return null;
-      var title = text(c.title, 100), place = text(c.place, 80), label = text(c.label, 60), content = text(dedupeNotes(c.content));
+      var title = text(c.title, 100), place = text(c.place, 80), label = text(c.label, 60), content = text(dedupeNotes(c.content), 6000);
       if (!title || !content) return null;
       var matched = old.find(function (x) { return x.id === c.id || x.place === place && x.label === label && x.title === title; });
       var id = matched ? matched.id : /^card-[a-z0-9-]{1,100}$/.test(c.id || '') ? c.id : key(place + '|' + label + '|' + title);
@@ -126,7 +126,7 @@
   function dayCoverage(draft, days) {
     if(!days)return null;
     var covered=new Set(), hasDays=false, outside=[];
-    cardsFor(draft).forEach(function(c){var m=(c.label || '').match(/^第\s*(\d+)\s*(?:[—–\-~至到]\s*(\d+)\s*)?天/);if(!m)return;
+    cardsFor(draft).forEach(function(c){var m=(c.label || '').match(/^第\s*(\d+)\s*(?:[—–\-~至到]\s*(\d+)\s*)?天/) || (c.label || '').match(/^Days?\s*(\d+)(?:\s*(?:[—–\-~]|to)\s*(\d+))?(?=\s|[:：]|$)/i);if(!m)return;
       hasDays=true;var start=Number(m[1]),end=Number(m[2] || m[1]);
       if(start<1 || end<start || end>days){outside.push(c.label);return;}
       for(var i=start;i<=end;i++)covered.add(i);
@@ -187,7 +187,7 @@
     }).join('\n');
     return '<div class="itinerary-marker" aria-hidden="true"></div><div class="itinerary-card-body">' +
       (card.label || card.place ? '<div class="itinerary-meta">' + esc([card.label, card.place].filter(Boolean).join(' · ')) + '</div>' : '') +
-      '<h3>' + esc(card.title) + '</h3><details class="itinerary-day-details"><summary aria-label="展开或收起'+esc(card.label || '当天')+'详细安排"><div class="itinerary-day-preview">'+itineraryContentHtml(preview)+'</div><span class="day-expand">查看当天详细安排 ↓</span><span class="day-collapse">收起当天详情 ↑</span></summary><div class="itinerary-day-full">'+itineraryContentHtml(card.content)+(named?'<button type="button" class="day-map-button" data-day-map="'+esc(card.id)+'">查看当天地点地图</button><div class="day-map-panel" hidden><div class="day-poi-map discovery-map" aria-label="当天地点地图"></div><p class="day-map-caption" role="status"></p></div>':'')+'</div></details><button type="button" class="card-edit" data-edit-card="' + esc(card.id) + '">调整这段<span aria-hidden="true"> ↗</span></button></div>';
+      '<h3 data-no-i18n>' + esc(card.title) + '</h3><details class="itinerary-day-details"><summary aria-label="展开或收起'+esc(card.label || '当天')+'详细安排"><div class="itinerary-day-preview" data-no-i18n>'+itineraryContentHtml(preview)+'</div><span class="day-expand">完整安排与地图 ↓</span><span class="day-collapse">收起详情 ↑</span></summary><div class="itinerary-day-full"><div data-no-i18n>'+itineraryContentHtml(card.content)+'</div>'+(named?'<button type="button" class="day-map-button" data-day-map="'+esc(card.id)+'">查看当天地点地图</button><div class="day-map-panel" hidden><div class="day-poi-map discovery-map" aria-label="当天地点地图"></div><p class="day-map-caption" role="status"></p></div>':'')+'</div></details><button type="button" class="card-edit" data-edit-card="' + esc(card.id) + '">调整这段<span aria-hidden="true"> ↗</span></button></div>';
   }
   function render(container, draft, route, candidate, references, transportStatus, onFocusPlace, transportChain) {
     var strip = container.querySelector('.route-strip-host'), routeMarkup = routeHtml(route);
@@ -199,6 +199,12 @@
       transport.querySelectorAll('[data-transport-option]').forEach(function(el){if(opened.has(el.dataset.transportOption))el.open=opened.get(el.dataset.transportOption);});
     }
     var list = container.querySelector('.itinerary-list'), nodes=Array.from(list.querySelectorAll('[data-card-id]'));
+    var indexNav=container.querySelector('.itinerary-day-index');
+    if(!indexNav){indexNav=document.createElement('nav');indexNav.className='itinerary-day-index';indexNav.setAttribute('aria-label','按天浏览');list.before(indexNav);}
+    indexNav.hidden=container.dataset.panelView==='map';
+    var indexMarkup=cardsFor(draft).map(function(card){return '<button type="button" data-jump-day="'+esc(card.id)+'">'+esc([card.label,card.place].filter(Boolean).join(' · '))+'</button>';}).join('');
+    if(indexNav.innerHTML!==indexMarkup)indexNav.innerHTML=indexMarkup;
+    indexNav.onclick=function(event){var button=event.target.closest('[data-jump-day]');if(!button)return;var target=Array.from(list.querySelectorAll('[data-card-id]')).find(function(el){return el.dataset.cardId===button.dataset.jumpDay;});if(target){target.setAttribute('tabindex','-1');target.scrollIntoView({block:'start',behavior:'instant'});target.focus({preventScroll:true});}};
     var oldGroups=Array.from(list.children), used=new Set();
     groupsFor(draft).forEach(function(group,index){
       var section=oldGroups.find(function(el){return el.dataset.groupPlace===group.place && !used.has(el);});
@@ -210,7 +216,7 @@
       var node = nodes.find(function (el) { return el.dataset.cardId === card.id; });
       if (!node) { node = document.createElement('article'); node.className = 'itinerary-card'; node.dataset.cardId = card.id; }
       var markup = cardHtml(card);
-      if (node.innerHTML !== markup) { var existed = !!node.parentNode,expanded=node.querySelector('.itinerary-day-details')?.open; node.innerHTML = markup; if(expanded)node.querySelector('.itinerary-day-details').open=true;if (existed) { node.classList.remove('itinerary-changed'); void node.offsetWidth; node.classList.add('itinerary-changed'); } }
+      if (node.__mtMarkup !== markup) { node.__mtMarkup=markup; var existed = !!node.parentNode,expanded=node.querySelector('.itinerary-day-details')?.open; node.innerHTML = markup; if(expanded)node.querySelector('.itinerary-day-details').open=true;if (existed) { node.classList.remove('itinerary-changed'); void node.offsetWidth; node.classList.add('itinerary-changed'); } }
       section.querySelector('.city-cards').appendChild(node);
       });
       Array.from(section.querySelectorAll('[data-card-id]')).forEach(function(el){if(!group.cards.some(function(c){return c.id===el.dataset.cardId;}))el.remove();});

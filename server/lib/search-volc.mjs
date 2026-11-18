@@ -1,3 +1,4 @@
+import {reserveUpstream} from './upstream-budget.mjs';
 import {agentPrompt} from './agent-prompts.mjs';
 /* 火山方舟普通推理接口的联网搜索适配。与 Coding Plan 分开鉴权和计费。 */
 const ENDPOINT = 'https://ark.cn-beijing.volces.com/api/v3/responses';
@@ -55,6 +56,7 @@ export async function searchVolc(query, { key, model = volcSearchModel(), limit 
   if(model===UNAVAILABLE_MODEL)model=volcSearchModel();
   const timeout = AbortSignal.timeout(timeoutMs);
   try {
+    await reserveUpstream('search');
     const res = await fetch(ENDPOINT, {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },

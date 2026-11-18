@@ -1,3 +1,8 @@
+// 确认方案的segments记录实际停留；只作出发交通的城市无需采集游玩素材。
+export function itineraryMaterialCities(outline,requiredStops,destination){
+  const stays=(outline?.segments || []).map(s=>s.place);
+  return [...new Set([...stays,...requiredStops,destination].filter(Boolean))];
+}
 /* 城市资料覆盖只是补查信号，不授予班次或地点事实的核实资格。 */
 export function materialCoverage(collection,cities=[]){
   const pool=[...(collection.sources || []),...(collection.experiences || []),...(collection.archive || [])]

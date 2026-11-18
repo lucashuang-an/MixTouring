@@ -43,7 +43,7 @@ export async function resolveDayMap({city,places=[],city_hint=null,transport_mod
         const row=aliases.find(p=>p?.name===name),hints=(Array.isArray(row?.aliases)?row.aliases:[]).filter(s=>typeof s==='string'&&s.length<=100).slice(0,2);
         const query=(hints[0] || name)+' '+(city_hint?.name_latin || city);
         try{
-          const response=await fetchImpl('https://photon.komoot.io/api/?'+new URLSearchParams({q:query,limit:'5',lang:'en',lat:String(center.lat),lon:String(center.lon)}),{redirect:'error',signal:AbortSignal.any([signal,AbortSignal.timeout(8000)])});
+          const response=await fetchImpl('https://photon.komoot.io/api/?'+new URLSearchParams({q:query,limit:'5',lang:'en',lat:String(center.lat),lon:String(center.lon)}),{redirect:'manual',signal:AbortSignal.any([signal,AbortSignal.timeout(8000)])});
           if(!response.ok)throw Error('geocoder');
           const body=await response.json(),accepted=new Set([name,...hints].map(aliasKey));
           const elements=(body.features || []).filter(f=>!center.country || !f.properties?.countrycode || f.properties.countrycode.toUpperCase()===center.country).flatMap(f=>{
@@ -63,7 +63,7 @@ export async function resolveDayMap({city,places=[],city_hint=null,transport_mod
   const pattern=JSON.stringify('^('+alternatives+')$');
   const clauses=['name','name:zh','name:en','name:ru','name:kk','alt_name'].map(tag=>'nwr(around:250000,'+center.lat+','+center.lon+')['+JSON.stringify(tag)+'~'+pattern+',i];').join('');
   try{
-    const response=await fetchImpl('https://overpass.private.coffee/api/interpreter',{method:'POST',redirect:'error',headers:{'content-type':'application/x-www-form-urlencoded','user-agent':'MixTouring-DayMap/1.0'},body:new URLSearchParams({data:'[out:json][timeout:15];('+clauses+');out center 100;'}).toString(),signal:signal?AbortSignal.any([signal,AbortSignal.timeout(20000)]):AbortSignal.timeout(20000)});
+    const response=await fetchImpl('https://overpass.private.coffee/api/interpreter',{method:'POST',redirect:'manual',headers:{'content-type':'application/x-www-form-urlencoded','user-agent':'MixTouring-DayMap/1.0'},body:new URLSearchParams({data:'[out:json][timeout:15];('+clauses+');out center 100;'}).toString(),signal:signal?AbortSignal.any([signal,AbortSignal.timeout(20000)]):AbortSignal.timeout(20000)});
     if(!response.ok)return missing;
     const body=await response.json(),points=matchDayPlaces(names,Array.isArray(body.elements)?body.elements:[],center);
     const value={...missing,points,status:points.every(p=>p.lat!=null)?'complete':'partial'};

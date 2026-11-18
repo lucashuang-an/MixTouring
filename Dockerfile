@@ -1,21 +1,15 @@
-# Dockerfile · 通用部署镜像（Zeabur / Fly.io / 港服 VPS / 任何容器平台）
-# 构建：docker build -t mixtouring .
-# 运行：docker run -p 3000:3000 -e LLM_API_KEY=... mixtouring
-# 数据：pipeline/data/（plans.json + wishlist.json）打进镜像；持久化用 -v 挂载该目录
-FROM node:20-alpine
-
+FROM node:22-alpine
 WORKDIR /app
-
-# 先装依赖（利用层缓存）
+ENV NODE_ENV=production PORT=3000 MIXTOURING_HOST=0.0.0.0 MT_PUBLIC=1
 COPY server/package.json server/package-lock.json ./server/
 RUN cd server && npm ci --omit=dev
-
-# 服务 + 数据管道 + 前端静态页（index.mjs 以 /app 为根找 mixtouring-hifi 与 pipeline/data）
-COPY server ./server
-COPY pipeline ./pipeline
+COPY AGENTS.md ./
+COPY server/index.mjs ./server/
+COPY server/lib ./server/lib
 COPY mixtouring-hifi ./mixtouring-hifi
-
+RUN mkdir -p server/.state server/logs && chown -R node:node server/.state server/logs
+USER node
 WORKDIR /app/server
-ENV PORT=3000
 EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD node -e "fetch('http://127.0.0.1:'+process.env.PORT+'/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 CMD ["node", "index.mjs"]

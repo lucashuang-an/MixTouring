@@ -125,3 +125,18 @@ await conversationTurn({text:'先说经霍尔果斯的参考流程，不改方�
 }});
 assert.equal(materialSeen,false,'旧报道不进入模型的现时参考材料');
 console.log('✓ 动态路线卡：结构保留、稳定身份、旧稿兼容、预览采纳、候选顺序与证据隔离通过');
+
+// 英文日卡与中文日卡使用相同覆盖语义，不能再误触发成稿补天。
+assert.deepEqual(workspace.dayCoverage({cards:[{label:'Day 1'},{label:'Days 2–3'},{label:'Day 4: Walks'}]},4),{missing:[],outside:[]});
+assert.deepEqual(workspace.dayCoverage({cards:[{label:'Day 1'},{label:'Day 3'}]},3),{missing:[2],outside:[]});
+assert.deepEqual(workspace.dayCoverage({cards:[{label:'Day 1'},{label:'Days 2 to 5'}]},4),{missing:[2,3,4],outside:['Days 2 to 5']});
+assert.equal(workspace.dayCoverage({cards:[{label:'Day 1.5'}]},2),null);
+
+// 正常英文日卡常超过1200字符，保存与呈现不能截断尾部活动。
+{
+ const body='- Morning: Walk slowly through the historic district. '.repeat(35)+'\n- Evening: Finish with a relaxed dinner.';
+ const value={title:'Trip',route:['A','B'],overview:'Walks',sections:[],pending:[],cards:[{id:'long-en',place:'B',label:'Day 1',title:'Historic streets',content:body}]};
+ const saved=workspace.cleanDraft(value);
+ assert.equal(saved.cards[0].content,body);
+ assert.equal(workspace.presentDraft(workspace.cleanDraft(JSON.parse(JSON.stringify(saved)))).cards[0].content,body);
+}

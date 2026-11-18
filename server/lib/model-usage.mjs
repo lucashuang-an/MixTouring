@@ -1,4 +1,5 @@
 import {AsyncLocalStorage} from 'node:async_hooks';
+import {currentModelSettings} from './model-settings.mjs';
 /* 缓存用量只做观测；未知不是零，不把诊断字段写进提示。 */
 import {createHash,randomUUID} from 'node:crypto';
 const usageContext=new AsyncLocalStorage();
@@ -28,12 +29,12 @@ const text=v=>typeof v==='string'?v.slice(0,160):null;
 export function createUsageObservation(opts,{provider,requestedModel,systemPrompt,layout,rulesVersion},emit){
  const inherited=usageContext.getStore() || {};
  const started=Date.now(),base={usage_schema_version:1,ts:new Date(started).toISOString(),call_id:randomUUID(),task_id:text(opts.telemetry?.task_id)||text(inherited.task_id),operation:text(opts.telemetry?.operation)||text(inherited.operation),run_id:text(opts.telemetry?.run_id),attempt:Number.isSafeInteger(opts.telemetry?.attempt)?opts.telemetry.attempt:null,
-  physical_attempt:Number.isSafeInteger(opts.telemetry?.physical_attempt)?opts.telemetry.physical_attempt:1,kind:opts.kind || 'unspecified',instruction_phase:opts.instruction_phase || null,provider,requested_model:requestedModel,agent_rules_version:rulesVersion,
+  physical_attempt:Number.isSafeInteger(opts.telemetry?.physical_attempt)?opts.telemetry.physical_attempt:1,kind:opts.kind || 'unspecified',instruction_phase:opts.instruction_phase || null,provider,requested_model:requestedModel,reasoning_effort:provider==='openai'?(opts.reasoningEffort ?? currentModelSettings().effort ?? process.env.OPENAI_REASONING_EFFORT ?? 'low'):null,agent_rules_version:rulesVersion,
   system_prompt_hash:typeof systemPrompt==='string'?createHash('sha256').update(systemPrompt).digest('hex'):null,input_layout_version:layout.input_layout_version,layout_reason:layout.layout_reason,payload_bytes:layout.payload_bytes};
  let done=false;
- return ({body=null,status='error',httpStatus=null,reason=null}={})=>{
+ return ({body=null,status='error',httpStatus=null,reason=null,providerErrorCode=null}={})=>{
   if(done)return;done=true;
-  const returned=text(body?.model),row={...base,returned_model:returned,model:returned || requestedModel,elapsed_ms:Math.max(0,Date.now()-started),status,http_status:httpStatus,reason_code:reason,...normalizeModelUsage(body?.usage)};
+  const returned=text(body?.model),row={...base,returned_model:returned,model:returned || requestedModel,elapsed_ms:Math.max(0,Date.now()-started),status,http_status:httpStatus,reason_code:reason,provider_error_code:providerErrorCode,...normalizeModelUsage(body?.usage)};
   try{emit(row);}catch{}try{opts.onUsage?.(row);}catch{}return row;
  };
 }
@@ -53,6 +54,6 @@ function aggregate(rows,rateFor){
   observed_model_cost:knownCosts.length&&currencies.size===1?knownCosts.reduce((n,c)=>n+c.amount,0):null,currency:currencies.size===1?[...currencies][0]:null,price_versions:[...new Set(knownCosts.map(c=>c.price_version))]};
 }
 export function summarizeModelUsage(rows,{rateFor}={}){
- const groups=new Map();for(const row of rows){const key=JSON.stringify([row.provider,row.requested_model,row.returned_model,row.kind,row.instruction_phase,row.system_prompt_hash,row.input_layout_version]);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(row);}
- return {overall:aggregate(rows,rateFor),groups:[...groups.values()].map(group=>({provider:group[0].provider,requested_model:group[0].requested_model,returned_model:group[0].returned_model,kind:group[0].kind,instruction_phase:group[0].instruction_phase,system_prompt_hash:group[0].system_prompt_hash,input_layout_version:group[0].input_layout_version,...aggregate(group,rateFor)})),tool_costs:{search:null,fetch:null,maps:null},cost_note:'模型估算不包含未提供的工具费用；未知用量不视为零成本。'};
+ const groups=new Map();for(const row of rows){const key=JSON.stringify([row.provider,row.requested_model,row.returned_model,row.reasoning_effort,row.kind,row.instruction_phase,row.system_prompt_hash,row.input_layout_version]);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(row);}
+ return {overall:aggregate(rows,rateFor),groups:[...groups.values()].map(group=>({provider:group[0].provider,requested_model:group[0].requested_model,returned_model:group[0].returned_model,reasoning_effort:group[0].reasoning_effort || null,kind:group[0].kind,instruction_phase:group[0].instruction_phase,system_prompt_hash:group[0].system_prompt_hash,input_layout_version:group[0].input_layout_version,...aggregate(group,rateFor)})),tool_costs:{search:null,fetch:null,maps:null},cost_note:'模型估算不包含未提供的工具费用；未知用量不视为零成本。'};
 }

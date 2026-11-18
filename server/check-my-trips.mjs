@@ -23,7 +23,7 @@ const detail=trips.summary(revised);assert.equal(detail.route,'北京 → 伊宁
 assert.ok(!JSON.stringify(detail).includes('已核实'));
 const legacy=trips.summary({request:{origin:'北京',destination:'喀什'},candidate:{label:'历史单程结构'}});assert.equal(legacy.route,'北京 → 喀什');
 /* 提取真实页面保存函数，覆盖重命名后的保存与另存路径，避免仅测存储接口。 */
-const html=readFileSync(new URL('../mixtouring-hifi/pages/trip.html',import.meta.url),'utf8'),src=html.slice(html.indexOf('function saveCurrentTask('),html.indexOf('function rememberSession()'));
+const html=readFileSync(new URL('../mixtouring-hifi/pages/trip.html',import.meta.url),'utf8'),src=html.slice(html.indexOf('function saveCurrentTask('),html.indexOf('function rememberSession('));
 const page={console,MTDrafts:db,MTSaveState:saveState,savedDraftId:id,conversationBusy:false,planning:false,conversation:revised.conversation,activePlan:{intent:{origin:'北京',destination:'阿拉木图'}},lastRequest:{},taskSnapshot:()=>revised,renderTaskPreview(){},rememberSession(){},saveFailure:null,MT:{toast(){}},document:{getElementById:()=>({innerHTML:'',textContent:'',disabled:false})}};
 vm.createContext(page);vm.runInContext(src,page);page.saveCurrentTask('note');assert.equal(db.get(id).versions.length,2,'无变化不重复保存');
 revised.conversation.draft.cards[0].title='河谷体验';page.saveCurrentTask('note');assert.equal(db.get(id).versions.length,3);assert.equal(db.get(id).name,'我的中亚旅行');

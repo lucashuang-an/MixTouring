@@ -35,3 +35,8 @@ pipeline/out/p0-cache.json
 
 # 本机持久状态（含规划授权签名密钥，不属于可清理日志）
 server/.state/
+
+# 本机实网回放与逐轮案例，保留在本机以便复查
+/.tmp/
+/.cloudflare/
+/.wrangler/

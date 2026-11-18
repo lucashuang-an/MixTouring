@@ -1,3 +1,4 @@
+import {preferenceReplyReceipt} from './lib/trip-memory.mjs';
 import {webcrypto} from 'node:crypto';
 /* M2原始反例回归：真实存储脚本、并发标签、拒写、坏格式及前端到实际对话编排。 */
 import assert from 'node:assert/strict';
@@ -133,3 +134,23 @@ console.log('✓ M2空库首条、纠正、跨标签在途失效、原子拒写�
   assert.deepEqual(seen[0].long_term_preferences, [{ key: 'road', value: 'exclude' }], 'G2:无覆盖时长期照常注入');
   assert.equal(seen[0].current_preference_overrides.length, 0, 'G2:无覆盖时 overrides 为空');
 }
+
+/* 首次真实写入回归：intake须给精确key/value合同，错误field候选不得静默丢弃。 */
+for(const enabled of [false,true]){
+ let main;
+ const result=await conversationTurn({text:'请长期记住以后优先铁路，先不推荐。',current_message:{mid:1,role:'user',text:'请长期记住以后优先铁路，先不推荐。'},conversation:cleanConversation({}),preference_memory:{enabled,preferences:[],store_id:'test',revision:1}},null,{search:async()=>[],model:async opts=>{
+  if(opts.kind==='conversation'){main=opts;return {reply:'收到偏好要求。',brief:{origin:'',destination:'',summary:'',wishes:[],open_questions:[]},planning:{action:'ask'},preferences:{},requirements_patch:{},preference_memory_patch:{upserts:[{field:'preferred_mode',value:'rail'}]}};}
+  return {};
+ }});
+ assert.equal(result.status,'ok');assert.deepEqual(result.preference_memory_upserts,[]);
+ assert.match(main.schema_prompt,/upserts:\{key:/,'intake精确声明key而非任意object');
+ const input=JSON.parse(main.user);assert.equal(input.preference_memory_status.enabled,enabled);
+ assert.match(input.long_term_preference_instruction,/候选尚未落盘/);
+ if(enabled)assert.match(result.preference_memory_notice,/格式无效/);else {assert.equal(Object.hasOwn(input,'long_term_preferences'),false);assert.match(input.long_term_preference_instruction,/当前未开启/);}
+}
+console.log('✓ 首次记忆字段合同、关闭状态与拒绝候选提示通过');
+
+assert.equal(preferenceReplyReceipt('以后旅行会更偏向自然。目的地还没定。',{text:'以后旅行更重视自然',enabled:false}),'长期记忆当前未开启，本轮不会保存跨旅行偏好。目的地还没定。');
+assert.equal(preferenceReplyReceipt('我记下了铁路偏好。先讨论想法。',{text:'长期记住铁路',enabled:true}),'收到你的长期偏好要求，实际保存结果请查看记忆面板。先讨论想法。');
+assert.equal(preferenceReplyReceipt('你希望以后旅行都优先铁路。',{text:'长期记住铁路',enabled:true}),'你希望以后旅行都优先铁路。');
+assert.equal(preferenceReplyReceipt('以后可以再来这个城市。',{text:'去哪里',enabled:false}),'以后可以再来这个城市。');

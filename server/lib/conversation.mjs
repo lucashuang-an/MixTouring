@@ -1,18 +1,24 @@
-import {unconfirmedReturnCards} from './return-scope.mjs';
+import {editItinerary,deliveryReviewMode} from './light-edit.mjs';
+import {reviewFinalItinerary} from './final-review.mjs';
+import {preferenceReplyReceipt} from './trip-memory.mjs';
+import {reviewIntakeAction} from './intake-action.mjs';
+import {englishRequest} from './response-language.mjs';
+import {unconfirmedReturnCards,repairReturnSummary,unconfirmedReturnFields} from './return-scope.mjs';
 import {ensureItineraryQuality} from './itinerary-quality.mjs';
 import {cleanTransportChoices,applicableTransportChoices,updateTransportChoices,reviseTransport} from './transport-revision.mjs';
 import {cleanDiscussion,scopeRequirements,discussPlan,authorizedOutline} from './planning-discussion.mjs';
-import {updateStayLocks,allocationReview,allocationMessage,cleanStayLocks} from './itinerary-constraints.mjs';
+import {updateStayLocks,allocationReview,allocationMessage,outlineDayPlan,cleanStayLocks} from './itinerary-constraints.mjs';
 import {createAgentRuntime,validationModelCapacity} from './agent-runtime.mjs';
 import {googleMapsEnabled} from './google-maps.mjs';
-import {runPlanningLoop,explicitDayScope,preserveOutsideScope,dayOnlyPreferenceScope,applyLocalRevision,numericRevisionScope} from './planning-loop.mjs';
+import {runPlanningLoop,explicitDayScope,revisionDayScope,preserveOutsideScope,dayOnlyPreferenceScope,applyLocalRevision,numericRevisionScope} from './planning-loop.mjs';
 import {planWorkspace,taskContract,assessDelivery,changedDays,routeMatchesIntent} from './planning-state.mjs';
 import {evaluatePlan} from './planning-mobility.mjs';
 import {resolveDayMap} from './day-map.mjs';
 import {checkTravelDelivery,taskOutcome,nextConversationAction} from './travel-completion.mjs';
 import {agentPrompt,AGENT_RULES_VERSION} from './agent-prompts.mjs';
 /* AI 主导的旅行讨论。模型理解语言；代码处理状态、确认、字段及来源边界。 */
-import { composeJson, searchWeb } from './llm.mjs';
+import { composeJson, searchWeb,composeModelInfo } from './llm.mjs';
+import {reasoningEffort,reasoningBudget,withModelSettings} from './model-settings.mjs';
 import { sanitizeConstraints, sanitizeIntentFields } from './anywhere.mjs';
 import guide from '../../mixtouring-hifi/assets/trip-guide.js';
 import { normalizeSightState } from './sights.mjs';
@@ -32,7 +38,7 @@ import {relevanceReviewer} from './source-relevance.mjs';
 import {buildEvidenceCatalog} from './evidence-grounding.mjs';
 import {groundConversationOutput,groundScopedConversationOutput,evidenceFields} from './conversation-evidence.mjs';
 import {runResearchLoop} from './research-loop.mjs';
-import {materialCoverage,mergeMaterialCollections,activityContentGaps} from './material-coverage.mjs';
+import {itineraryMaterialCities,materialCoverage,mergeMaterialCollections,activityContentGaps} from './material-coverage.mjs';
 import {buildLocalMobilityIndex} from './local-mobility.mjs';
 
 const str = (v, n = 1600) => typeof v === 'string' ? v.trim().slice(0, n) : '';
@@ -145,6 +151,11 @@ function acceptPreview(before, input, plan) {
 }
 
 export async function conversationTurn(input = {}, plan = null, deps = {}) {
+  const effort=reasoningEffort(input.reasoning_effort);
+  const budgetMs=deps.budgetMs ?? (!deps.model && composeModelInfo().provider==='openai'?reasoningBudget(effort).turnMs:120000);
+  return withModelSettings({effort,deadlineAt:Date.now()+budgetMs},()=>runConversationTurn(input,plan,{...deps,budgetMs}));
+}
+async function runConversationTurn(input,plan,deps){
   const runtime=createAgentRuntime({onEvent:deps.onTrace});
   let safeDelivery=null;
   let result=await performConversationTurn(input,plan,{...deps,runtime,onCheckpoint:async data=>{
@@ -154,7 +165,7 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
   if(deps.signal?.aborted)runtime.interrupt('cancelled');
   if(runtime.interruption){
     result=safeDelivery && !deps.signal?.aborted && runtime.interruption!=='cancelled'?{...safeDelivery,status:'ok',engine:'partial',task_status:'partial',reply:(runtime.interruption==='model_rate_limited'?'初稿已保留，模型暂时限流，仍有检查尚未完成；请稍后继续。':runtime.interruption==='model_temporarily_unavailable'?'初稿已保留，模型服务暂时不可用，仍有检查尚未完成；请稍后继续。':runtime.interruption==='model_provider_rejected'?'初稿已保留，模型服务暂时拒绝请求，仍有检查尚未完成；服务恢复后可继续。':'初稿已保留，仍有检查尚未完成，可继续完善。')+(allocationMessage(safeDelivery.delivery_validation?.allocation_changes)?'\n\n'+allocationMessage(safeDelivery.delivery_validation.allocation_changes):''),request_generation:false}:
-      {status:'unavailable',engine:'unavailable',retry_after_ms:result.retry_after_ms ?? null,reply:runtime.interruption==='model_rate_limited'?'模型暂时限流，本轮已停止，原输入与方案已保留；请稍后重试。':runtime.interruption==='model_temporarily_unavailable'?'模型服务暂时不可用，本轮已停止，原输入与方案已保留；请稍后重试。':runtime.interruption==='model_provider_rejected'?'模型服务暂时拒绝请求，原输入与安排已保留；服务恢复后可继续。':'本轮运行已中断，原条件与草案已保留，可以重试。',conversation:cleanConversation(input.conversation)};
+      {status:'unavailable',engine:'unavailable',retry_after_ms:result.retry_after_ms ?? null,provider_error_code:result.provider_error_code || null,reply:runtime.interruption==='model_rate_limited'?'模型暂时限流，本轮已停止，原输入与方案已保留；请稍后重试。':runtime.interruption==='model_temporarily_unavailable'?'模型服务暂时不可用，本轮已停止，原输入与方案已保留；请稍后重试。':runtime.interruption==='model_provider_rejected'?'模型服务暂时拒绝请求，原输入与安排已保留；服务恢复后可继续。':'本轮运行已中断，原条件与草案已保留，可以重试。',conversation:cleanConversation(input.conversation)};
   }
   if(result.status==='ok' && result.conversation){
     const conditions={requirements:result.conversation.requirements,travel:{...input.travel,...result.patch?.travel},constraints:{...input.constraints,...result.patch?.constraints}};
@@ -168,13 +179,15 @@ export async function conversationTurn(input = {}, plan = null, deps = {}) {
     }
   }
   const outcome=runtime.finish({status:result.status==='unavailable'?'failed':'completed',taskState:taskOutcome(result),reason:result.status==='unavailable'?'execution_failed':null,checks:result.delivery_validation?.checks || []});
+  if(englishRequest(input) && result.status==='unavailable')result.reply='This request could not be completed. Your input and existing plan have been preserved. Please try again.';
   return {...result,...outcome,next_action:nextConversationAction({...result,...outcome})};
 }
 async function performConversationTurn(input = {}, plan = null, deps = {}) {
   const before = cleanConversation(input.conversation);
+  const interactionFirst=deliveryReviewMode({mode:deps.deliveryReview || (deps.model?'strict':undefined)})==='final';
   if(input.action==='accept_preview')return acceptPreview(before,input,plan);
   if(input.action==='discard_preview')return {status:'ok',engine:'state',reply:'继续保留原来的安排。',conversation:{...before,preview:null},patch:cleanPatch(),sources:[],request_generation:false};
-  /* #32：请求级取消与总时限——客户端断开或总预算（120s，宽于正常成功路径）耗尽后，
+  /* #32：请求级取消与总时限——客户端断开或按模型策略分配的整轮预算耗尽后，
    * 后续模型/检索/原文读取不再启动（编排层在每个阶段前主动检查，不依赖下游自觉）；
    * 各阶段自身超时保持不变，二者取最先触发。 */
   const budgetMs=deps.budgetMs ?? 120000,deadlineAt=Date.now()+budgetMs;
@@ -187,6 +200,7 @@ async function performConversationTurn(input = {}, plan = null, deps = {}) {
   let modelCapacity=20;
   const trace=(stage,status,extra={})=>{try{deps.onTrace?.({stage,status,...extra});}catch{}};
   const model = async (opts) => {
+    if(englishRequest(input) && /^(conversation$|planning_outline$|planning_directions$|planning_intake_review$|conversation_(discuss|delivery|delivery_patch|delivery_repair|evidence_repair|compose|local_revision|activity_fill|numeric_repair|quality_repair|quality_sync|final_review)$)/.test(opts.kind))opts={...opts,schema_prompt:opts.schema_prompt+'\n'+agentPrompt('conversation.response_language')};
     if(permanentModelFailure)throw Object.assign(Error('模型服务拒绝请求'),{code:'MODEL_PROVIDER_REJECTED'});
     if(signal.aborted)return Promise.reject(cancelErr());
     runtime.assertActive(signal);
@@ -225,8 +239,8 @@ async function performConversationTurn(input = {}, plan = null, deps = {}) {
       return value;
     }catch(error){trace(opts.kind,'failed',{reason_code:signal.aborted?'cancelled':'model_error'});throw error;}
   };
-  // 注入模型的旧确定性回归不额外触发付费调用；真实编排默认执行，回放可显式开启。
-  const evidenceReview=!deps.model || deps.evidenceReview===true;
+  // 默认交互流程不逐句审批；旧严格对照策略仍验证引用与事实核对合同。
+  const evidenceReview=!interactionFirst && (!deps.model || deps.evidenceReview===true);
   runtime.register('search',{readOnly:true,validate:a=>typeof a?.query==='string' && !!a.query.trim() && a.query.length<=2000,
     classify:rows=>Array.isArray(rows)?rows.length?'success':'empty':'error',
     execute:async({query,options},{signal,context})=>{
@@ -278,6 +292,7 @@ async function performConversationTurn(input = {}, plan = null, deps = {}) {
       const digest = await model({ kind:'conversation_digest', timeoutMs:15000,
         schema_prompt:agentPrompt('conversation.digest'),
         user: JSON.stringify({current:{requirements:before.requirements,routing:before.routing,travel:input.travel,constraints:input.constraints},range:[backlog.pending[0].mid, backlog.pending[backlog.pending.length-1].mid],
+          later_user_updates:allMessages.filter(m=>m.role==='user' && m.mid>backlog.pending.at(-1).mid).slice(-12),
           messages: backlog.pending.map(m => ({ mid:m.mid, role:m.role, text:m.text.slice(0, 600) })) }) });
       const digestText = digest && typeof digest.summary === 'string' ? digest.summary.trim().slice(0, 1200) : '';
       if (digestText) workingSummaries = appendSummary(workingSummaries,
@@ -301,7 +316,7 @@ async function performConversationTurn(input = {}, plan = null, deps = {}) {
   const destination = before.brief.destination || plan?.intent?.destination;
   const context = { date: new Date(deps.now || Date.now()).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' }), action,
     text: currentText, current_user_message:currentMessage,conversation: before, messages,
-    output_contract:{route_origin:before.routing.origin,route_destination:before.routing.destination,route_includes_return:false,trip_type:input.travel?.trip_type || 'pending',max_cards:60,...(generationOutline?{selected_route:generationOutline.route,confirmed_outline:generationOutline}: {})},
+    output_contract:{route_origin:before.routing.origin,route_destination:before.routing.destination,route_includes_return:false,trip_type:input.travel?.trip_type || 'pending',max_cards:60,...(generationOutline?{selected_route:generationOutline.route,confirmed_outline:generationOutline,confirmed_day_plan:outlineDayPlan(generationOutline)}: {})},
     can_undo:input.can_undo===true,
     current: { requirements:before.requirements, transport_choices:before.transport_choices, preferences: guide.clean(input.preferences), travel: sanitizeIntentFields(input.travel),
       constraints: sanitizeConstraints(input.constraints), anchors: input.anchors || {}, sights:normalizeSightState(input.sights), selected_candidate_id:input.candidate_id || null },
@@ -326,6 +341,8 @@ async function performConversationTurn(input = {}, plan = null, deps = {}) {
   /* M2：跨旅行偏好召回——仅用户显式开启记忆才注入；白名单外与一次性条件（日期/预算/必经/住宿）
    * 永不来自偏好，当前旅行明确条件始终优先于长期软偏好。 */
   const recalledPreferences = sanitizeRecalledPreferences(input.preference_memory);
+  context.preference_memory_status={enabled:recalledPreferences.enabled};
+  context.long_term_preference_instruction = agentPrompt('conversation.preference_context');
   if (recalledPreferences.enabled) {
     /* G2（复审 P2）：长期记录完整保留（只读），本次覆盖单独派生——「本次采用什么」与
      * 「长期记了什么」是两个视图；用户查询长期设置必须能如实回答，本次选择仍优先。 */
@@ -333,12 +350,13 @@ async function performConversationTurn(input = {}, plan = null, deps = {}) {
     context.current_preference_overrides = recalledPreferences.preferences
       .filter(p => context.current.preferences[p.key] != null)
       .map(p => ({ key: p.key, value: context.current.preferences[p.key], long_term_value: p.value }));
-    context.long_term_preference_instruction = agentPrompt('conversation.preference_context');
   }
   async function preferenceMemoryResult(raw){
     const requestContext={enabled:recalledPreferences.enabled,store_id:recalledPreferences.store_id ?? null,revision:recalledPreferences.revision ?? null};
-    const candidates=validatePreferenceUpserts(raw.preference_memory_patch,{memoryEnabled:recalledPreferences.enabled}).accepted;
-    if(!currentMessage || action!=='chat' || !candidates.length)return {upserts:[],context:requestContext};
+    const validation=validatePreferenceUpserts(raw.preference_memory_patch,{memoryEnabled:recalledPreferences.enabled});
+    const candidates=validation.accepted;
+    const invalidNotice=recalledPreferences.enabled && validation.rejected.length?'部分长期偏好格式无效，未记录；请重试记忆操作。':undefined;
+    if(!currentMessage || action!=='chat' || !candidates.length)return {upserts:[],context:requestContext,notice:invalidNotice};
     // 只依据本轮用户原话确认长期授权，搜索后的模型候选和旧消息都不能自行扩大记忆范围。
     let checked;
     try { checked=await model({kind:'conversation_preference_intent',timeoutMs:10000,
@@ -347,7 +365,7 @@ async function performConversationTurn(input = {}, plan = null, deps = {}) {
     } catch(error) { if(deps.signal?.aborted)throw error; }
     if(!checked || !Array.isArray(checked.upserts))return {upserts:[],context:requestContext,notice:'长期偏好暂未记录，本次对话和安排仍保留；可以重试记忆操作。'};
     const verified=validatePreferenceUpserts(checked,{memoryEnabled:true}).accepted.filter(p=>candidates.some(c=>c.key===p.key && c.value===p.value));
-    return {upserts:verified.map(p=>({...p,source_message_mid:currentMessage.mid})),context:requestContext};
+    return {upserts:verified.map(p=>({...p,source_message_mid:currentMessage.mid})),context:requestContext,notice:invalidNotice};
   }
   context.route_comparison=buildRouteComparison(plan,{preferences:input.preferences,requirements:before.requirements,constraints:input.constraints,travel:input.travel,retrieval_ids:input.retrieval_ids,now:deps.now || Date.now()});
   const explicitChoice=action==='generate'?(plan?.candidates || []).find(c=>c.id===input.requested_candidate_id):null;
@@ -370,6 +388,7 @@ async function performConversationTurn(input = {}, plan = null, deps = {}) {
     draft_outline:{title:before.draft.title,route:before.draft.route,cards:before.draft.cards.map(c=>({id:c.id,place:c.place,label:c.label,title:c.title}))},
     preview:before.preview?{requirements:before.preview.requirements,title:before.preview.draft?.title || null}:null,
     routes:context.routes.map(c=>({id:c.id,route:workspace.routeFor(null,c)})),
+    preference_memory_status:context.preference_memory_status,long_term_preference_instruction:context.long_term_preference_instruction,
     ...(Object.hasOwn(context,'long_term_preferences')?{long_term_preferences:context.long_term_preferences}:{}),field_correction:context.field_correction,
   }:isComposing()?{
     date:context.date,action,conversation:{revision:before.revision},text:context.text,brief:context.resolved_intent?.brief || before.brief,
@@ -402,13 +421,19 @@ async function performConversationTurn(input = {}, plan = null, deps = {}) {
       if(!local)throw Error('局部改稿未完成');
       return {reply:local.reply,draft:applyLocalRevision(before.draft,local,context.local_scope)};
     }
-    const options={ schema_prompt: intakePhase?agentPrompt('conversation.intake'):understandingPhase?agentPrompt('conversation.understand'):(composingPhase?agentPrompt('conversation.compose'):answeringPhase?agentPrompt('conversation.discuss'):PROMPT) + agentPrompt('conversation.evidence_rules') + (composingPhase && context.output_contract.selected_route?agentPrompt('conversation.selected_route'):'') + (action==='generate'
+    const options={ schema_prompt: intakePhase?agentPrompt('conversation.intake'):understandingPhase?agentPrompt('conversation.understand'):(composingPhase?agentPrompt('conversation.compose'):answeringPhase?agentPrompt('conversation.discuss'):PROMPT) + agentPrompt('conversation.preference_context') + agentPrompt('conversation.evidence_rules') + (composingPhase && context.output_contract.selected_route?agentPrompt('conversation.selected_route'):'') + (action==='generate'
     ? agentPrompt('conversation.generate')
     : ''), user: JSON.stringify(generationContext()), kind: 'conversation',instruction_phase:intakePhase?'intake':understandingPhase?'understand':composingPhase?'compose':answeringPhase?'answer':'discuss', timeoutMs:before.draft?35000:25000,onFailure:value=>{failure=value;}};
     let result=await model(options);
     if(result==null && failure?.retryable===true && !failure.retry_handled && !signal.aborted && usage.model_calls<modelCapacity && deadlineAt-Date.now()>options.timeoutMs+1000){
       trace('conversation','retry',{reason_code:failure.reason_code});result=await model(options);
     }
+    if(result==null)throw Error('模型调用未完成');
+    if(intakePhase && (!deps.model || deps.validateIntake===true) && result && !['ask','propose','select','confirm','question'].includes(result.planning?.action)){
+      result=await model({...options,user:JSON.stringify({...generationContext(),output_validation_error:{field:'planning.action',reason:'missing_or_invalid'}})});
+      if(!result || !['ask','propose','select','confirm','question'].includes(result.planning?.action))throw Error('规划动作字段无效');
+    }
+    if(intakePhase && (!deps.model || deps.validateIntake===true) && result)result=await reviewIntakeAction(result,{text:context.text,messages,conversation:before,current:context.current,model});
     return answeringPhase && result?{reply:result.reply,answer_resolution:result.resolution}:understandingPhase && result?{...result,draft:null}:result;
   };
   try {
@@ -439,7 +464,8 @@ async function performConversationTurn(input = {}, plan = null, deps = {}) {
     if(intent?.transport_only===false && Array.isArray(intent.transport_choices))raw.planning={...raw.planning,transport_choices:intent.transport_choices};
     if(action==='chat' && raw){
       try {cleanPatch(raw,input.sights);}
-      catch {
+      catch (error) {
+        context.field_validation_error={reason:error.message};
         context.field_correction=agentPrompt('conversation.field_correction');
         raw=await invoke();
         if(!raw)throw Error('结构字段修正未完成');
@@ -484,7 +510,7 @@ async function performConversationTurn(input = {}, plan = null, deps = {}) {
       if(chain[0]===routeResult.routing.origin && chain.at(-1)===routeResult.routing.destination && required.required_stops.every(p=>chain.includes(p)) && !strings(understanding.requirements_patch?.remove_stops).some(p=>chain.includes(p)))context.output_contract.selected_route=chain;
     }
     // 文档操作与条件授权分别处理；咨询可补充真实条件，但须独立核对用户本轮授权。
-    if(action==='chat' && raw.intent_action!=='preview'){
+    if(!interactionFirst && action==='chat' && raw.intent_action!=='preview'){
       const planningPatch=Object.fromEntries(['stay_locks','unlock_stays','remove_scopes','transport_choices'].filter(k=>Array.isArray(raw.planning?.[k])&&raw.planning[k].length).map(k=>[k,raw.planning[k]]));
       const proposed={requirements_patch:object(raw.requirements_patch),preferences:object(raw.preferences),travel:object(raw.travel),constraints:object(raw.constraints),sights:object(raw.sights),...(Object.keys(planningPatch).length?{planning:planningPatch}:{})};
       const authorizationCurrent={...context.current,scopes:before.discussion.scopes,stay_locks:before.discussion.stay_locks,route:before.draft?.route || before.discussion.options.find(o=>o.id===before.discussion.selected_id)?.route || []};
@@ -517,12 +543,12 @@ async function performConversationTurn(input = {}, plan = null, deps = {}) {
         if(proposed.planning)raw.planning={...originalPlanning,stay_locks:checkedPatch.planning?.stay_locks || [],unlock_stays:checkedPatch.planning?.unlock_stays || [],remove_scopes:checkedPatch.planning?.remove_scopes || [],transport_choices:checkedPatch.planning?.transport_choices || []};
       }
     }
-    if(action==='chat' && before.draft && dayOnlyPreferenceScope(context.text,before.draft))raw.preferences={};
+    if(action==='chat' && before.draft && (dayOnlyPreferenceScope(context.text,before.draft) || raw.revision_scope?.editable?.length))raw.preferences={};
     for(const key of ['preferences','travel','constraints','sights','requirements_patch'])understanding[key]=raw[key];
     const calendarCandidate={travel:action==='chat'?patches(raw.travel,sanitizeIntentFields,['trip_type','outbound_window','arrival_window','return_window','traveler_count']):{}};
-    let approvedSearchWindow=null;
+    let approvedSearchWindow=interactionFirst?sourceWindow(raw.search_window):null;
     const calendarKeys=['trip_type','outbound_window','arrival_window','return_window'];
-    if(action==='chat' && (raw.search_window || /往返|单程|回程|返程|回到|飞回|返回|出发日期|日期未定/.test(context.text) || calendarKeys.some(key=>Object.hasOwn(calendarCandidate.travel,key) || raw.intent_action!=='question' && context.current.travel[key]))){
+    if(!interactionFirst && action==='chat' && (raw.search_window || /往返|单程|回程|返程|回到|飞回|返回|出发日期|日期未定/.test(context.text) || calendarKeys.some(key=>Object.hasOwn(calendarCandidate.travel,key) || raw.intent_action!=='question' && context.current.travel[key]))){
       const checked=await model({kind:'conversation_calendar',timeoutMs:15000,
         schema_prompt:agentPrompt('conversation.calendar'),
         user:JSON.stringify({date:context.date,text:context.text,messages,brief:before.brief,current:context.current.travel,
@@ -547,18 +573,19 @@ async function performConversationTurn(input = {}, plan = null, deps = {}) {
       const scopes=[...before.discussion.scopes,...proposedScopes].filter((s,i,a)=>!removed.includes(scopeKey(s)) && a.findIndex(t=>scopeKey(t)===scopeKey(s))===i);
       // 旧会话的国家级必经点迁移为范围；不删除用户的旅行范围。
       for(const place of targetCurrent.requirements.required_stops){const country=countryScope(place);if(country && !removed.includes(country.code) && !scopes.some(s=>s.name===place))scopes.push({name:place,level:'country'});}
-      const next=cleanConversation({...before,brief:raw.brief,routing:routeResult.routing,discussion:{...before.discussion,scopes,stay_locks:stayLocks},summaries:workingSummaries});
+      const next=cleanConversation({...before,brief:raw.brief,routing:routeResult.routing,discussion:{...before.discussion,scopes,stay_locks:stayLocks,...(Object.hasOwn(raw.planning || {},'recommendation_hold')?{recommendation_hold:raw.planning.recommendation_hold}:{})},summaries:workingSummaries});
       if(scopes.some(s=>s.name===next.routing.destination))next.routing.destination='';
       if(['select','confirm'].includes(raw.planning?.action) && before.discussion.options.length)next.brief=before.brief;
       next.requirements=scopeRequirements(targetCurrent.requirements,scopes);targetCurrent.requirements=next.requirements;
       targetCurrent.sights={...context.current.sights,...object(raw.sights)};
-      const result=await discussPlan({before,next,current:targetCurrent,raw,input,model,search,readPage,signal,now:deps.now || Date.now(),evidenceReview,trace,useCache:!deps.search});
+      const result=await discussPlan({before,next,current:targetCurrent,raw,input,model,search,readPage,signal,now:deps.now || Date.now(),evidenceReview,interactionFirst,trace,useCache:!deps.search});
       const candidates=extractMemoryCandidates(raw.memory_patch,{userMessages,currentMessageId:currentMessage?.mid ?? -1,allowedEvidenceRefs:[]});
       next.memory=commitMemoryDecisions(before.memory,candidates.accepted,{baseRevision:next.revision,now:deps.now || Date.now()});
       const preferenceWrite=await preferenceMemoryResult(raw);
-      return {...result,patch:cleanPatch(raw,input.sights),preference_memory_upserts:preferenceWrite.upserts,preference_memory_context:preferenceWrite.context,preference_memory_notice:preferenceWrite.notice};
+      return {...result,reply:preferenceReplyReceipt(result.reply,{text:context.text,enabled:recalledPreferences.enabled}),patch:cleanPatch(raw,input.sights),preference_memory_upserts:preferenceWrite.upserts,preference_memory_context:preferenceWrite.context,preference_memory_notice:preferenceWrite.notice};
     }
-    context.local_scope=before.draft && action==='chat' && targetCurrent.requirements.trip_days===before.requirements.trip_days && routeResult.routing.origin===before.routing.origin && routeResult.routing.destination===before.routing.destination && !(raw.requirements_patch?.add_stops?.length || raw.requirements_patch?.remove_stops?.length) && dayOnlyPreferenceScope(context.text,before.draft) && !/第[\d一二两三四五六七八九十]+天(?:起|之后|以后)/.test(context.text)?explicitDayScope(context.text,before.draft):[];
+    context.local_scope=before.draft && action==='chat' && targetCurrent.requirements.trip_days===before.requirements.trip_days && routeResult.routing.origin===before.routing.origin && routeResult.routing.destination===before.routing.destination && !(raw.requirements_patch?.add_stops?.length || raw.requirements_patch?.remove_stops?.length) && (dayOnlyPreferenceScope(context.text,before.draft) || raw.revision_scope?.editable?.length) && !/第[\d一二两三四五六七八九十]+天(?:起|之后|以后)/.test(context.text)?revisionDayScope(context.text,before.draft,raw.revision_scope).editable:[];
+    context.readonly_scope=before.draft?revisionDayScope(context.text,before.draft,raw.revision_scope).readonly:[];
     const retrievalTravel=targetCurrent.travel;
     context.output_contract.trip_type=retrievalTravel.trip_type || 'pending';
     context.query_scope=draftQueryScope({route:evidenceRoute,candidate:evidenceCandidate,transport_choices:targetCurrent.transport_choices,preferences:{...input.preferences,...raw.preferences},previous:input.research_scope,anchors:input.anchors,travel:retrievalTravel},deps.now || Date.now());
@@ -578,8 +605,10 @@ async function performConversationTurn(input = {}, plan = null, deps = {}) {
     const explicitResearch=action==='chat' && /请.{0,12}(?:查|核对)|(?:查找|搜索|查询)(?:一下|资料|攻略|原帖)|有(?:没有|哪些).{0,5}(?:资料|来源)|查资料|核实|核对|补查|继续查/.test(context.text);
     const searchQuery=str(raw?.search_query,100) || (explicitResearch?str(context.text,100):'');
     const itineraryResearch=isComposing() && !explicitResearch;
-    const selectedStops=generationOutline?.route.slice(1) || [];
-    const itineraryCities=[...new Set([...selectedStops,...targetCurrent.requirements.required_stops,resolvedDestination].filter(Boolean))].join(' ');
+    const materialCities=itineraryMaterialCities(generationOutline,targetCurrent.requirements.required_stops,resolvedDestination);
+    const itineraryCities=materialCities.join(' ');
+    const focus=itineraryResearch?str(before.brief.wishes.join(' '),80):'';
+    const englishMaterial=itineraryResearch && englishRequest(input);
     const searchAction=isComposing() && !!resolvedDestination || !confirming && raw.route_discovery!==true && (explicitResearch || !!searchQuery);
     trace('action_decision','completed',{action:confirming?'confirm_generation':searchAction?'search':'discuss'});
     if (searchAction) {
@@ -597,19 +626,20 @@ async function performConversationTurn(input = {}, plan = null, deps = {}) {
       let collected=researched?{sources:researched.sources || [],experiences:researched.experiences || [],archive:[],channels:[],
         temporal:context.retrieval,relevance:{status:'completed'},reader:{attempted:researched.budget?.used?.reads || 0,available:0},status:'available',
         results:(researched.sources || []).map(s=>({title:s.title,link:s.url,content:s.excerpt,date:s.published_at,date_basis:s.date_basis}))}
-        :await collectTravelSources({destination:resolvedDestination,query:itineraryResearch?str(itineraryCities+' 深度游记 街区 地标 公园 自然 当地文化 特色体验',100):searchQuery,question:context.text,
-        itinerary_stops:itineraryResearch?[...new Set([...selectedStops,...targetCurrent.requirements.required_stops,resolvedDestination])]:[],include_day_tours:itineraryResearch && !!targetCurrent.constraints?.no_self_drive,
+        :await collectTravelSources({destination:resolvedDestination,query:itineraryResearch?str(itineraryCities+' '+(focus || '深度游记 街区 地标 公园 自然 当地文化 特色体验'),100):searchQuery,question:context.text,
+        itinerary_stops:itineraryResearch?materialCities:[],itinerary_focus:focus,itinerary_language:englishMaterial?'en':null,include_day_tours:itineraryResearch && !!targetCurrent.constraints?.no_self_drive,
         international:country?country!=='CN':true,foreignQuery:itineraryResearch?str((raw?.search_query_en || resolvedDestination)+' travel itinerary local culture neighborhoods nature',100):str(raw?.search_query_en,100),travel:retrievalTravel,window:approvedSearchWindow,
         purpose:itineraryResearch?'experience':['transport','experience','guide'].includes(raw.search_purpose)?raw.search_purpose:/交通|班车|巴士|航班|口岸|开放|票价/.test(str(raw?.search_query)+context.text)?'transport':'experience'},search,{useCache:!deps.search,now:deps.now || Date.now(),readPage,signal,
           // 纯搜索桩不隐式增加真实模型调用；回放可显式启用，生产路径共用模型预算与取消。
-          assessSources:!deps.search || deps.sourceReview===true?relevanceReviewer(model):null});
-      if(itineraryResearch && (!deps.search || deps.qualityResearch===true)){
-        const cities=[...targetCurrent.requirements.required_stops,resolvedDestination],coverage=materialCoverage(collected,cities);
-        const gap=coverage.find(c=>c.status==='gap');
+          assessSources:!interactionFirst && (!deps.search || deps.sourceReview===true)?relevanceReviewer(model):null});
+      if(!interactionFirst && itineraryResearch && (!deps.search || deps.qualityResearch===true)){
+        const cities=materialCities,coverage=materialCoverage(collected,cities);
+        const gaps=coverage.filter(c=>c.status==='gap'),gap=gaps[0];
         if(gap && usage.search_calls<=6 && usage.model_calls<12 && deadlineAt-Date.now()>65000 && !signal.aborted){
-          trace('material_gap','researching',{city:gap.city});
-          const supplement=await collectTravelSources({destination:gap.city,query:gap.city+' 深度游记 街区 地标 特色美食 文化体验',question:'补充'+gap.city+'当天可安排的具体地点和特色',
-            international:countryScope(gap.city)?.code!=='CN',foreignQuery:gap.city+' attractions neighborhoods culture travel guide',purpose:'experience',travel:retrievalTravel},search,
+          const gapCities=gaps.slice(0,2).map(item=>item.city);
+          trace('material_gap','researching',{city:gap.city,cities:gapCities});
+          const supplement=await collectTravelSources({destination:gap.city,itinerary_stops:gapCities,cityQueriesOnly:gapCities.length>1,itinerary_focus:gapCities.length>1?'街区 景点 特色美食 '+focus:'',query:gap.city+' 深度游记 街区 地标 特色美食 文化体验',question:'补充'+gap.city+'当天可安排的具体地点和特色',
+            international:countryScope(gap.city)?.code!=='CN',foreignQuery:str(gap.city+' '+(focus || 'attractions neighborhoods culture travel guide'),100),purpose:'experience',travel:retrievalTravel},search,
             {useCache:false,now:deps.now || Date.now(),readPage,signal,assessSources:relevanceReviewer(model)});
           collected=mergeMaterialCollections(collected,supplement);
           trace('material_gap',materialCoverage(collected,[gap.city])[0].status==='covered'?'completed':'unresolved',{city:gap.city});
@@ -623,8 +653,7 @@ async function performConversationTurn(input = {}, plan = null, deps = {}) {
         deps.onSourceAudit?.(collected.source_audit || []);}catch{}
       const results=collected.results;
       historicalSources=collected.archive.filter(s=>s.relevance?.decision==='keep').slice(0,4);
-      // 资料失败不撤回已经理解的用户条件；仅使用已通过核对的目录继续回答或编排活动类型。
-      // 无来源时仍禁止具体事实，失败原因在任务轨迹中保留，用户追问核实时如实反馈。
+      // 资料失败不撤回用户条件或具名候选；规划建议与已核实运营事实分开，轨迹保留真实检索结果。
       if(collected.relevance?.status==='unavailable' || collected.status==='unavailable')context.research_failure=collected.relevance?.reason_code || 'search_unavailable';
       context.destination_material = null;
       context.search_results = (results || []).concat(visibleEvidence.map(s=>({title:s.title,link:s.url,content:s.excerpt,date:s.published_at,temporal:s.temporal})));
@@ -678,7 +707,7 @@ async function performConversationTurn(input = {}, plan = null, deps = {}) {
       if(checkNumbers(copy).rejected.length)return value;
       trace('numeric_repair','applied',{fields:paths});return copy;
     };
-    if(unsupportedNumbers(raw).length){
+    if(!interactionFirst && unsupportedNumbers(raw).length){
       raw=await repairNumericFields(raw);
       if(unsupportedNumbers(raw).length){
         context.correction=agentPrompt('conversation.numeric_correction',{rejections:unsupportedNumbers(raw).join('、')});
@@ -690,7 +719,7 @@ async function performConversationTurn(input = {}, plan = null, deps = {}) {
       raw=deliveryOutput({...await invoke(),...understanding});
     }
     const missingOutputFields=[...(!raw?['response']:[]),...(!str(raw?.reply)?['reply']:[]),...(!raw?.brief?['brief']:[]),...(typeof raw?.ready!=='boolean'?['ready']:[])];
-    const remainingNumeric=raw?checkNumbers(raw).rejected:[];
+    const remainingNumeric=!interactionFirst && raw?checkNumbers(raw).rejected:[];
     if(missingOutputFields.length || remainingNumeric.length){
       trace('output_contract','failed',{missing_fields:missingOutputFields,numeric_fields:remainingNumeric.map(r=>({path:r.path,reason:r.reason}))});
       throw Error(remainingNumeric.length?'数值字段修复后仍未通过':'模型回复缺少必需字段：'+missingOutputFields.join(','));
@@ -724,7 +753,7 @@ async function performConversationTurn(input = {}, plan = null, deps = {}) {
     };
     if (action === 'generate' && !draft) throw new Error('模型未生成草案');
     const requestedActivityFill=action==='chat' && raw.intent_action==='revise' && /补全|完善|具体|丰富|详细/.test(context.text);
-    if((action==='generate' || requestedActivityFill) && draft && (!deps.search || deps.activityResearch===true)){
+    if(!interactionFirst && (action==='generate' || requestedActivityFill) && draft && (!deps.search || deps.activityResearch===true)){
       const gaps=activityContentGaps(draft),gap=action==='generate'?gaps[0]:gaps.find(g=>context.text.includes(g.label)) || (/整体|整份|全部|全程/.test(context.text)?gaps[0]:null);
       if(gap && usage.search_calls<=6 && usage.model_calls<10 && deadlineAt-Date.now()>75000 && !signal.aborted){
         trace('activity_gap','researching',gap);
@@ -752,10 +781,10 @@ async function performConversationTurn(input = {}, plan = null, deps = {}) {
     const lockedInputs=Object.values(input.anchors || {}).some(Boolean) || targetCurrent.constraints?.lodging_stays?.length || input.sights?.selected_ids?.length;
     const driveConflict=!!targetCurrent.constraints?.no_self_drive && draft?.cards.some(c=>(c.title+'。'+c.content).split(/[。；;，,\n]/).some(s=>/自驾|租车|开车/.test(s) && !/(?:不(?:必|需要)?|无需|无须|不用|不要|避免)(?:自己)?(?:自驾|租车|开车)/.test(s)));
     // 首次基础稿由后续确定性结构检查和事实核对把关；已有稿修改／锁定输入仍需语义一致性编辑。
-    const allocationOutline=generationOutline || before.discussion.options.find(o=>o.id===before.discussion.selected_id) || null;
+    const allocationOutline=generationOutline?{...generationOutline,preserve_allocation:true}:before.discussion.options.find(o=>o.id===before.discussion.selected_id) || null;
     const needsFullReview=!!lockedInputs || driveConflict || !!before.draft && !localScope.length || !!draft && allocationReview(draft,allocationOutline,stayLocks).hard_issues.length>0;
     if(draft && action==='generate' && !needsFullReview)trace('conversation_review','skipped',{reason_code:'initial_draft_structural_checks'});
-    if(draft && (action==='generate' || before.draft) && !changedDestination && needsFullReview){
+    if(!interactionFirst && draft && (action==='generate' || before.draft) && !changedDestination && needsFullReview){
       let reviewed = await model({kind:'conversation_review',timeoutMs:25000,
         schema_prompt:agentPrompt('conversation.review'),
         /* 核对只读用户要求与拟稿，避免旧助手“已修正”的话术再次成为依据。 */
@@ -769,13 +798,14 @@ async function performConversationTurn(input = {}, plan = null, deps = {}) {
       if(!checked || unsupportedNumbers(reviewed).length)throw new Error('草案一致性检查未完成');
       /* 校对可改内容，不可悄悄丢掉模型已提供的结构。 */
       if(draft.cards.length && !checked.cards.length || draft.route.length && !checked.route.length)throw new Error('结构化草案校对未完成');
-      draft=checked;raw.reply=str(reviewed.reply) || raw.reply;
+      draft=localScope.length?preserveOutsideScope(before.draft,checked,localScope):checked;raw.reply=str(reviewed.reply) || raw.reply;
     }
     if(draft){
       const travel={...context.current.travel,...patch.travel};
       const returnAllowed=travel.trip_type==='round_trip' || travel.return_window || input.anchors?.return;
       // route合同只存去程城市链；用户确认往返时，规范化模型多写的末尾返程节点，逐日返程保留。
       if(returnAllowed && draft.route.at(-1)===next.routing.origin && routeMatchesIntent(draft.route.slice(0,-1),next.routing,next.requirements))draft.route=draft.route.slice(0,-1);
+      if(!interactionFirst){
       const returnChecks=new Map();
       const affected=returnAllowed?[]:await unconfirmedReturnCards(draft,next.routing,model,returnChecks);
       if(affected.length){
@@ -793,6 +823,7 @@ async function performConversationTurn(input = {}, plan = null, deps = {}) {
         if(unsupportedNumbers({reply:fixed?.reply,draft:checked}).length)throw Error('返程修复仍有无来源数字');
         draft=checked;raw.reply=str(fixed.reply) || raw.reply;
       }
+      if(!returnAllowed)draft=await repairReturnSummary(draft,next.routing,model,returnChecks);
       const coverage=workspace.dayCoverage(draft,next.requirements.trip_days) || (action==='generate' && next.requirements.trip_days?{missing:Array.from({length:next.requirements.trip_days},(_,i)=>i+1),outside:[]}:null);
       if(coverage && (coverage.missing.length || coverage.outside.length)){
         const repaired=await model({kind:'conversation_schedule',timeoutMs:25000,
@@ -810,16 +841,17 @@ async function performConversationTurn(input = {}, plan = null, deps = {}) {
         draft=checked;
       }
       if(!returnAllowed && (await unconfirmedReturnCards(draft,next.routing,model,returnChecks)).length)throw Error('日序校对重新引入未确认返程');
+      }
     }
     if(questionOnly){next.brief=before.brief;next.routing=before.routing;}
-    if(questionOnly && before.draft){
+    if(!interactionFirst && questionOnly && before.draft){
       const checked=await model({kind:'conversation_review',timeoutMs:25000,
         schema_prompt:agentPrompt('conversation.question_review'),
         user:JSON.stringify({...generationContext(),proposed_reply:raw.reply})});
       if(!str(checked?.reply) || unsupportedNumbers(checked).length)throw new Error('问答资料校对未完成');
       raw.reply=checked.reply;
     }
-    if(draft?.route.length && !routeMatchesIntent(draft.route,next.routing,next.requirements)){
+    if(!interactionFirst && draft?.route.length && !routeMatchesIntent(draft.route,next.routing,next.requirements)){
       trace('route_contract','repair',{route:draft.route});
       const fixed=await model({kind:'planning_route_structure',timeoutMs:12000,schema_prompt:agentPrompt('planning.route_structure'),
         user:JSON.stringify({route:draft.route,cards:draft.cards,routing:next.routing,required_stops:next.requirements.required_stops,selected_route:context.output_contract.selected_route || null})});
@@ -828,13 +860,13 @@ async function performConversationTurn(input = {}, plan = null, deps = {}) {
         routeMatchesIntent(fixed.route,next.routing,next.requirements) && next.requirements.required_stops.every(p=>fixed.route.includes(p)))draft.route=fixed.route;
       if(!routeMatchesIntent(draft.route,next.routing,next.requirements))throw new Error('草案路线端点与确认信息不一致');
     }
-    if(draft && next.requirements.required_stops.some(place=>!draft.route.includes(place)))throw Error('草案遗漏必经城市，保留原稿');
-    if(action==='generate' && draft?.route.length && generationOutline && JSON.stringify(draft.route)!==JSON.stringify(generationOutline.route))throw Error('草案偏离已确认的城市方案，原方案保留');
+    if(!interactionFirst && draft && next.requirements.required_stops.some(place=>!draft.route.includes(place)))throw Error('草案遗漏必经城市，保留原稿');
+    if(!interactionFirst && action==='generate' && draft?.route.length && generationOutline && JSON.stringify(draft.route)!==JSON.stringify(generationOutline.route))throw Error('草案偏离已确认的城市方案，原方案保留');
     if(draft && next.requirements.verified_cross_border_only){
       const note='跨境交通须有可核查来源及适用日期；当前草案尚不能证明班次与衔接已核实。';
       if(!draft.pending.includes(note))draft.pending=[note,...draft.pending].slice(0,10);
     }
-    if(requestedChoice && (!draft || !workspace.matches(draft.route,requestedChoice)))throw Error('生成稿未保留已选路线，原选择仍保留');
+    if(!interactionFirst && requestedChoice && (!draft || !workspace.matches(draft.route,requestedChoice)))throw Error('生成稿未保留已选路线，原选择仍保留');
     const selected = requestedChoice || (plan?.candidates || []).find(c => c.id === raw.selected_candidate_id && (!draft?.route.length || workspace.matches(draft.route,c)));
     if(explicitChoice && draft){
       raw.reply='已按你选的 '+draft.route.join(' → ')+' 生成初稿，其他已确认条件保留。可以继续聊着调整。';
@@ -844,24 +876,37 @@ async function performConversationTurn(input = {}, plan = null, deps = {}) {
     const resolvePlanningPlaces=deps.resolvePlanningPlaces || ((args,options)=>resolveDayMap(args,{...options,resolveNames:async(city,names)=>{
       const value=await optionalPlanningModel({kind:'planning_place_names',timeoutMs:10000,schema_prompt:agentPrompt('map.query_names'),user:JSON.stringify({city,names})});return value?.places || [];
     }}));
-    const planningEnabled=deps.planning===true || !deps.model && googleMapsEnabled();
     const mobilityQuestion=questionOnly && before.draft && verificationRequested && /公交|交通|走完|衔接|车程/.test(context.text);
+    const planningEnabled=deps.planning===true || !deps.model && googleMapsEnabled() && (!interactionFirst || mobilityQuestion);
     if(mobilityQuestion && planningEnabled){
       planningResult=await runPlanningLoop({draft:before.draft,conditions:targetCurrent,scope:localScope.length?localScope:null,model:null,runtime,signal,resolve:resolvePlanningPlaces,query:deps.queryPlanningRoute,now:deps.now || Date.now()});
       raw.reply='这次还不能判断全天能否按公共交通走完：需要明确出发时刻、各站停留，以及首末段安排。可在当天地图中填写这些条件后核对。';
     }
-    if(action==='generate' && draft)raw.reply='已整理这份逐日安排，可以继续调整。';
+    if(action==='generate' && draft)raw.reply=englishRequest(input)?'Your daily itinerary is ready for review and adjustments.':'已整理这份逐日安排，可以继续调整。';
     // 未核验结构只供恢复后重查，绝不作为可交付内容；事实模型失败也能跳过重复整稿生成。
     if(draft)await deps.onCheckpoint?.({stage:'structure_ready',draft,conditions:targetCurrent});
     if(draft){const fields=evidenceFields(raw.reply,numericRevisionScope({draft},before.draft,localScope).draft,{includePending:false}).length;modelCapacity=validationModelCapacity(fields);trace('validation_workload','registered',{fields,model_capacity:modelCapacity});}
     const numericGrounding=checkNumbers({reply:raw.reply,draft});
-    if(numericGrounding.rejected.length)throw Error('最终回复仍有无依据数字，原安排保留');
+    if(!interactionFirst && numericGrounding.rejected.length)throw Error('最终回复仍有无依据数字，原安排保留');
     const citedFacts=[...new Map(numericGrounding.grounded.filter(f=>f.source_url).map(f=>[f.source_url,f])).values()];
-    if(citedFacts.length>8)throw Error('本轮数字来源过多，请缩小讨论范围');
+    if(!interactionFirst && citedFacts.length>8)throw Error('本轮数字来源过多，请缩小讨论范围');
     sources=citedFacts.map(f=>sources.find(s=>s.url===f.source_url) || {url:f.source_url,title:'数字参考资料',excerpt:f.evidence_quote,published_at:f.published_at,read_status:f.read_status,...classifyTravelSource(f.source_url)})
       .concat(sources).filter((s,i,a)=>a.findIndex(x=>x.url===s.url)===i).slice(0,8);
+    const lightDelivery=interactionFirst || deliveryReviewMode({action,requiresDatedEvidence:next.requirements.verified_cross_border_only,
+      mode:deps.deliveryReview || (deps.model?'strict':undefined)})==='light';
+    let lightResult=null;
+    if(lightDelivery && draft){
+      const preservedValidation=checkTravelDelivery({draft,requirements:next.requirements,routing:next.routing,numeric:interactionFirst?null:checkNumbers({draft}),requireDaily:true,quality:{status:'unreviewed',issues:[]},confirmedOutline:allocationOutline,stayLocks});
+      if(preservedValidation.valid)await deps.onCheckpoint?.({stage:'structure_ready',draft,conditions:targetCurrent,safe_delivery:{conversation:{...next,draft:{...draft,quality_status:'unreviewed'},stage:'draft',revision:before.revision+1,preview:null},patch,sources,evidence_claims:[],delivery_validation:{...preservedValidation,review_mode:interactionFirst?'final':'light'}}});
+      lightResult=interactionFirst?await reviewFinalItinerary({draft,current:{...targetCurrent,brief:next.brief,routing:next.routing,text:context.text},messages:userMessages,confirmedOutline:allocationOutline,catalog:context.evidence_catalog,model,signal,scope:localScope,readonly:context.readonly_scope || [],budgetChars:deps.contextBudgetChars,
+        check:candidate=>checkTravelDelivery({draft:candidate,requirements:next.requirements,routing:next.routing,requireDaily:true,confirmedOutline:allocationOutline,stayLocks}).checks}):await editItinerary({draft,current:{...targetCurrent,brief:next.brief},messages:allMessages,catalog:context.evidence_catalog,model,signal,budgetChars:deps.contextBudgetChars,
+        validate:candidate=>checkTravelDelivery({draft:candidate,requirements:next.requirements,routing:next.routing,numeric:checkNumbers({draft:candidate}),requireDaily:true,confirmedOutline:allocationOutline,stayLocks}).valid});
+      draft=cleanDraft(lightResult.draft,draft);
+      if(interactionFirst && lightResult.status==='passed' && lightResult.applied>0)raw.reply=lightResult.notice || (englishRequest(input)?'The itinerary has been updated with the final corrections.':'已按最终修正更新安排。');
+      trace(interactionFirst?'final_review':'light_edit',lightResult.status,{applied:lightResult.applied,skipped:lightResult.skipped,rejected:lightResult.rejected,reason:lightResult.reason});
+    }
     let evidenceResult=null;
-    if(evidenceReview){
+    if(evidenceReview && !lightDelivery){
       if(context.source_relevance?.status==='partial' || context.source_channels?.some(c=>c.status==='unavailable')){
         raw.reply=raw.reply.replace(/[^。！？!?\n]*?(?:没有(?:查到|找到|检索到|匹配到)|查无|未搜到|暂无(?:匹配|资料|攻略))[^。！？!?\n]*[。！？!?]?/g,'部分候选尚未核对，不能据此判断资料是否存在。');
       }
@@ -891,14 +936,16 @@ async function performConversationTurn(input = {}, plan = null, deps = {}) {
       const safeValidation=checkTravelDelivery({draft,requirements:next.requirements,routing:next.routing,numeric:checkNumbers({draft}),evidence:evidenceResult,requireEvidence:true,requireDaily:true,quality:{status:'unreviewed',issues:[]},confirmedOutline:allocationOutline,stayLocks});
       if(safeValidation.valid)await deps.onCheckpoint?.({stage:'facts_checked',draft,safe_delivery:{conversation:{...next,draft:{...draft,quality_status:'unreviewed'},stage:'draft',revision:before.revision+1,preview:null},patch,sources,delivery_validation:safeValidation,evidence_claims:evidenceResult.claims || []}});
     }
-    let itineraryQuality=null;
-    if(draft?.cards?.length){
+    let itineraryQuality=lightResult;
+    if(draft?.cards?.length && !lightDelivery){
       const qualityModel=opts=>{const remaining=deadlineAt-Date.now();if(usage.model_calls>=modelCapacity || remaining<=1000)throw Object.assign(Error('完整性复核尚未完成'),{code:'QUALITY_DEFERRED'});return model({...opts,timeoutMs:Math.min(opts.timeoutMs || 15000,remaining-500)});};
       itineraryQuality=await ensureItineraryQuality({draft,current:{...targetCurrent,brief:next.brief,routing:next.routing,text:context.text,confirmed_outline:generationOutline},model:qualityModel,
         catalog:context.evidence_catalog,getCatalog:()=>qualityCatalog || context.evidence_catalog,budgetChars:deps.contextBudgetChars,
         semantic:!deps.model || deps.semanticReview===true,signal,onTrace:e=>trace(e.stage,e.status,e),
         canCall:n=>!signal.aborted && usage.model_calls+n<=modelCapacity && deadlineAt-Date.now()>1000,
         verify:async(candidate,scope)=>{
+          if(localScope.length && changedDays(preserveOutsideScope(before.draft,candidate,localScope),candidate).length)return {accepted:false};
+          if(context.readonly_scope?.some(id=>changedDays(before.draft,candidate).includes(id)))return {accepted:false};
           const structural=checkTravelDelivery({draft:candidate,requirements:next.requirements,routing:next.routing,numeric:checkNumbers({draft:candidate}),requireDaily:action==='generate',confirmedOutline:allocationOutline,stayLocks});
           if(!structural.passed)return {accepted:false};
           if(!evidenceReview)return {accepted:true,evidence:{claims:[],sources:[],inferences:[]}};
@@ -930,20 +977,23 @@ async function performConversationTurn(input = {}, plan = null, deps = {}) {
       }
     }
     runtime.assertActive(signal);
+    if(!interactionFirst && draft && targetCurrent.travel?.trip_type!=='round_trip' && !targetCurrent.travel?.return_window && !input.anchors?.return && (await unconfirmedReturnFields(draft,next.routing,model)).length)throw Error('最终概览重新引入未授权返程，原稿保留');
     if(draft && localScope.length && changedDays(preserveOutsideScope(before.draft,draft,localScope),draft).length)throw Error('局部修复超出授权日期，原稿保留');
+    if(draft && context.readonly_scope?.some(id=>changedDays(before.draft,draft).includes(id)))throw Error('修改触及用户明确保留的日期，原稿保留');
     // 事实删句或质量修复可能改变路线，不能沿用优化前的交通结论。
     if(planningResult && draft && changedDays(planningResult.draft,draft).length){
       const fresh=await evaluatePlan(planWorkspace(draft,targetCurrent),draft,{runtime,signal,resolve:resolvePlanningPlaces,query:deps.queryPlanningRoute,scope:localScope.length?localScope:null,now:deps.now || Date.now()});
       planningResult.assessment={mobility:fresh.mobility,schedule:'unknown',dated_transport:'unknown',coverage:fresh.coverage,days:fresh.days.map(d=>({day_id:d.day_id,mobility:d.mobility,schedule:d.schedule,gaps:d.gaps}))};
     }
-    const deliveryValidation=checkTravelDelivery({draft,requirements:next.requirements,routing:next.routing,numeric:checkNumbers({reply:raw.reply,draft}),evidence:evidenceResult,requireEvidence:evidenceReview,requireDaily:action==='generate',quality:itineraryQuality,confirmedOutline:allocationOutline,stayLocks});
+    const deliveryValidation=checkTravelDelivery({draft,requirements:next.requirements,routing:next.routing,numeric:interactionFirst?null:checkNumbers({reply:raw.reply,draft}),evidence:evidenceResult,requireEvidence:evidenceReview && !lightDelivery,requireDaily:action==='generate',quality:itineraryQuality,confirmedOutline:allocationOutline,stayLocks});
     const contract=taskContract({revision:before.revision,operation:raw.intent_action || action,conditions:targetCurrent,scope:localScope,
       verifyMobility:verificationRequested && /公交|交通|走完|衔接|车程/.test(context.text)});
-    const assessment=assessDelivery(contract,{content:deliveryValidation.passed,grounding:deliveryValidation.valid,...(planningResult?.assessment || {})});
+    if(lightDelivery){contract.required_dimensions=contract.required_dimensions.filter(d=>d!=='grounding');deliveryValidation.review_mode=interactionFirst?'final':'light';}
+    const assessment=assessDelivery(contract,{content:deliveryValidation.passed,grounding:!lightDelivery && deliveryValidation.valid,...(planningResult?.assessment || {})});
     if(localScope.length)deliveryValidation.verification_scope={card_ids:localScope,unchanged:'preserved_not_reverified'};
     if(draft || mobilityQuestion){deliveryValidation.assessment=assessment;deliveryValidation.passed &&= assessment.passed;}
     trace('delivery_contract',deliveryValidation.passed?'passed':'failed',{checks:deliveryValidation.checks});
-    if(!deliveryValidation.valid)throw Error('最终交付合同未通过：'+deliveryValidation.checks.filter(c=>c.status==='failed').map(c=>c.name).join(','));
+    if(!interactionFirst && !deliveryValidation.valid)throw Error('最终交付合同未通过：'+deliveryValidation.checks.filter(c=>c.status==='failed').map(c=>c.name).join(','));
     const preferenceWrite=await preferenceMemoryResult(raw);
     runtime.assertActive(signal);
     if(draft){
@@ -954,17 +1004,17 @@ async function performConversationTurn(input = {}, plan = null, deps = {}) {
       draft.pending=[...new Set(qualityNotes.concat(draft.pending.filter(p=>!p.startsWith('日程完整性：'))))].slice(0,10);
       const gaps=activityContentGaps(draft);
       trace('activity_coverage','completed',{gaps});
-      if(gaps.length)draft.pending=[...new Set(draft.pending.concat(gaps.map(g=>g.label+'：补充具体地点与玩法')))].slice(0,10);
+      if(!interactionFirst && gaps.length)draft.pending=[...new Set(draft.pending.concat(gaps.map(g=>g.label+'：补充具体地点与玩法')))].slice(0,10);
     }
     if(draft?.cards.length && planningEnabled){
       await deps.onCheckpoint?.({stage:'validated',draft,conditions:targetCurrent,safe_delivery:action==='generate'?{
         conversation:{...next,draft,stage:'draft',revision:before.revision+1,preview:null},patch,sources,
         delivery_validation:deliveryValidation,evidence_claims:evidenceResult?.claims || []}:null});
       planningResult=await runPlanningLoop({draft,conditions:{...targetCurrent,brief:next.brief},scope:localScope.length?localScope:null,
-        model:lockedInputs?null:optionalPlanningModel,runtime,signal,resolve:resolvePlanningPlaces,query:deps.queryPlanningRoute,now:deps.now || Date.now(),onTrace:deps.onTrace});
+        model:interactionFirst || lockedInputs?null:optionalPlanningModel,runtime,signal,resolve:resolvePlanningPlaces,query:deps.queryPlanningRoute,now:deps.now || Date.now(),onTrace:deps.onTrace});
       // 仅接受既有活动块的排列；正文事实不增删。固定先后、团行程与跨日描述拒绝重排。
       draft=planningResult.draft;
-      const finalAssessment=assessDelivery(contract,{content:deliveryValidation.passed,grounding:deliveryValidation.valid,...planningResult.assessment});
+      const finalAssessment=assessDelivery(contract,{content:deliveryValidation.passed,grounding:!lightDelivery && deliveryValidation.valid,...planningResult.assessment});
       deliveryValidation.assessment=finalAssessment;deliveryValidation.passed &&= finalAssessment.passed;
     }
     if(action==='chat' && raw.intent_action==='preview' && !changedDestination){
@@ -987,16 +1037,17 @@ async function performConversationTurn(input = {}, plan = null, deps = {}) {
     const discoveryReady=action==='chat' && !questionOnly && !next.draft && next.stage==='ready';
     next.memory=commitMemoryDecisions(before.memory,memoryCandidates.accepted,{baseRevision:next.revision,now:deps.now || Date.now()});
     /* M2：偏好候选白名单校验后交前端本机存储持久化（服务端不保存偏好）；未开启记忆全丢弃 */
-    const baseReply=draft && !deliveryValidation.passed?(contract.required_dimensions.includes('dated_transport')?'初稿已保留，跨境交通的出行日期与运营资料仍需核实。':'初稿已保留，部分日程还需要完善。'):requestGeneration?'按已确认的条件整理行程。':clarifyTripScope?'这'+next.requirements.trip_days+'天包含从'+next.routing.origin+'出发和返回的时间吗？':next.stage==='discuss' && (raw.confirmed===true || raw.intent_action==='confirm') ? routeResult.question || '这份想法已经保留，先明确本次出发地和首个抵达城市。' : str(raw.reply);
+    const baseReply=draft && !deliveryValidation.passed?(contract.required_dimensions.includes('dated_transport')?'初稿已保留，跨境交通的出行日期与运营资料仍需核实。':(englishRequest(input)?'Your draft is preserved; some parts still need review.':'初稿已保留，部分日程还需要完善。')):requestGeneration?'按已确认的条件整理行程。':clarifyTripScope?'这'+next.requirements.trip_days+'天包含从'+next.routing.origin+'出发和返回的时间吗？':next.stage==='discuss' && (raw.confirmed===true || raw.intent_action==='confirm') ? routeResult.question || '这份想法已经保留，先明确本次出发地和首个抵达城市。' : str(raw.reply);
     const priorAllocation=before.draft?allocationReview(before.draft,allocationOutline,stayLocks).changes:[];
-    const allocationNotice=draft && JSON.stringify(priorAllocation)!==JSON.stringify(deliveryValidation.allocation_changes)?allocationMessage(deliveryValidation.allocation_changes):'';
-    const finalReply=(questionOnly && (context.research_failure || explicitResearch && ['unavailable','partial'].includes(context.source_relevance?.status))?'这次资料查询或相关性核对未完成。\n\n'+baseReply:baseReply)+(allocationNotice?'\n\n'+allocationNotice:'');
+    const allocationNotice=draft && JSON.stringify(priorAllocation)!==JSON.stringify(deliveryValidation.allocation_changes)?allocationMessage(deliveryValidation.allocation_changes,{accepted:deliveryValidation.passed,en:englishRequest(input)}):'';
+    const unconfirmedReply=(questionOnly && (context.research_failure || explicitResearch && ['unavailable','partial'].includes(context.source_relevance?.status))?'这次资料查询或相关性核对未完成。\n\n'+baseReply:baseReply)+(allocationNotice?'\n\n'+allocationNotice:'');
+    const finalReply=preferenceReplyReceipt(unconfirmedReply+(interactionFirst && itineraryQuality?.notice && !unconfirmedReply.includes(itineraryQuality.notice)?'\n\n'+itineraryQuality.notice:''),{text:context.text,enabled:recalledPreferences.enabled});
     const finalGrounding=checkNumbers({reply:finalReply,draft}).grounded;
     const finalEvidenceText=evidenceFields(finalReply,draft,{includePending:false}).map(f=>f.text).join('\n');
     const finalClaims=(evidenceResult?.claims || []).filter(c=>finalEvidenceText.includes(c.sentence));
     const finalSourceIds=new Set(finalClaims.flatMap(c=>(c.supports || []).map(s=>s.source_id)));
-    const finalSources=evidenceReview?sources.filter(s=>finalSourceIds.has(s.id) || finalGrounding.some(f=>f.source_url===s.url)):sources;
-    return { status:'ok', engine:'llm',delivery_quality:itineraryQuality?{status:itineraryQuality.status,issues:itineraryQuality.issues,repair:itineraryQuality.repair || null}:null,delivery_validation:deliveryValidation, task_status:context.research_failure || !deliveryValidation.passed?'partial':questionOnly?(raw.answer_resolution==='answered' && evidenceResult?.status==='complete' && evidenceResult.claims?.length?'answered':'discussed'):draft?'delivered':'discussed',source_relevance:context.source_relevance || null, evidence_claims:finalClaims, evidence_inferences:(evidenceResult?.inferences || []).filter(t=>finalEvidenceText.includes(t)), evidence_gaps:evidenceResult?.gaps || [], numeric_grounding:finalGrounding, preference_memory_upserts:preferenceWrite.upserts, preference_memory_context:preferenceWrite.context,preference_memory_notice:preferenceWrite.notice, reply:finalReply, conversation:next, patch, sources:finalSources,historical_sources:historicalSources,
+    const finalSources=evidenceReview && !lightDelivery?sources.filter(s=>finalSourceIds.has(s.id) || finalGrounding.some(f=>f.source_url===s.url)):sources;
+    return { status:'ok', engine:'llm',delivery_quality:itineraryQuality?{status:itineraryQuality.status,issues:itineraryQuality.issues,repair:itineraryQuality.repair || null}:null,delivery_validation:deliveryValidation, task_status:(!interactionFirst || questionOnly) && context.research_failure || !deliveryValidation.passed?'partial':questionOnly?(raw.answer_resolution==='answered' && (interactionFirst || evidenceResult?.status==='complete' && evidenceResult.claims?.length)?'answered':'discussed'):draft?'delivered':'discussed',source_relevance:context.source_relevance || null, evidence_claims:finalClaims, evidence_inferences:(evidenceResult?.inferences || []).filter(t=>finalEvidenceText.includes(t)), evidence_gaps:evidenceResult?.gaps || [], numeric_grounding:finalGrounding, preference_memory_upserts:preferenceWrite.upserts, preference_memory_context:preferenceWrite.context,preference_memory_notice:preferenceWrite.notice, reply:finalReply, conversation:next, patch, sources:finalSources,historical_sources:historicalSources,
       selected_candidate_id: !questionOnly && next.draft && selected ? selected.id : null,
       clear_selection:!questionOnly && !!draft?.route.length && !selected && !!input.candidate_id && !workspace.matches(draft.route,(plan?.candidates || []).find(c=>c.id===input.candidate_id)),
       request_generation:requestGeneration,request_route_discovery:action==='chat' && raw.route_discovery===true && !requestGeneration && next.stage==='ready' };
@@ -1005,6 +1056,6 @@ async function performConversationTurn(input = {}, plan = null, deps = {}) {
     if(!deps.model)console.warn('对话未完成：'+error.message);
     const phaseMessage=error.code==='TRANSPORT_REVISION'?error.message:/locked_stays/.test(error.message)?'本次安排未满足你明确指定的停留天数，原方案已保留，可以重试。':/草案路线|城市方案|必经城市/.test(error.message)?'日程与已确认路线不一致，本次未采用；已选方案仍保留，可以重试编排。':/事实核对|证据|数值/.test(error.message)?'本次内容核对尚未通过，已确认的想法和方案仍保留，可以重试。':null;
     const temporaryMessage=lastModelFailure?.reason_code==='rate_limited'?'模型暂时限流，本轮未完成，原输入与方案已保留；请稍后重试。':['service_unavailable','request_timeout','timeout','network_or_timeout','temporary_request'].includes(lastModelFailure?.reason_code)?'模型服务暂时不可用，原输入与方案已保留；请稍后重试。':null;
-    return { status:'unavailable', engine:'unavailable', retry_after_ms:lastModelFailure?.retry_after_ms ?? null,reply:permanentModelFailure?'模型服务暂时拒绝请求，原输入与安排已保留；服务恢复后可继续。':error.code==='CONTEXT_BUDGET_EXCEEDED'?'当前条件与草案较长，本轮未能完整处理，原输入和安排已保留。':temporaryMessage || phaseMessage || 'AI 暂时没有完成回复，你的想法和原方案已保留。请再试一次。', conversation:before };
+    return { status:'unavailable', engine:'unavailable', retry_after_ms:lastModelFailure?.retry_after_ms ?? null,provider_error_code:lastModelFailure?.provider_error_code || null,reply:permanentModelFailure?'模型服务暂时拒绝请求，原输入与安排已保留；服务恢复后可继续。':error.code==='CONTEXT_BUDGET_EXCEEDED'?'当前条件与草案较长，本轮未能完整处理，原输入和安排已保留。':temporaryMessage || phaseMessage || 'AI 暂时没有完成回复，你的想法和原方案已保留。请再试一次。', conversation:before };
   }
 }

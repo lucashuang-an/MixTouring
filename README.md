@@ -166,3 +166,8 @@ JSON提交上限2MiB、提交超时30秒；对话客户端等待上限150秒、�
 只读汇总：`node server/report-model-usage.mjs --input=server/logs/llm-usage-v2.jsonl --out=私有汇总.json`。可选--rates=价格快照.json，按provider|requested_model配置hit/miss/output每百万token单价及currency/version/basis；未提供完整数据时总费用保持未知。
 
 MT_CACHE_LAYOUT_EXTRACT与MT_CACHE_LAYOUT_PATCH默认baseline，cache_v1为候选布局；healthz／capabilities显示有效配置，按启动快照读取。当前A/B未通过全部质量和延迟门槛，两个开关应继续保持baseline。实验入口为`node --env-file=server/.env server/replay-cache-layout.mjs --live --out=私有目录`，可选--stage=extract或patch；该命令会调用模型，仅在明确需要实网验收时运行。
+
+
+## 受邀部署
+
+容器运行采用Node 22、非root用户和独立私有状态卷。`deploy.env.example`提供配置项，`compose.yaml`只映射本机端口，公网经HTTPS代理访问。生成邀请凭据、上游调用额度、健康检查和回退步骤见[部署操作](DEVELOPMENT.md#7-受邀beta部署与恢复)。上线前运行`node server/check-container.mjs`并检查CI的container作业。
