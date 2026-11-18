@@ -1,0 +1,29 @@
+# 放入已配置TLS证书的Nginx。替换域名和证书路径后先执行 nginx -t。
+# https://nginx.org/en/docs/http/ngx_http_proxy_module.html
+server {
+    listen 80;
+    server_name beta.example.com;
+    return 308 https://beta.example.com$request_uri;
+}
+server {
+    listen 443 ssl;
+    server_name beta.example.com;
+    ssl_certificate /etc/letsencrypt/live/beta.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/beta.example.com/privkey.pem;
+    client_max_body_size 2m;
+    # 默认日志格式可能记录邀请用户名；Beta关闭访问日志，使用应用的任务编号诊断。
+    access_log off;
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 180s;
+        proxy_send_timeout 180s;
+    }
+}

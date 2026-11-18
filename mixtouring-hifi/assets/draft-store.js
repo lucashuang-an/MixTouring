@@ -16,13 +16,13 @@
   /* 读取状态分级：{data, corrupted:false} 正常；{data:null, corrupted:true, reason} 拒绝覆盖 */
   function readState() {
     var raw;
-    try { raw = localStorage.getItem(DRAFT_KEY); } catch (e) { return { data: null, corrupted: true, reason: 'read_failed' }; }
+    try { raw = (globalThis.MTLocalStorage || localStorage).getItem(DRAFT_KEY); } catch (e) { return { data: null, corrupted: true, reason: 'read_failed' }; }
     if (raw == null) return { data: {}, corrupted: false };
     var val;
     try { val = JSON.parse(raw); } catch (e) { return { data: null, corrupted: true, reason: 'json_broken' }; }
     if (!val || typeof val !== 'object' || Array.isArray(val)) return { data: null, corrupted: true, reason: 'bad_top_level' };
     if (normalizeAll(val)) {
-      try { localStorage.setItem(DRAFT_KEY, JSON.stringify(val)); }
+      try { (globalThis.MTLocalStorage || localStorage).setItem(DRAFT_KEY, JSON.stringify(val)); }
       catch (e) { /* 只读时仍按确定性顺序展示；保存操作会单独报告写入失败。 */ }
     }
     return { data: val, corrupted: false };
@@ -114,16 +114,16 @@
       if (id === '__seq') return;
       if (!isDraftShape(all[id])) { delete all[id]; removed.push(id); }
     });
-    try { localStorage.setItem(DRAFT_KEY, JSON.stringify(all)); return { ok: true, removed: removed }; }
+    try { (globalThis.MTLocalStorage || localStorage).setItem(DRAFT_KEY, JSON.stringify(all)); return { ok: true, removed: removed }; }
     catch (e) { return { ok: false, reason: 'write_failed' }; }
   }
 
   /** 用户显式确认后的整体重置（仅整体损坏且拒绝覆盖后使用） */
   function resetAll() {
-    try { localStorage.removeItem(DRAFT_KEY); return { ok: true }; } catch (e) { return { ok: false, reason: 'write_failed' }; }
+    try { (globalThis.MTLocalStorage || localStorage).removeItem(DRAFT_KEY); return { ok: true }; } catch (e) { return { ok: false, reason: 'write_failed' }; }
   }
 
-  function save(name, snapshot) {
+  function save(name, snapshot, options) {
     if (!snapshot || typeof snapshot !== 'object' || !snapshot.request ||
       typeof snapshot.request !== 'object' || Array.isArray(snapshot.request)) return { ok: false, reason: 'bad_snapshot' };
     var st = readState();
@@ -131,7 +131,10 @@
     var all = st.data;
     var now = new Date().toISOString();
     var existing = Object.keys(all).filter(function (k) { return isDraftShape(all[k]); });
-    var match = existing.filter(function (k) { return all[k].name === name; })[0];
+    options=options || {};
+    if(options.id && !isDraftShape(all[options.id]))return {ok:false,reason:'not_found'};
+    var match=options.id || (!options.create_new && existing.filter(function (k) { return all[k].name === name; })[0]);
+    if(options.expected_vid && (!match || visibleDraft(all[match]).versions.at(-1)?.vid!==options.expected_vid))return {ok:false,reason:'stale_version'};
     /* 版本唯一 vid：跨草案单调递增（存全局序号于顶层 __seq，兼容旧数据从现有最大 vid 推） */
     var seq = Number.isSafeInteger(all.__seq) && all.__seq >= 0 ? all.__seq : 0;
     var vid = 'v' + (seq + 1);
@@ -149,7 +152,7 @@
       id = 'dft_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
       all[id] = { id: id, name: name || '未命名草案', created_at: now, updated_at: now, versions: [{ vid: vid, version: 1, snapshot: snapshot, saved_at: now }] };
     }
-    try { localStorage.setItem(DRAFT_KEY, JSON.stringify(all)); }
+    try { (globalThis.MTLocalStorage || localStorage).setItem(DRAFT_KEY, JSON.stringify(all)); }
     catch (e) { return { ok: false, reason: 'write_failed' }; }
     return { ok: true, draft: visibleDraft(all[id]), vid: vid, warn: warn };
   }
@@ -160,7 +163,7 @@
     if (!isDraftShape(st.data[id])) return { ok: false, reason: 'not_found' };
     st.data[id].name = String(name || '').trim().slice(0, 40) || st.data[id].name;
     st.data[id].updated_at = new Date().toISOString();
-    try { localStorage.setItem(DRAFT_KEY, JSON.stringify(st.data)); return { ok: true, draft: st.data[id] }; }
+    try { (globalThis.MTLocalStorage || localStorage).setItem(DRAFT_KEY, JSON.stringify(st.data)); return { ok: true, draft: st.data[id] }; }
     catch (e) { return { ok: false, reason: 'write_failed' }; }
   }
 
@@ -169,7 +172,7 @@
     if (st.corrupted) return { ok: false, reason: 'corrupted_store' };
     if (!st.data[id]) return { ok: false, reason: 'not_found' };
     delete st.data[id];
-    try { localStorage.setItem(DRAFT_KEY, JSON.stringify(st.data)); return { ok: true }; }
+    try { (globalThis.MTLocalStorage || localStorage).setItem(DRAFT_KEY, JSON.stringify(st.data)); return { ok: true }; }
     catch (e) { return { ok: false, reason: 'write_failed' }; }
   }
 

@@ -1,0 +1,25 @@
+/* 比较只消费当前任务的候选与来源。 */
+import assert from 'node:assert/strict';
+import {buildRouteComparison} from './lib/route-comparison.mjs';
+import discovery from '../mixtouring-hifi/assets/discovery-workspace.js';
+const node=name=>({name,lat:null,lon:null,country:null});
+const candidate=(id,route,mode=null)=>({id,kind:route.length===2?'direct':'discovered',hypothesis:true,basis:{sources:route.length===2?[]:[{title:'本次沿途参考',link:'https://example.org/route',allowed_use:'exploration_only'}]},legs:route.slice(1).map((to,i)=>({from:route[i],to,mode_guess:mode,evidence_state:'explore'}))});
+const direct=candidate('direct',['起点甲','终点乙']),via=candidate('via',['起点甲','库外途中丙','终点乙']);
+const plan={planning_mode:'search_first',places:['起点甲','终点乙','库外途中丙'].map(node),candidates:[via,direct]};
+const base=buildRouteComparison(plan,{requirements:{trip_days:15},current_route:['起点甲','库外途中丙','终点乙']});
+assert.equal(base.routes.length,2);assert.equal(base.routes[0].id,'direct');assert.equal(base.recommended_id,'direct');
+assert.ok(base.routes.some(r=>r.route.includes('库外途中丙')));
+assert.ok(base.routes.every(r=>r.points.every(p=>p.lat===null && p.lon===null)));
+assert.ok(base.routes.every(r=>r.time.transport_minutes===null && r.cost.grade==='unpriced' && !r.verified));
+assert.equal(base.routes.find(r=>r.id==='via').time.suggested_stop_days,2);
+const required=buildRouteComparison(plan,{requirements:{required_stops:['库外途中丙']}});
+assert.equal(required.routes[0].eligible,false);assert.equal(required.recommended_id,'via');
+const hard=buildRouteComparison(plan,{requirements:{verified_cross_border_only:true}});
+assert.ok(hard.routes.every(r=>r.verification_required && !r.verified));
+assert.equal(buildRouteComparison({...plan,candidates:[direct,{...via,basis:{sources:[]}}]}).routes.length,1);
+assert.equal(buildRouteComparison({...plan,candidates:[direct,{...direct,id:'rail',legs:[{...direct.legs[0],mode_guess:'rail'}]},via]}).routes[0].variants.length,2);
+assert.equal(buildRouteComparison({...plan,candidates:[direct,{...via,legs:via.legs.map(l=>({...l,mode_guess:'road'}))}]},{preferences:{road:'exclude'}}).routes.length,1);
+const html=discovery.cardsHtml(base);assert.ok(html.includes('费用结构'));assert.ok(!html.includes('已核实'));
+const unsafe=structuredClone(base);unsafe.routes[0].title='<img src=x onerror=alert(1)>';assert.ok(!discovery.cardsHtml(unsafe).includes('<img'));
+const known=buildRouteComparison({...plan,places:[{name:'起点甲',lat:1,lon:2,country:'AA'},...plan.places.slice(1)]});assert.equal(known.routes[0].points[0].lat,1);
+console.log('✓ 动态比较：库外城市、来源、硬要求、未知地图与费用、交通组合及输出转义通过');

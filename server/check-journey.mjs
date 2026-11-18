@@ -1,6 +1,5 @@
 /* G3：探索详情、可选停留和服务端候选信任边界。 */
 import { strict as assert } from 'node:assert';
-import { planAnywhere } from './lib/anywhere.mjs';
 import { buildJourneyDetail, registerJourneyPlan, journeyDetailFromPlanId } from './lib/journey.mjs';
 import taskPreview from '../mixtouring-hifi/assets/task-preview.js';
 
@@ -26,11 +25,9 @@ assert.deepEqual(taskPreview.affected(task,scheduled),['2026-10-01']);
 const changed=structuredClone(scheduled);changed.sights.visit_dates.xiata='2026-10-02';
 assert.deepEqual(taskPreview.affected(scheduled,changed),['2026-10-01','2026-10-02']);
 
-const deps = { callJson: async () => null, env: {}, searchWeb: null, webSearchStatus: () => ({ status: 'unavailable' }) };
-const plan = await planAnywhere({
-  origin: '北京', destination: '阿拉木图',
-  travel: { trip_type: 'round_trip', outbound_window: '2026-09-27 ~ 2026-10-03', return_window: '2026-10-05 ~ 2026-10-11', traveler_count: 1 }
-}, deps);
+// 消费本次任务方案 fixture，不调用已删除的规则生成器。
+const plan={planning_mode:'search_first',places:[{name:'伊宁',country:'CN'}],intent:{origin_place:{name:'北京',kind:'city',country:'CN'},destination_place:{name:'阿拉木图',kind:'city',country:'KZ'},trip_type:'round_trip',return_window:null},
+ candidates:[{id:'mixed',kind:'mixed',legs:[{from:'北京',to:'伊宁',mode_guess:null},{from:'伊宁',to:'阿拉木图',mode_guess:null}]},{id:'direct',kind:'direct',legs:[{from:'北京',to:'阿拉木图',mode_guess:null}]}]};
 const mixed = plan.candidates.find((c) => c.kind === 'mixed');
 assert.ok(mixed, '北京→阿拉木图应有可探索的混合方向');
 const detail = buildJourneyDetail(plan, mixed.id, 2);
@@ -38,7 +35,7 @@ const anchored={...plan,anchors:{return:{mode:'plane',from_city:'乌鲁木齐',t
 const withReturn=buildJourneyDetail(anchored,mixed.id,2);
 assert.equal(withReturn.inbound.at(-1).to,'乌鲁木齐','返程接驳接到锁定出发城');
 assert.equal(withReturn.return_anchor.from_city,'乌鲁木齐');
-assert.equal(withReturn.transport_references.find(r=>r.direction==='inbound').references.find(r=>r.id==='ala-urc-cz6076').date_scope,'unverified','返程航班日不代替接驳日期');
+assert.equal(withReturn.transport_references.length,0,'详情不注入预置交通参考');
 assert.equal(detail.evidence_state, 'explore');
 assert.equal(detail.outbound.length, 2);
 assert.equal(detail.outbound[0].to, detail.outbound[1].from, '停留前后两段必须连续');
@@ -65,7 +62,7 @@ const id = registerJourneyPlan(plan, 1000);
 assert.equal(journeyDetailFromPlanId(id, mixed.id, 1, 1001).stopover.nights, 1);
 assert.throws(() => journeyDetailFromPlanId(id, mixed.id, 1, 1000 + 30 * 60 * 1000), /已失效/);
 
-const oneWay = await planAnywhere({ origin: '北京', destination: '喀什', travel: { trip_type: 'one_way' } }, deps);
+const oneWay={...plan,intent:{...plan.intent,trip_type:'one_way',destination_place:{...plan.intent.destination_place,country:'CN'}}};
 const oneDetail = buildJourneyDetail(oneWay, oneWay.candidates[0].id, 0);
 assert.equal(oneDetail.inbound.length, 0);
 assert.equal(oneDetail.return_window, null);

@@ -93,16 +93,9 @@
   function routeKey(c) {
     return JSON.stringify((c && c.legs || []).map(function (l) { return [l.from, l.to, l.mode_guess || '?', l.via || '']; }));
   }
-  function sightRelevant(plan, text) {
-    var names = [plan && plan.intent && plan.intent.origin, plan && plan.intent && plan.intent.destination];
-    (plan && plan.candidates || []).forEach(function(c) {(c.legs || []).forEach(function(l) {names.push(l.from,l.to);});});
-    if (plan && plan.anchors) ['outbound','return'].forEach(function(k) {var a=plan.anchors[k];if(a) names.push(a.from_city,a.to_city);});
-    return /伊犁|伊宁|昭苏|特克斯|巩留|那拉提|喀拉峻|夏塔|库尔德宁|赛里木湖|恰西|琼库什台/.test(names.join(' ')+' '+(text || ''));
-  }
   function reason(c) {
     if(c.kind==='direct') return '适合想省心抵达的人，先从直达开始比较。';
     var hub=c.legs[0].to, end=c.legs[c.legs.length-1].to;
-    if(/伊宁|伊犁/.test(hub)) return '给伊犁留一段游玩时间，再研究前往'+end+'的公共交通。';
     if(c.kind==='mixed') return '先乘铁路到'+hub+'，再研究接航班到'+end+'；适合愿意把长途分段的人。';
     return '把'+hub+'也加入旅行，再前往'+end+'。'+(c.kind==='mixed'?'适合愿意尝试铁路与航班组合的人。':'适合愿意在途中多留一站的人。');
   }
@@ -112,7 +105,7 @@
       if(!map.has(key)){var group={key:key,items:[]};out.push(group);map.set(key,group);}map.get(key).items.push(item);
     });return out;
   }
-  var api = { clean: clean, parse: parse, summary: summary, question: question, rank: rank, routeKey: routeKey, sightRelevant:sightRelevant,reason:reason,groups:groups };
+  var api = { clean: clean, parse: parse, summary: summary, question: question, rank: rank, routeKey: routeKey, reason:reason,groups:groups };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.MTGuide = api;
 })(typeof window !== 'undefined' ? window : globalThis);

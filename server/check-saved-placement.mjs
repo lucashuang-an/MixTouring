@@ -1,0 +1,27 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import vm from 'node:vm';
+import placement from '../mixtouring-hifi/assets/saved-placement.js';
+import workspace from '../mixtouring-hifi/assets/route-workspace.js';
+
+let raw=null,deny=false;
+const window={},localStorage={getItem:()=>raw,setItem:(_key,value)=>{if(deny)throw Error('quota');raw=value;},removeItem:()=>{raw=null;}};
+vm.runInNewContext(readFileSync(new URL('../mixtouring-hifi/assets/draft-store.js',import.meta.url),'utf8'),{window,localStorage});
+const store=window.MTDrafts,api=placement.create(store,workspace);
+const original={request:{text:'Two days in the city'},messages:[{role:'user',text:'Two days',mid:1}],conversation:{revision:1,draft:workspace.cleanDraft({title:'Two days',route:['City'],cards:[{id:'card-day-1',label:'Day 1',place:'City',title:'Walk',content:'Morning: Walk in `Park East`.'},{id:'card-day-2',label:'Day 2',place:'City',title:'Rest',content:'Afternoon: Rest.'}]})},travel:{trip_type:'one_way'}};
+const initial=store.save('Test trip',original,{create_new:true}),tripId=initial.draft.id,item={type:'place',title:'Park',city:'City'};
+const result=api.add({tripId,versionId:initial.vid,cardId:'card-day-2',item});assert.equal(result.ok,true);
+let latest=store.get(tripId).versions.at(-1).snapshot;
+assert.equal(JSON.stringify(latest.conversation.draft.cards[0]),JSON.stringify(original.conversation.draft.cards[0]));
+assert.ok(latest.conversation.draft.cards[1].content.endsWith('Added place: Park.'));
+assert.equal(latest.conversation.draft.cards[1].id,'card-day-2');assert.equal(latest.travel.trip_type,'one_way');
+const duplicate=api.add({tripId,versionId:result.vid,cardId:'card-day-2',item});assert.equal(duplicate.duplicate,true);assert.equal(store.get(tripId).versions.length,2);
+assert.equal(api.add({tripId,versionId:initial.vid,cardId:'card-day-1',item}).reason,'stale_version');
+const beforeFailure=raw;deny=true;assert.equal(api.add({tripId,versionId:result.vid,cardId:'card-day-1',item}).reason,'write_failed');assert.equal(raw,beforeFailure);deny=false;
+assert.equal(api.undo(result.undo).ok,true);latest=store.get(tripId).versions.at(-1).snapshot;
+assert.equal(JSON.stringify(latest.conversation.draft),JSON.stringify(original.conversation.draft));assert.equal(store.get(tripId).versions.length,3);
+assert.equal(api.undo(result.undo).reason,'stale_version','撤销不覆盖后续版本');
+const added=api.add({tripId,versionId:store.get(tripId).versions.at(-1).vid,cardId:'card-day-1',item});assert.equal(added.ok,true);assert.notEqual(added.duplicate,true,'Park East不是Park，不误判重复');
+assert.ok(api.href(tripId,added.vid).includes('restore=1'));
+const staleSnapshot=structuredClone(original);assert.equal(store.save('Test trip',staleSnapshot,{id:tripId,expected_vid:initial.vid}).reason,'stale_version');
+console.log('✓ 收藏加入：仅目标日更新、保存版本、重复防护、拒写保留、旧版本拒绝及撤销不覆盖后续修改通过');

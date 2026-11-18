@@ -1,0 +1,181 @@
+{
+  "date": "2026-11-09",
+  "scope": "Local interactive desktop prototype; not production backend acceptance",
+  "languages": [
+    "en",
+    "zh-CN"
+  ],
+  "viewports": [
+    [
+      1024,
+      768
+    ],
+    [
+      1440,
+      900
+    ]
+  ],
+  "browser": "Codex in-app Chromium",
+  "observed_checks": [
+    {
+      "name": "Four main pages at two desktop widths in both languages",
+      "result": "pass",
+      "evidence": "16 layouts; document scrollWidth equals clientWidth; no control text overflow"
+    },
+    {
+      "name": "Noto Sans SC loaded",
+      "result": "pass",
+      "evidence": "document.fonts.check returned true"
+    },
+    {
+      "name": "Chinese and mixed-script long title wraps",
+      "result": "pass",
+      "evidence": "1024 viewport; title height 49px, scrollWidth equals width"
+    },
+    {
+      "name": "Chinese dark theme",
+      "result": "pass",
+      "evidence": "No horizontal overflow; controls not clipped"
+    },
+    {
+      "name": "Theme change preserves unsent input",
+      "result": "pass"
+    },
+    {
+      "name": "Selecting option does not generate before explicit confirmation",
+      "result": "pass"
+    },
+    {
+      "name": "Both garden and food sample paths generate",
+      "result": "pass"
+    },
+    {
+      "name": "Cancel preview leaves itinerary unchanged",
+      "result": "pass",
+      "evidence": "Three day texts compared before and after"
+    },
+    {
+      "name": "Apply changes only day 2",
+      "result": "pass",
+      "evidence": "Day 1 and day 3 compared equal; day 2 changed"
+    },
+    {
+      "name": "Undo restores previous itinerary",
+      "result": "pass"
+    },
+    {
+      "name": "Cancel generation and resume",
+      "result": "pass"
+    },
+    {
+      "name": "Injected generation failure and retry",
+      "result": "pass"
+    },
+    {
+      "name": "Injected save failure remains an error until storage restored",
+      "result": "pass"
+    },
+    {
+      "name": "Reload restores saved trips and language",
+      "result": "pass",
+      "evidence": "Three sample trip cards restored"
+    },
+    {
+      "name": "Removing a saved place preserves itinerary activity",
+      "result": "pass"
+    },
+    {
+      "name": "Map unavailable preserves itinerary and offers return",
+      "result": "pass"
+    },
+    {
+      "name": "Community route saved and used as reference without auto-generation",
+      "result": "pass"
+    },
+    {
+      "name": "Search no-results and clear",
+      "result": "pass"
+    },
+    {
+      "name": "Escape closes account menu and restores trigger focus",
+      "result": "pass"
+    },
+    {
+      "name": "Escape closes revision dialog and restores selected-day focus",
+      "result": "pass"
+    },
+    {
+      "name": "Unsent Chinese draft restored after navigation and reload",
+      "result": "pass"
+    },
+    {
+      "name": "Chinese attachment filename, removal, unsupported format",
+      "result": "pass"
+    },
+    {
+      "name": "Attachment format error uses dismiss, not retry-save",
+      "result": "pass",
+      "regression_fixed": true
+    },
+    {
+      "name": "Reduced motion suppresses hero animation",
+      "result": "pass",
+      "evidence": "matchMedia true; computed animationName none"
+    },
+    {
+      "name": "Cross-trip attachment isolation",
+      "result": "pass",
+      "evidence": "No attachment in reopened existing trip"
+    },
+    {
+      "name": "Production page static checks",
+      "result": "pass",
+      "command": "node pipeline/check-pages.mjs",
+      "pages": 7
+    },
+    {
+      "name": "Production language regression checks",
+      "result": "pass",
+      "command": "node server/check-language.mjs"
+    }
+  ],
+  "fixed_during_test": [
+    "Wrong retry-save action on attachment error",
+    "Untranslated skip link and stale language announcement",
+    "Unsent draft/attachment scoping",
+    "Double focus outline and QA panel affecting product layout"
+  ],
+  "not_claimed": [
+    "Real AI generation or travel evidence",
+    "Production account, cloud sync, publishing or maps",
+    "OS IME candidate-window testing",
+    "Mobile and screen reader exhaustive testing"
+  ],
+  "penpot": {
+    "persisted_chinese_boards": 44,
+    "chinese_typography_assets": 8,
+    "geometry_audit": {
+      "text_nodes": 683,
+      "font_mismatches": 0,
+      "untranslated_ui_strings": 0,
+      "clipped_text_nodes": 0,
+      "allowed_english": "English language selector"
+    },
+    "base_chinese_interactions_checked": 257,
+    "missing_destinations": 0,
+    "saving": "Recovered after autosave failure using detached Chinese copies in small batches. Reloaded and verified revision 72 with 6 + 11 + 27 Chinese states.",
+    "limitation": "Chinese detached copies do not inherit later changes to English component masters.",
+    "evidence": [
+      "evidence/penpot-persisted.json",
+      "evidence/penpot-zh-audit.json",
+      "evidence/penpot-zh-settings.png"
+    ]
+  },
+  "screenshots": [
+    "en-light-new-1440.jpg",
+    "zh-chat-1440.jpg",
+    "zh-dark-1024.jpg",
+    "zh-light-new-1440.jpg",
+    "zh-long-title-1440.jpg"
+  ]
+}

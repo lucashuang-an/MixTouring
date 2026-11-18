@@ -1,7 +1,7 @@
 /* G3 探索行程详情：只消费服务端本次规划的候选，不把浏览器传来的路线当事实。 */
 import { randomBytes } from 'node:crypto';
-import { buildCandidateSkeletons, resolvePlace } from './anywhere.mjs';
-import { transportReferences } from './transport-references.mjs';
+import {requestOwner,ownsRecord} from './request-owner.mjs';
+import {searchLeg} from './search-planner.mjs';
 
 const plans = new Map();
 const TTL_MS = 30 * 60 * 1000;
@@ -11,7 +11,7 @@ export function registerJourneyPlan(plan, now = Date.now()) {
   for (const [id, entry] of plans) if (entry.expires_at <= now) plans.delete(id);
   while (plans.size >= MAX_PLANS) plans.delete(plans.keys().next().value);
   const id = 'jpl_' + randomBytes(12).toString('hex');
-  plans.set(id, { plan, expires_at: now + TTL_MS });
+  plans.set(id, { owner:requestOwner(), plan, expires_at: now + TTL_MS });
   return id;
 }
 
@@ -19,7 +19,7 @@ function checklistRow(leg, direction, plan) {
   const countryOf = (name) => {
     if (name === plan.intent.origin_place?.name) return plan.intent.origin_place.country;
     if (name === plan.intent.destination_place?.name) return plan.intent.destination_place.country;
-    return resolvePlace(name)?.country || (name === leg.from ? leg.from_country : leg.to_country) || null;
+    return (plan.places || []).find(p=>p.name===name)?.country || (name === leg.from ? leg.from_country : leg.to_country) || null;
   };
   const fromCountry = countryOf(leg.from), toCountry = countryOf(leg.to);
   const missing = ['指定日期班次与当地起落时间', '当期价格及行李／退改口径', '站点接驳'];
@@ -49,9 +49,10 @@ export function buildJourneyDetail(plan, candidateId, stopoverNights = 0) {
   const roundTrip = plan.intent.trip_type === 'round_trip';
   let inbound = [];
   if (roundTrip) {
-    const returnPlace=plan.anchors?.return?resolvePlace(plan.anchors.return.from_city):plan.intent.origin_place;
+    const returnName=plan.anchors?.return?.from_city;
+    const returnPlace=returnName?(plan.places || []).find(p=>p.name===returnName) || {name:returnName,kind:'city'}:plan.intent.origin_place;
     const reverse = returnPlace && returnPlace.name!==plan.intent.destination_place?.name?
-      buildCandidateSkeletons(plan.intent.destination_place, returnPlace, { max_transfers: 0 }, {}):{candidates:[]};
+      {candidates:[{kind:'direct',legs:[searchLeg(plan.intent.destination_place,returnPlace)]}]}:{candidates:[]};
     const returnHypothesis = reverse.candidates.find((c) => c.kind === 'direct');
     inbound = returnHypothesis ? returnHypothesis.legs.map((leg) => ({ ...leg })) : [];
   }
@@ -81,10 +82,7 @@ export function buildJourneyDetail(plan, candidateId, stopoverNights = 0) {
     stopover: nights ? { city: stopCity, nights, scheduling_state: '待两段当地班期核实', accommodation_cost: null } : null,
     cost: { known_total: null, unknown_items: unknownCosts },
     checklist,
-    transport_references:[...outbound.map((leg,i)=>({direction:'outbound',from:leg.from,to:leg.to,mode:leg.mode_guess,
-      references:transportReferences(leg.from,leg.to,Date.now(),i===0 && !plan.anchors?.outbound?plan.intent.outbound_window:null).filter(r=>!leg.mode_guess || (leg.mode_guess==='road'?r.mode==='road_passenger':r.mode===leg.mode_guess))})),
-      ...inbound.map(leg=>({direction:'inbound',from:leg.from,to:leg.to,mode:leg.mode_guess,
-        references:transportReferences(leg.from,leg.to,Date.now(),plan.anchors?.return?null:plan.intent.return_window).filter(r=>!leg.mode_guess || (leg.mode_guess==='road'?r.mode==='road_passenger':r.mode===leg.mode_guess))}))],
+    transport_references:[],
     warnings: [
       '本详情只是完整路线结构的探索草案，所有段的指定日期班期、衔接和价格均待核验。',
       ...(nights ? ['停留会占用旅行时间；后半程、住宿及返程需核实后才能判断是否成行和增加多少费用。'] : []),
@@ -95,6 +93,7 @@ export function buildJourneyDetail(plan, candidateId, stopoverNights = 0) {
 
 export function journeyDetailFromPlanId(planId, candidateId, stopoverNights = 0, now = Date.now()) {
   const entry = plans.get(planId);
+  if (!ownsRecord(entry)) throw new Error('规划已失效，请重新规划');
   if (!entry || entry.expires_at <= now) {
     if (entry) plans.delete(planId);
     throw new Error('规划已失效，请重新规划');
@@ -105,6 +104,7 @@ export function journeyDetailFromPlanId(planId, candidateId, stopoverNights = 0,
 /** 对话追问只读取服务端保存的本次规划，避免采纳浏览器提交的候选事实。 */
 export function guidePlanFromId(planId, now = Date.now()) {
   const entry = plans.get(planId);
+  if (!ownsRecord(entry)) return null;
   if (!entry || entry.expires_at <= now) {
     if (entry) plans.delete(planId);
     return null;

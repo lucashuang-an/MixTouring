@@ -1,0 +1,270 @@
+{
+  "date": "2026-11-09",
+  "scope": "Production page integration, existing API and local storage retained",
+  "pages": [
+    "trip",
+    "me",
+    "collections",
+    "settings",
+    "help",
+    "privacy",
+    "terms",
+    "community"
+  ],
+  "layout_checks": {
+    "languages": [
+      "zh-CN",
+      "en"
+    ],
+    "widths": [
+      1024,
+      1440
+    ],
+    "main_page_layouts": 16,
+    "horizontal_overflow": false,
+    "generated_itinerary_1024": "two columns; composer and plan inside viewport"
+  },
+  "browser_checks": [
+    "Theme change preserves input",
+    "Actual no-model failure preserves message and allows retry",
+    "Memory setting survives reload",
+    "Account Escape closes and restores focus",
+    "Chinese TXT adds text without sending",
+    "Saved mixed Chinese-English long title survives refresh",
+    "Real model outline then explicit confirmation generates two day cards",
+    "Save itinerary, reload, My trips and Continue restore two cards",
+    "Chinese focused composer has no inner outline or green ring"
+  ],
+  "regressions": [
+    "pipeline/check-pages.mjs",
+    "server/check-desktop-ui.mjs",
+    "server/check-language.mjs",
+    "server/check-chat-refresh.mjs",
+    "server/check-send-retry.mjs",
+    "server/check-my-trips.mjs",
+    "server/check-personal-center.mjs",
+    "server/check-save-state.mjs",
+    "server/check-preference-memory.mjs",
+    "server/check-route-workspace.mjs",
+    "server/check-p1-boundaries.mjs",
+    "server/check-no-preloads.mjs",
+    "server/verify.mjs (isolated no-model instance)"
+  ],
+  "limits": [
+    "Community is an explicit unavailable state; no fabricated public content",
+    "Local profile has no fake login/logout or cloud sync",
+    "TXT only; no image OCR or attachment backend",
+    "OS IME candidate window and screen reader not exercised",
+    "No new live single-day revision test; existing local revision and save tests retained",
+    "Travel facts from sample generation not independently verified",
+    "No mobile acceptance"
+  ],
+  "preview": "http://127.0.0.1:3402/pages/trip.html",
+  "restoration_pass": {
+    "version": "v0.61.19",
+    "basis": "Approved English prototype, with latest equal-width shortcut decision",
+    "pages": {
+      "chat_itinerary": "Conversation and composer; collapsible day panel; itinerary/map tabs; overview collapsed; original sources, save and versions retained",
+      "my_trips": "Name/status/action cards; direct rename; history and deletion under More",
+      "saved": "Category tabs, cards, named details dialog; real source/legacy items retained; missing photos use neutral placeholders",
+      "settings": "Shared card and horizontal rows; memory switch; advanced data/preferences controls collapsed"
+    },
+    "browser_verified": [
+      "16 layouts: en/zh-CN x 1024/1440 x four pages; no horizontal overflow or clipped buttons",
+      "Itinerary/map tabs switch without removing either content",
+      "Close and reopen itinerary returns focus",
+      "Adjust day creates an English request preserving original day/title; no auto-send",
+      "Rename and history controls render in English",
+      "Saved details Escape returns focus to triggering card",
+      "Saved-place planning passes text into composer without auto-send",
+      "Memory toggle survives reload; restored to prior off state",
+      "Chinese dark settings screenshot reviewed"
+    ],
+    "regression_added": [
+      "UI localization must not repaint unchanged day cards",
+      "Only changed day receives update animation",
+      "Dynamic English UI count round-trips to Chinese without translating protected content"
+    ],
+    "remaining": [
+      "Community route feed and route saving unavailable",
+      "Direct add-to-selected-trip/day not integrated; current saved place starts a reviewed planning request",
+      "No place photos in current store; neutral media placeholders instead of invented photos",
+      "No claim of pixel-identical fidelity or all error/preview states browser-verified",
+      "Help/privacy/terms not redesigned in this pass",
+      "No new paid model generation in this pass; existing generated itinerary reused"
+    ],
+    "screenshots": [
+      "restored-en-itinerary.jpg",
+      "restored-en-my-trips.jpg",
+      "restored-en-saved.jpg",
+      "restored-en-settings.jpg",
+      "restored-zh-settings-dark.jpg"
+    ]
+  },
+  "flow_completion_pass": {
+    "version": "v0.61.20",
+    "implemented": [
+      "Saved place: choose saved trip and stable day ID, confirm, append only that day, save a new version, undo",
+      "Expected version check rejects stale selections; save failures retain original data",
+      "Duplicate added place does not create another version; removing favorite leaves itinerary intact",
+      "Conversation failure Retry respects edited input and reuses pending message",
+      "Direct itinerary Undo restores previous draft and clears restored preview",
+      "Help cards and feedback disclosure; community unavailable state uses shared empty layout"
+    ],
+    "browser_verified": [
+      "Isolated origin 3403: test backup imported and normalized by normal Save before add/restore tests",
+      "Added place only visible on Day 2; Day 1 unchanged; persisted Saved state after reopen",
+      "Undo restored prior day contents; duplicate add did not create version; unsave retained day place",
+      "Chinese long-title add dialog: no horizontal overflow or clipped buttons; Cancel returns to details",
+      "No-model request failure and Retry keep a single pending message; edited input disables stale Retry",
+      "Configured service: real day-2-only preview leaves day 1 unchanged; Cancel restores original displayed days",
+      "Configured service: Apply changes then direct Undo restores original two days and exits preview",
+      "Configured service: Stop keeps original two days and unsent input"
+    ],
+    "regressions": [
+      "server/check-saved-placement.mjs",
+      "server/check-drafts.mjs",
+      "server/check-send-retry.mjs (undo exits preview)",
+      "server/check-personal-center.mjs",
+      "server/check-language.mjs",
+      "server/check-desktop-ui.mjs",
+      "server/check-my-trips.mjs",
+      "server/check-save-state.mjs",
+      "server/check-preference-memory.mjs",
+      "server/check-route-workspace.mjs",
+      "pipeline/check-pages.mjs"
+    ],
+    "remaining": [
+      "Community feed/public route storage and accounts are unavailable",
+      "Place addition appends a user-chosen activity; it does not optimize timing, transport or validate the place",
+      "All-browser accessibility, OS IME and mobile acceptance not claimed",
+      "Real preview returned partial quality; UI authorization/scope behavior was tested, not independent travel fact accuracy"
+    ],
+    "screenshots": [
+      "add-place-select-day.jpg",
+      "add-place-success.jpg",
+      "add-place-chinese.jpg",
+      "itinerary-preview-actions.jpg",
+      "request-stopped-recovery.jpg",
+      "help-cards-restored.jpg"
+    ]
+  },
+  "site_polish_pass": {
+    "version": "v0.61.21",
+    "changes": [
+      "Shared skip link and navigation-before-main DOM order on all 8 routes",
+      "Account menu focus, arrow keys, Home/End, Escape and focus-leave closing",
+      "More menu Escape/outside close; history focus enters content",
+      "Delete confirmation focuses Keep trip, Escape returns to visible More summary",
+      "Dynamic aria labels preserve expanded/collapsed state across locale changes",
+      "Deleted saved-card trigger falls back to active category focus; added-place success focuses heading",
+      "Privacy and terms reading width, paragraph rhythm and headings",
+      "Readable danger action colors and localized dynamic deletion warning"
+    ],
+    "browser_verified": [
+      "Skip to content focuses mainContent",
+      "Account ArrowDown opens Settings; next ArrowDown selects Help; Escape returns to account",
+      "Collapsed sidebar locale change correctly reports Expand sidebar",
+      "Delete opens confirmation only; Keep trip focused; Escape hides and returns to More; no deletion performed",
+      "History expansion receives focus",
+      "8 pages x 2 languages x 2 widths = 32 light-theme layouts, no horizontal overflow or clipped buttons",
+      "Dark danger button styles checked"
+    ],
+    "danger_contrast": {
+      "light": 6.57,
+      "dark": 10.01
+    },
+    "remaining": [
+      "No full screen-reader, OS IME, cross-browser or mobile acceptance",
+      "Community feed and account sync still unavailable",
+      "Layout checks do not certify pixel-identical reconstruction of every prototype state"
+    ],
+    "screenshots": [
+      "delete-confirmation-english.jpg",
+      "legal-chinese-reading.jpg",
+      "privacy-english-reading.jpg"
+    ]
+  },
+  "final_acceptance_2026_11_10": {
+    "overall": "incomplete_external_validation_blocked",
+    "engineering": {
+      "passed": 71,
+      "total": 71,
+      "note": "Full run from preceding attempt; after IME guard change, desktop-ui, chat-refresh, language, pages and isolated HTTP verify passed."
+    },
+    "new_finding": "Enter with keyCode 229 and isComposing=false previously submitted. Guard added and actual handler regression passes.",
+    "ime_test_level": "Synthetic keyboard events against the production handler; not OS candidate-window acceptance",
+    "http": "Isolated no-model API verify passed; owned service stopped",
+    "pending": [
+      "Independent Chrome browser is not connected to tools (current inventory only iab and mcpapps)",
+      "Real OS Chinese IME candidate confirmation",
+      "Actual screen-reader speech/interaction evaluation"
+    ],
+    "not_claimed": [
+      "Community/account capabilities not implemented",
+      "Container build not executed",
+      "Mobile acceptance paused by prior instruction"
+    ],
+    "evidence": "engineering-2026-11-10.json"
+  },
+  "chrome_reconnected_2026_11_10": {
+    "browser": "Connected standalone Chrome extension",
+    "origin": "http://127.0.0.1:3412",
+    "verified": [
+      "8 routes in English and Chinese: 16 layouts, no horizontal overflow at current Chrome viewport",
+      "Mixed Chinese/English text and Shift+Enter: newline with zero sent messages",
+      "Normal Enter sends one test message",
+      "No-model failure retains input and exposes Retry",
+      "Account keyboard navigation into Settings and language switch"
+    ],
+    "pending": [
+      "Screen-reader listening/interaction not performed"
+    ],
+    "note": "Browser automation text fill is not native IME input. Isolated service intentionally has no model configuration."
+  },
+  "user_ime_acceptance_2026_11_11": {
+    "result": "pass_user_observed",
+    "browser": "Chrome",
+    "input": "我想去成都",
+    "observation": "User confirmed candidate selection did not send; sending occurred only after another Enter or clicking Send.",
+    "evidence": "User screenshot followed by clarification 后者",
+    "scope": "Current user input method and tested flow only; no claim covering every OS/IME.",
+    "remaining_ui_validation": [
+      "Actual screen-reader speech/interaction evaluation"
+    ]
+  },
+  "interaction_2026_11_11": {
+    "passed": [
+      "Empty saved-place name blocks submit and focuses required field",
+      "Named dialog exposed in Chrome accessibility tree",
+      "Explicit Tab/Shift+Tab cycle stays within dialog after fix",
+      "Escape closes and returns to View place"
+    ],
+    "fix": "Added explicit keyboard boundary handling to saved-detail dialog",
+    "not_claimed": [
+      "Actual screen-reader audio acceptance"
+    ],
+    "scope_note": "User deferred voice input/recognition; this is distinct from screen-reader accessibility."
+  },
+  "automated_closeout_2026_11_11": {
+    "status": "all_runnable_local_checks_passed",
+    "engineering_passed": 71,
+    "engineering_failed": 0,
+    "http_verify": "passed on isolated no-model port 3415",
+    "new_regression": "Production saved-detail keyboard handler: first/last Tab and Shift+Tab loop; middle Tab remains native",
+    "container": {
+      "status": "blocked_environment",
+      "attempted": true,
+      "reason": "spawnSync docker ENOENT; Docker executable unavailable"
+    },
+    "human_items": "Screen-reader listening and unassisted user study remain separate; not requested from user this pass",
+    "deployment": "Production-host smoke tests require an actual deployment; not certified by local tests",
+    "unsupported_features": [
+      "Community backend",
+      "Account/cloud sync",
+      "Voice recognition/input (deferred)"
+    ],
+    "evidence": "engineering-2026-11-11.json",
+    "limits": "Passing automated checks is not full product acceptance or independently verified travel facts."
+  }
+}

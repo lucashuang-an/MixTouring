@@ -1,0 +1,9 @@
+{
+  "name": "mixtouring-cloudflare-tools",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "miniflare": "5.20261110.1-beta"
+  }
+}

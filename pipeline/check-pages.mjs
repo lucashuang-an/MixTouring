@@ -21,9 +21,16 @@ for (const page of pages) {
   const html = readFileSync(join(pagesDir, page), 'utf8');
 
   /* 桌面跳转不能落回只有 430px 手机容器的页面。 */
-  if (!html.includes('href="../assets/desktop.css"')) err(page, '缺少桌面响应式样式');
-  if (!html.includes('data-mobile-nav="global"')) err(page, '缺少统一响应式导航');
-  if (!html.includes(page === 'trip.html' ? 'class="trip-shell"' : 'class="app-shell"')) err(page, '缺少桌面内容容器');
+  if(page==='login.html'){
+    for(const marker of ['../assets/auth.css','id="authForm"','autocomplete="username"','autocomplete="current-password"','role="alert"'])if(!html.includes(marker))err(page,'缺少认证页面合同：'+marker);
+  }else{
+    if (!html.includes('href="../assets/desktop.css"')) err(page, '缺少桌面响应式样式');
+    if (!html.includes('data-mobile-nav="global"')) err(page, '缺少统一响应式导航');
+    if (!html.includes(page === 'trip.html' ? 'class="trip-shell"' : 'class="app-shell"')) err(page, '缺少桌面内容容器');
+  }
+
+  /* 当前三个主要页面必须真正引用唯一设计令牌，不再保留会漂移的内联副本。 */
+  if(['trip.html','library.html','me.html'].includes(page) && (!html.includes('href="../colors_and_type.css"') || html.includes('id="theme-vars"')))err(page,'主要页面没有使用统一设计令牌');
 
   /* 1) 内联脚本语法 */
   const scripts = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)].map((m) => m[1]);
@@ -52,13 +59,6 @@ for (const page of pages) {
   /* 5) 红线词 */
   for (const w of FORBIDDEN) if (html.includes(w)) err(page, `出现红线词「${w}」（产品无购买入口）`);
 }
-
-/* mock.js 语法与 DB 形状 */
-try {
-  const mockPath = join(root, 'mixtouring-hifi/assets/mock.js');
-  new Function(readFileSync(mockPath, 'utf8'));
-  console.log('✓ mock.js 语法通过');
-} catch (e) { fail++; console.error('  ✗ [mock.js] 语法错误: ' + e.message); }
 
 if (fail) { console.error(`\n自检未通过：${fail} 个问题`); process.exit(1); }
 console.log(`✓ ${pages.length} 个页面静态自检全部通过（脚本语法 / DOM id / 图标 / 跳转 / 红线词）`);

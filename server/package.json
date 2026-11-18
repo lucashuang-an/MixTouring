@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "MixTouring Phase 1 · 薄后端读接口（原生 Koa + derive.mjs 服务层）",
+  "description": "MixTouring 旅行Agent · Tavily检索、模型整合与证据核对",
   "scripts": {
     "start": "node --env-file-if-exists=.env index.mjs",
     "verify": "node verify.mjs"
@@ -12,6 +12,9 @@
     "node": ">=22.9"
   },
   "dependencies": {
-    "koa": "^2.15.3"
+    "@mozilla/readability": "^0.6.0",
+    "koa": "^2.15.3",
+    "linkedom": "^0.18.14",
+    "undici": "^7.30.1"
   }
 }

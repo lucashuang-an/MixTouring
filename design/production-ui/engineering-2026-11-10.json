@@ -1,0 +1,357 @@
+[
+  {
+    "script": "pipeline/check-pages.mjs",
+    "status": "pass",
+    "seconds": 0.4
+  },
+  {
+    "script": "server/check-trip.mjs",
+    "status": "pass",
+    "seconds": 0.11
+  },
+  {
+    "script": "server/check-drafts.mjs",
+    "status": "pass",
+    "seconds": 0.1
+  },
+  {
+    "script": "server/check-upstream-budget.mjs",
+    "status": "pass",
+    "seconds": 1.68
+  },
+  {
+    "script": "server/check-access-policy.mjs",
+    "status": "pass",
+    "seconds": 0.11
+  },
+  {
+    "script": "server/check-public-http.mjs",
+    "status": "pass",
+    "seconds": 2.36
+  },
+  {
+    "script": "server/check-deployment.mjs",
+    "status": "pass",
+    "seconds": 0.06
+  },
+  {
+    "script": "server/check-packaged-runtime.mjs",
+    "status": "pass",
+    "seconds": 1.02
+  },
+  {
+    "script": "server/check-agent-prompts.mjs",
+    "status": "pass",
+    "seconds": 3.1
+  },
+  {
+    "script": "server/check-planning-discussion.mjs",
+    "status": "pass",
+    "seconds": 0.58
+  },
+  {
+    "script": "server/check-planning-contract.mjs",
+    "status": "pass",
+    "seconds": 0.58
+  },
+  {
+    "script": "server/check-planning-flow.mjs",
+    "status": "pass",
+    "seconds": 0.59
+  },
+  {
+    "script": "server/check-transport-options.mjs",
+    "status": "pass",
+    "seconds": 0.48
+  },
+  {
+    "script": "server/check-transport-map.mjs",
+    "status": "pass",
+    "seconds": 0.47
+  },
+  {
+    "script": "server/check-transport-revision.mjs",
+    "status": "pass",
+    "seconds": 0.56
+  },
+  {
+    "script": "server/check-return-scope.mjs",
+    "status": "pass",
+    "seconds": 0.55
+  },
+  {
+    "script": "server/check-conversation-progress.mjs",
+    "status": "pass",
+    "seconds": 0.13
+  },
+  {
+    "script": "server/check-compose-provider.mjs",
+    "status": "pass",
+    "seconds": 0.36
+  },
+  {
+    "script": "server/check-model-cache.mjs",
+    "status": "pass",
+    "seconds": 0.4
+  },
+  {
+    "script": "server/check-p1-boundaries.mjs",
+    "status": "pass",
+    "seconds": 1.66
+  },
+  {
+    "script": "server/check-p2-reuse.mjs",
+    "status": "pass",
+    "seconds": 0.43
+  },
+  {
+    "script": "server/check-deepseek-search.mjs",
+    "status": "pass",
+    "seconds": 0.37
+  },
+  {
+    "script": "server/check-agent-delivery.mjs",
+    "status": "pass",
+    "seconds": 0.65
+  },
+  {
+    "script": "server/check-conversation.mjs",
+    "status": "pass",
+    "seconds": 0.95
+  },
+  {
+    "script": "server/check-intent-actions.mjs",
+    "status": "pass",
+    "seconds": 0.66
+  },
+  {
+    "script": "server/check-harness-generalization.mjs",
+    "status": "pass",
+    "seconds": 0.61
+  },
+  {
+    "script": "server/check-agent-runtime.mjs",
+    "status": "pass",
+    "seconds": 0.57
+  },
+  {
+    "script": "server/check-planning-loop.mjs",
+    "status": "pass",
+    "seconds": 0.58
+  },
+  {
+    "script": "server/check-planning-session.mjs",
+    "status": "pass",
+    "seconds": 0.92
+  },
+  {
+    "script": "server/check-foundations.mjs",
+    "status": "pass",
+    "seconds": 1.11
+  },
+  {
+    "script": "server/check-light-edit.mjs",
+    "status": "pass",
+    "seconds": 0.72
+  },
+  {
+    "script": "server/check-itinerary-quality.mjs",
+    "status": "pass",
+    "seconds": 0.59
+  },
+  {
+    "script": "server/check-quality-batches.mjs",
+    "status": "pass",
+    "seconds": 0.12
+  },
+  {
+    "script": "server/check-evidence-patch-contract.mjs",
+    "status": "pass",
+    "seconds": 0.39
+  },
+  {
+    "script": "server/check-evidence-spans.mjs",
+    "status": "pass",
+    "seconds": 0.43
+  },
+  {
+    "script": "server/check-numeric-grounding.mjs",
+    "status": "pass",
+    "seconds": 0.65
+  },
+  {
+    "script": "server/check-send-retry.mjs",
+    "status": "pass",
+    "seconds": 0.09
+  },
+  {
+    "script": "server/check-context.mjs",
+    "status": "pass",
+    "seconds": 0.58
+  },
+  {
+    "script": "server/check-trip-memory.mjs",
+    "status": "pass",
+    "seconds": 0.59
+  },
+  {
+    "script": "server/check-preference-memory.mjs",
+    "status": "pass",
+    "seconds": 0.58
+  },
+  {
+    "script": "server/check-chat-refresh.mjs",
+    "status": "pass",
+    "seconds": 0.28
+  },
+  {
+    "script": "server/check-route-workspace.mjs",
+    "status": "pass",
+    "seconds": 0.63
+  },
+  {
+    "script": "server/check-route-comparison.mjs",
+    "status": "pass",
+    "seconds": 0.49
+  },
+  {
+    "script": "server/check-discovery-flow.mjs",
+    "status": "pass",
+    "seconds": 0.07
+  },
+  {
+    "script": "server/check-route-research.mjs",
+    "status": "pass",
+    "seconds": 0.55
+  },
+  {
+    "script": "server/check-draft-research.mjs",
+    "status": "pass",
+    "seconds": 0.56
+  },
+  {
+    "script": "server/check-research-tasks.mjs",
+    "status": "pass",
+    "seconds": 0.5
+  },
+  {
+    "script": "server/check-save-state.mjs",
+    "status": "pass",
+    "seconds": 0.07
+  },
+  {
+    "script": "server/check-my-trips.mjs",
+    "status": "pass",
+    "seconds": 0.08
+  },
+  {
+    "script": "server/check-personal-center.mjs",
+    "status": "pass",
+    "seconds": 0.09
+  },
+  {
+    "script": "server/check-language.mjs",
+    "status": "pass",
+    "seconds": 0.31
+  },
+  {
+    "script": "server/check-desktop-ui.mjs",
+    "status": "pass",
+    "seconds": 0.34
+  },
+  {
+    "script": "server/check-saved-placement.mjs",
+    "status": "pass",
+    "seconds": 0.07
+  },
+  {
+    "script": "server/check-travel-sources.mjs",
+    "status": "pass",
+    "seconds": 0.4
+  },
+  {
+    "script": "server/check-source-time.mjs",
+    "status": "pass",
+    "seconds": 0.6
+  },
+  {
+    "script": "server/check-source-baseline.mjs",
+    "status": "pass",
+    "seconds": 0.44
+  },
+  {
+    "script": "server/check-search-adapters.mjs",
+    "status": "pass",
+    "seconds": 1.12
+  },
+  {
+    "script": "server/check-source-content.mjs",
+    "status": "pass",
+    "seconds": 0.37
+  },
+  {
+    "script": "server/check-harness-optimization.mjs",
+    "status": "pass",
+    "seconds": 0.57
+  },
+  {
+    "script": "server/check-day-map.mjs",
+    "status": "pass",
+    "seconds": 0.56
+  },
+  {
+    "script": "server/check-google-maps.mjs",
+    "status": "pass",
+    "seconds": 0.46
+  },
+  {
+    "script": "server/check-google-routes.mjs",
+    "status": "pass",
+    "seconds": 0.21
+  },
+  {
+    "script": "server/check-local-mobility.mjs",
+    "status": "pass",
+    "seconds": 0.55
+  },
+  {
+    "script": "server/check-source-tasks.mjs",
+    "status": "pass",
+    "seconds": 0.54
+  },
+  {
+    "script": "server/check-evidence-grounding.mjs",
+    "status": "pass",
+    "seconds": 0.4
+  },
+  {
+    "script": "server/check-conversation-evidence.mjs",
+    "status": "pass",
+    "seconds": 0.68
+  },
+  {
+    "script": "server/check-research-loop.mjs",
+    "status": "pass",
+    "seconds": 0.48
+  },
+  {
+    "script": "server/check-journey.mjs",
+    "status": "pass",
+    "seconds": 0.38
+  },
+  {
+    "script": "server/check-search-planner.mjs",
+    "status": "pass",
+    "seconds": 0.58
+  },
+  {
+    "script": "server/check-trip-intent.mjs",
+    "status": "pass",
+    "seconds": 0.08
+  },
+  {
+    "script": "server/check-no-preloads.mjs",
+    "status": "pass",
+    "seconds": 0.11
+  }
+]

@@ -1,15 +1,24 @@
-/* lib/llm.mjs · MixTouring Phase 2 LLM 适配层（唯一 LLM 出口）
- * 硬约束（AGENTS §6.3 Phase 2）：LLM key 只存服务端，浏览器不直连。
+import {reserveUpstream} from './upstream-budget.mjs';
+import {classifyModelFailure,runModelAttempts} from './model-retry.mjs';
+import {prepareInputLayout} from './input-layout.mjs';
+import {createUsageObservation} from './model-usage.mjs';
+import {agentPrompt,AGENT_RULES_VERSION} from './agent-prompts.mjs';
+/* lib/llm.mjs · 旅行Agent模型与检索适配层（统一出口）
+ * 开发约定见DEVELOPMENT.md；运行提示词从AGENTS.md读取。LLM key只存服务端，浏览器不直连。
  * 本模块用环境变量注入 key，统一所有 LLM 调用的入口；
- * 未配置 key 时规则版闭环照常可用（callJson 返回 null 交由调用方走规则/词典实现），
- * 之后注入 key（LLM_API_KEY / LLM_BASE_URL / LLM_MODEL）即自动切真模型，契约不变。
+ * 未配置 key 或调用失败返回 null，由Agent保留输入并提示重试，不以规则方案冒充模型成功。
  * 用量记录：每次真模型调用把 token 消耗追加到 server/logs/llm-usage.jsonl（kind 区分任务），
  * 为后续算法优化（prompt 瘦身/缓存/模型选型）提供逐任务数据。 */
 
-import { appendFileSync, mkdirSync } from 'node:fs';
+import {appendBoundedJsonl} from './bounded-log.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { searchVolc } from './search-volc.mjs';
+import { searchVolc,volcSearchModel } from './search-volc.mjs';
+import {searchTavily} from './search-tavily.mjs';
+import {searchDeepSeek} from './search-deepseek.mjs';
+import {searchAttempt,detailedSearch} from './search-diagnostics.mjs';
+import {ProxyAgent} from 'undici';
+import {currentModelSettings,reasoningEffort,modelStageTimeout} from './model-settings.mjs';
 
 const VOLC_CHAT = 'https://ark.cn-beijing.volces.com/api/v3/chat/completions';
 
@@ -19,33 +28,47 @@ const DEFAULT_MODEL = 'gpt-4o-mini';
 const KEY = process.env.LLM_API_KEY || '';
 const BASE = (process.env.LLM_BASE_URL || DEFAULT_BASE).replace(/\/+$/, '');
 const MODEL = process.env.LLM_MODEL || DEFAULT_MODEL;
-const LOG_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'logs', 'llm-usage.jsonl');
+const LOG_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'logs', 'llm-usage-v2.jsonl');
 
-/** 是否已配置真模型 key（未配置时走规则版，规则版不需联网） */
+/** 旧兼容通道是否配置；主模型就绪状态使用composeConfigured。 */
 export function llmConfigured() {
   return !!KEY;
+}
+const deepseekKey=()=>process.env.DEEPSEEK_KEY || process.env.DEEPSEEK_API_KEY || '';
+const openaiKey=()=>process.env.OPENAI_API_KEY || process.env.OPENAI_KEY || '';
+const openaiSelected=()=>process.env.MT_COMPOSE_PROVIDER==='openai' || !process.env.MT_COMPOSE_PROVIDER && !!openaiKey();
+let openaiProxy=null,openaiProxyUrl=null;
+function openaiDispatcher(){
+  const url=process.env.OPENAI_PROXY_URL;
+  if(!url)return undefined;
+  if(url!==openaiProxyUrl){openaiProxy?.close().catch(()=>{});openaiProxy=new ProxyAgent(url);openaiProxyUrl=url;}
+  return openaiProxy;
+}
+export function composeModelInfo(){return openaiSelected()?{provider:'openai',model:process.env.OPENAI_MODEL || 'gpt-6.1-sol'}:deepseekKey()?{provider:'deepseek',model:process.env.DEEPSEEK_MODEL || 'deepseek-flash'}:process.env.VOLC_SEARCH_API_KEY?{provider:'volc',model:process.env.VOLC_COMPOSE_MODEL || process.env.VOLC_SEARCH_MODEL || 'deepseek-v4-flash-ga-260731'}:{provider:'compatible',model:MODEL};}
+export function composeConfigured(){return openaiSelected()?!!openaiKey():!!deepseekKey() || !!process.env.VOLC_SEARCH_API_KEY || !!KEY;}
+
+// 兼容旧对象/null返回值，同时通过回调保留可用于重试决策的失败原因。
+export function decodeModelJson(body,opts={}){
+  const finish=body.choices?.[0]?.finish_reason,raw=body.choices?.[0]?.message?.content;
+  const fail=(reason_code,retryable=false)=>{try{opts.onFailure?.({reason_code,retryable,finish_reason:finish || null});}catch{}return null;};
+  if(finish==='content_filter')return fail('content_filter');
+  if(finish==='length')return fail('output_truncated');
+  if(typeof raw!=='string' || !raw.trim())return fail('empty_response',true);
+  const match=raw.match(/\{[\s\S]*\}/);
+  if(!match)return fail('invalid_json');
+  try{return JSON.parse(match[0]);}catch{return fail('invalid_json');}
 }
 
 /** 当前生效的模型标识（未配置时返回 'rule'） */
 export function llmModel() {
-  return llmConfigured() ? MODEL : 'rule';
+  return composeConfigured() ? composeModelInfo().model : 'rule';
 }
 
 /* 逐任务用量落盘（JSONL，一行一次调用）；写失败只打日志，不影响主流程 */
-function logUsage(kind, usage, model) {
-  try {
-    mkdirSync(dirname(LOG_PATH), { recursive: true });
-    appendFileSync(LOG_PATH, JSON.stringify({
-      ts: new Date().toISOString(),
-      kind: kind || 'unspecified',
-      model: model || MODEL,
-      prompt_tokens: usage?.prompt_tokens ?? null,
-      completion_tokens: usage?.completion_tokens ?? null,
-      total_tokens: usage?.total_tokens ?? null
-    }) + '\n', 'utf8');
-  } catch (err) {
-    console.error('✗ LLM 用量记录失败：' + err.message);
-  }
+function logUsage(row) { appendBoundedJsonl(process.env.MT_LLM_USAGE_LOG || LOG_PATH,row); }
+function modelRequest(opts,provider,requestedModel){
+  const systemPrompt=opts.schema_prompt || agentPrompt('format.json'),layout=prepareInputLayout(opts);
+  return {messages:[{role:'system',content:systemPrompt},{role:'user',content:layout.user}],finish:createUsageObservation(opts,{provider,requestedModel,systemPrompt,layout,rulesVersion:AGENT_RULES_VERSION},logUsage)};
 }
 
 /* ---------- 专用联网搜索（智谱 web_search API，独立于 chat） ----------
@@ -56,6 +79,7 @@ function logUsage(kind, usage, model) {
 let SEARCH_STATE = { status: 'unknown', at: null };
 let SEARCH_QUOTA_UNTIL = 0;
 let PUBLIC_SEARCH_RETRY_AT = 0;
+let VOLC_SEARCH_RETRY_AT = 0;
 function markSearch(status, provider = null) { SEARCH_STATE = { status, provider, at: new Date().toISOString() }; }
 
 function searchText(value) {
@@ -64,16 +88,19 @@ function searchText(value) {
     })[entity] || (entity === '&nbsp;' ? ' ' : entity)).replace(/\s+/g, ' ').trim();
 }
 
-async function searchPublicIndex(query, limit, timeoutMs, signal) {
-  if (Date.now() < PUBLIC_SEARCH_RETRY_AT) return null;
+async function searchPublicIndex(query, limit, timeoutMs, signal,observe) {
+  const started=Date.now(),emit=extra=>searchAttempt(observe,{provider:'public-search',query,started,...extra});
+  if(signal?.aborted){emit({status:'cancelled',reason_code:'cancelled'});return null;}
+  if (Date.now() < PUBLIC_SEARCH_RETRY_AT){emit({status:'skipped',reason_code:'cooldown'});return null;}
   try {
     const url = 'https://www.so.com/s?' + new URLSearchParams({ q: String(query).slice(0, 100) });
     const timeout = AbortSignal.timeout(Math.min(timeoutMs, 8000));
     const res = await fetch(url, { signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
-    if (!res.ok || !/html/i.test(res.headers.get('content-type') || '')) return null;
+    if (!res.ok || !/html/i.test(res.headers.get('content-type') || '')){emit({status:'error',network_request:true,http_status:res.status,reason_code:'http_or_content_type'});return null;}
     const html = (await res.text()).slice(0, 600000);
     if (html.includes('<title>访问异常页面</title>')) {
       PUBLIC_SEARCH_RETRY_AT = Date.now() + 5 * 60 * 1000;
+      emit({status:'blocked',network_request:true,http_status:res.status,reason_code:'verification_page'});
       return null;
     }
     const blocks = html.split(/<li\s+class=["']res-list["']/i).slice(1, 16);
@@ -89,8 +116,10 @@ async function searchPublicIndex(query, limit, timeoutMs, signal) {
     const seen = new Set();
     const unique = results.filter((r) => !seen.has(r.link) && seen.add(r.link)).slice(0, limit);
     if (!unique.length) PUBLIC_SEARCH_RETRY_AT = Date.now() + 5 * 60 * 1000;
+    emit({status:unique.length?'available':'empty',network_request:true,http_status:res.status,reason_code:unique.length?null:'no_index_results'});
     return unique.length ? unique : null;
   } catch (err) {
+    emit({status:signal?.aborted?'cancelled':err?.name==='TimeoutError' || err?.name==='AbortError'?'timeout':'error',network_request:true,reason_code:signal?.aborted?'cancelled':'network_or_timeout'});
     console.error('✗ 公开搜索备用通道失败：' + err.message);
     return null;
   }
@@ -99,23 +128,49 @@ async function searchPublicIndex(query, limit, timeoutMs, signal) {
 /** 最近一次 searchWeb 真实调用的状态（浅拷贝，不泄露凭据）；从未调用过为 unknown */
 export function webSearchStatus() { return { ...SEARCH_STATE }; }
 
-export async function searchWeb(query, { limit = 5, timeoutMs = 30000, signal } = {}) {
+export async function searchWeb(query, options = {}) {
+  const { limit = 5, timeoutMs = 30000, signal,onAttempt,provider=process.env.TRAVEL_SEARCH_PROVIDER || 'current',domains=null,domainMode='restrict',language=null,startDate=null,endDate=null } = options;
+  if(provider==='deepseek' || !Object.hasOwn(options,'provider') && language==='zh' && process.env.TRAVEL_CHINESE_SEARCH_PROVIDER==='deepseek'){
+    const started=Date.now();let primaryStatus='unknown';
+    const found=await searchDeepSeek(query,{limit,timeoutMs,signal,domains,domainMode,language,startDate,endDate,onAttempt:event=>{primaryStatus=event.status;markSearch(event.status,'deepseek-search');onAttempt?.(event);}});
+    if(found!==null || signal?.aborted || !process.env.TAVILY_API_KEY || options.fallback===false)return found;
+    const remaining=timeoutMs-(Date.now()-started);if(remaining<=500)return null;
+    const fallback=await searchTavily(query,{limit,timeoutMs:remaining,signal,domains,domainMode,language,startDate,endDate,onAttempt:event=>{markSearch(event.status,'tavily');onAttempt?.(event);}});
+    SEARCH_STATE.primary_status=primaryStatus;
+    return fallback;
+  }
+  if(signal?.aborted){searchAttempt(onAttempt,{provider:'none',query,started:Date.now(),status:'cancelled',reason_code:'cancelled'});return null;}
+  if(provider==='tavily'){
+    return searchTavily(query,{limit,timeoutMs,signal,domains,domainMode,language,startDate,endDate,onAttempt:event=>{markSearch(event.status,'tavily');if(typeof onAttempt==='function')onAttempt(event);}});
+  }
+  if(provider!=='current'){markSearch('error');searchAttempt(onAttempt,{provider:'none',query,started:Date.now(),status:'error',reason_code:'unsupported_provider'});return null;}
   if (process.env.VOLC_SEARCH_API_KEY) {
-    const outcome = await searchVolc(query, {
+    const started=Date.now();
+    const skipped=started<VOLC_SEARCH_RETRY_AT,model=volcSearchModel();
+    const outcome = skipped?{status:'quota_exhausted',results:null}:await searchVolc(query, {
       key: process.env.VOLC_SEARCH_API_KEY,
-      model: process.env.VOLC_SEARCH_MODEL || 'doubao-seed-2-1-lite-260915',
+      model,
       limit, timeoutMs, signal
     });
-    markSearch(outcome.status, 'volc-search');
-    return outcome.results;
+    searchAttempt(onAttempt,{provider:'volc-search',model,query,started,status:skipped?'skipped':outcome.status,network_request:!skipped,http_status:outcome.http_status,reason_code:skipped?'cooldown':outcome.reason_code,usage:outcome.usage});
+    if(outcome.results){markSearch(outcome.status,'volc-search');return outcome.results;}
+    if(outcome.status==='quota_exhausted')VOLC_SEARCH_RETRY_AT=Date.now()+300000;
+    const remaining=timeoutMs-(Date.now()-started);
+    const fallback=remaining>500 && !signal?.aborted?await searchPublicIndex(query,limit,Math.min(remaining,8000),signal,onAttempt):null;
+    markSearch(fallback?'available':outcome.status,fallback?'public-search':'volc-search');
+    SEARCH_STATE.primary_status=outcome.status;
+    return fallback;
   }
-  if (!llmConfigured()) return null;
+  if (!llmConfigured()){searchAttempt(onAttempt,{provider:'none',query,started:Date.now(),status:'unconfigured',reason_code:'unconfigured'});return null;}
   if (Date.now() < SEARCH_QUOTA_UNTIL) {
-    const fallback = await searchPublicIndex(query, limit, timeoutMs, signal);
+    searchAttempt(onAttempt,{provider:'zhipu',query,started:Date.now(),status:'skipped',reason_code:'cooldown'});
+    const fallback = await searchPublicIndex(query, limit, timeoutMs, signal,onAttempt);
     markSearch(fallback ? 'available' : 'quota_exhausted', fallback ? 'public-search' : null);
     return fallback;
   }
+  const started=Date.now();let httpStatus=null;
   try {
+    await reserveUpstream('search');
     const res = await fetch(`${BASE}/web_search`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${KEY}` },
@@ -125,23 +180,28 @@ export async function searchWeb(query, { limit = 5, timeoutMs = 30000, signal } 
       }),
       signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs)
     });
+    httpStatus=res.status;
     if (!res.ok) {
       markSearch(res.status === 429 ? 'quota_exhausted' : 'error');
       throw new Error('search HTTP ' + res.status);
     }
     const body = await res.json();
-    markSearch('available', 'zhipu');
-    return (body.search_result || []).slice(0, limit).map((r) => ({
+    if(body.search_result!==undefined && !Array.isArray(body.search_result))throw Error('检索返回格式无效');
+    const results=(body.search_result || []).slice(0, limit).map((r) => ({
       title: r.title || '',
       link: r.link || '',
       content: (r.content || '').slice(0, 300),
       media: r.media || null,
       date: r.publish_date || null
     }));
+    searchAttempt(onAttempt,{provider:'zhipu',query,started,status:results.length?'available':'empty',network_request:true,http_status:httpStatus});
+    markSearch('available', 'zhipu');
+    return results;
   } catch (err) {
+    searchAttempt(onAttempt,{provider:'zhipu',query,started,status:signal?.aborted?'cancelled':httpStatus===429?'quota_exhausted':err?.name==='TimeoutError' || err?.name==='AbortError'?'timeout':'error',network_request:true,http_status:httpStatus,reason_code:signal?.aborted?'cancelled':httpStatus?'http_error':'network_or_timeout'});
     if (err && err.message === 'search HTTP 429') {
       SEARCH_QUOTA_UNTIL = Date.now() + 10 * 60 * 1000;
-      const fallback = await searchPublicIndex(query, limit, timeoutMs, signal);
+      const fallback = await searchPublicIndex(query, limit, timeoutMs, signal,onAttempt);
       if (fallback) {
         markSearch('available', 'public-search');
         return fallback;
@@ -154,94 +214,58 @@ export async function searchWeb(query, { limit = 5, timeoutMs = 30000, signal } 
     return null;
   }
 }
+export function searchWebDetailed(query,options={}){return detailedSearch(searchWeb,query,options);}
 
-/**
- * 路线组合专用通道（v0.44.0）：Coding Plan 模型（ark-code-latest）对组合任务实测经常 >12s
- * 不返回，渐进 25s 预算内不可用（2026-09-28 回放 7/7 超时）。配置了火山普通推理
- * （VOLC_SEARCH_API_KEY）时，组合与搜索走同一账户的 chat/completions（同计费口径），
- * 模型默认与搜索同款，可用 VOLC_COMPOSE_MODEL 单独覆盖；失败返回 null 落回规则/策展组合，
- * 不再串行等待慢通道。未配置火山 key 时回落 callJson（行为与 v0.43.x 一致）。
+/** 结构化主模型统一出口。显式OpenAI配置优先，否则DeepSeek、火山、旧兼容通道。
+ * 已选供应商失败不切换账户；请求仍统一执行JSON、取消、用量与失败分类。
  */
-export async function composeJson(opts) {
-  if (!process.env.VOLC_SEARCH_API_KEY) return callJson(opts);
-  const model = process.env.VOLC_COMPOSE_MODEL || process.env.VOLC_SEARCH_MODEL || 'deepseek-v4-flash-ga-260731';
-  try {
-    const timeout = AbortSignal.timeout(opts.timeoutMs || 12000);
-    const res = await fetch(VOLC_CHAT, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${process.env.VOLC_SEARCH_API_KEY}` },
-      body: JSON.stringify({
-        model, temperature: 0.2,
-        messages: [
-          { role: 'system', content: opts.schema_prompt || '只输出 JSON 对象。' },
-          { role: 'user', content: opts.user }
-        ],
-        /* 与 searchVolc 同款适配（v0.43.7）：deepseek 默认开思考，12s 渐进预算内回不来；
-         * 组合是结构化小任务，关思考实测可数秒返回。 */
-        thinking: { type: 'disabled' },
-        response_format: { type: 'json_object' }
-      }),
-      signal: opts.signal ? AbortSignal.any([opts.signal, timeout]) : timeout
-    });
-    if (!res.ok) throw new Error('VOLC compose HTTP ' + res.status);
-    const body = await res.json();
-    logUsage(opts.kind, body.usage, model);
-    const raw = body.choices?.[0]?.message?.content;
-    if (!raw) return null;
-    const m = raw.match(/\{[\s\S]*\}/);
-    return m ? JSON.parse(m[0]) : null;
-  } catch (err) {
-    console.error('✗ 火山组合调用失败，落回规则/策展组合：' + err.message);
-    return null;
-  }
+async function sendModelJson(opts,{provider,model,url,key,webSearch=false,defaultTimeout=12000}){
+  if(opts.signal?.aborted){const failure={...classifyModelFailure({signal:opts.signal}),retry_handled:true},request=modelRequest({...opts,telemetry:{...opts.telemetry,physical_attempt:0}},provider,model);request.finish({status:'cancelled',reason:failure.reason_code});try{opts.onFailure?.(failure);}catch{}return null;}
+  const result=await runModelAttempts({timeoutMs:opts.timeoutMs || defaultTimeout,signal:opts.signal,reserveRetry:opts.reserveRetry,canRetry:opts.canRetry,onRetry:opts.onRetry,onRetryWait:opts.onRetryWait,
+    execute:async({attempt,timeoutMs,metadata})=>{
+      const attemptOpts={...opts,telemetry:{...opts.telemetry,...metadata,physical_attempt:attempt},onFailure:null};
+      const request=modelRequest(attemptOpts,provider,model);let responseBody=null,httpStatus=null,retryAfter=null;
+      try{
+        const body={model,temperature:webSearch?.3:.2,messages:request.messages};
+        if(provider==='openai'){
+          delete body.temperature;
+          body.reasoning_effort=reasoningEffort(opts.reasoningEffort ?? currentModelSettings().effort);
+          body.store=false;
+        }else if(provider!=='compatible')body.thinking={type:'disabled'};
+        if(webSearch)body.tools=[{type:'web_search',web_search:{enable:true,search_count:5}}];else body.response_format={type:'json_object'};
+        await reserveUpstream(webSearch?'search':'model');
+        const timeout=AbortSignal.timeout(timeoutMs),res=await fetch(url,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${key}`},body:JSON.stringify(body),...(provider==='openai' && process.env.OPENAI_PROXY_URL?{dispatcher:openaiDispatcher()}:{}),signal:opts.signal?AbortSignal.any([opts.signal,timeout]):timeout});
+        httpStatus=res.status ?? null;retryAfter=res.headers?.get?.('retry-after') || null;
+        if(!res.ok){
+          try{const errorBody=await res.json();const code=errorBody?.error?.code || errorBody?.error?.type;if(typeof code==='string' && /^[a-zA-Z0-9_-]{1,80}$/.test(code))responseBody={error:{code}};}catch{}
+          throw new Error(provider+' HTTP '+res.status);
+        }
+        responseBody=await res.json();let failure=null;
+        const value=decodeModelJson(responseBody,{onFailure:f=>failure=f});
+        request.finish({body:responseBody,status:value===null?'invalid_output':'success',httpStatus,reason:failure?.reason_code || null});
+        // 空输出等结构问题不是HTTP重试；保留原有结构修复的判断。
+        return {value,failure,decoded_failure:true};
+      }catch(error){
+        const failure={...classifyModelFailure({status:httpStatus,error,signal:opts.signal,retryAfter}),provider_error_code:responseBody?.error?.code || null};
+        request.finish({body:responseBody,status:opts.signal?.aborted?'cancelled':'error',httpStatus,reason:failure.reason_code,providerErrorCode:failure.provider_error_code});
+        return {value:null,failure};
+      }
+    }});
+  if(result.failure){try{opts.onFailure?.(result.failure);}catch{}}
+  return result.value;
 }
-
-/**
- * 让 LLM 返回一个 JSON 对象（OpenAI 兼容 /chat/completions）。
- * 未配置 key 时 resolve(null)，调用方应回退到规则/词典实现（保持闭环可离线运行）。
- * @param {object} opts { schema_prompt, user, kind, webSearch, timeoutMs, model }
- *   kind 为任务标识（parse/ask/copy/collect），用于用量归因；
- *   model 覆盖默认模型（如采集任务用 LLM_MODEL_COLLECT 指定更强的 glm-5.3-flash）；
- *   webSearch=true 开启智谱内置联网检索（采集执行器采样用）；开检索时放弃 json_object 严格模式（二者不兼容），靠正则提取 JSON。
- * @returns {Promise<object|null>}
- */
-export async function callJson(opts) {
-  if (!llmConfigured()) return null;
-  try {
-    const body = {
-      model: opts.model || MODEL,
-      temperature: opts.webSearch ? 0.3 : 0.2,
-      messages: [
-        { role: 'system', content: opts.schema_prompt || '只输出 JSON 对象。' },
-        { role: 'user', content: opts.user }
-      ]
-    };
-    if (opts.webSearch) {
-      body.tools = [{ type: 'web_search', web_search: { enable: true, search_count: 5 } }];
-    } else {
-      body.response_format = { type: 'json_object' };
-    }
-    const res = await fetch(`${BASE}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${KEY}`
-      },
-      body: JSON.stringify(body),
-      signal: opts.signal ? AbortSignal.any([opts.signal, AbortSignal.timeout(opts.timeoutMs || 30000)]) : AbortSignal.timeout(opts.timeoutMs || 30000)
-    });
-    if (!res.ok) throw new Error('LLM HTTP ' + res.status);
-    const resBody = await res.json();
-    logUsage(opts.kind, resBody.usage, body.model);
-    const raw = resBody.choices?.[0]?.message?.content;
-    if (!raw) return null;
-    // 兼容模型可能在代码块里包 JSON
-    const m = raw.match(/\{[\s\S]*\}/);
-    if (!m) return null;
-    return JSON.parse(m[0]);
-  } catch (err) {
-    /* 规则版兜底：LLM 调用失败不阻塞在线查询，交回规则实现 */
-    console.error('✗ LLM 调用失败，回退规则版：' + err.message);
-    return null;
+export async function composeJson(opts){
+  const {provider,model}=composeModelInfo();if(provider==='compatible')return callJson(opts);
+  if(provider==='openai'){
+    const scoped=currentModelSettings();
+    if(scoped.deadlineAt)opts={...opts,reasoningEffort:scoped.effort,timeoutMs:modelStageTimeout(opts,scoped.effort,scoped.deadlineAt-Date.now())};
+    if(!openaiKey()){const request=modelRequest(opts,provider,model);request.finish({status:'unconfigured',reason:'unconfigured'});opts.onFailure?.({reason_code:'unconfigured',retryable:false});return null;}
+    return sendModelJson(opts,{provider,model,url:'https://api.openai.com/v1/chat/completions',key:openaiKey()});
   }
+  return sendModelJson(opts,{provider,model,url:provider==='deepseek'?'https://api.deepseek.com/chat/completions':VOLC_CHAT,key:provider==='deepseek'?deepseekKey():process.env.VOLC_SEARCH_API_KEY});
+}
+export async function callJson(opts){
+  const model=opts.model || MODEL;
+  if(!llmConfigured()){const request=modelRequest(opts,'compatible',model);request.finish({status:'unconfigured',reason:'unconfigured'});try{opts.onFailure?.({reason_code:'unconfigured',retryable:false});}catch{}return null;}
+  return sendModelJson(opts,{provider:'compatible',model,url:`${BASE}/chat/completions`,key:KEY,webSearch:opts.webSearch===true,defaultTimeout:30000});
 }

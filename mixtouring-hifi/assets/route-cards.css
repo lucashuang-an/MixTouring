@@ -1,18 +1,65 @@
 /* 规划与路线灵感共用的卡片和动作。 */
+.itinerary-points { margin: 12px 0 16px; padding-left: 19px; font-size: 14px; line-height: 1.9; color:var(--mixtouring-foreground); }
+.itinerary-points li { margin: 0 0 10px; padding-left: 3px; overflow-wrap: anywhere; }
+.itinerary-points li::marker { color:var(--color-accent-text); }
+.itinerary-slot { margin-right: 9px; font-weight: 600; color:var(--mixtouring-foreground); }
+.itinerary-notes { margin: 4px 0 16px; padding: 12px 15px; border-left: 2px solid #d9c9ba; background:var(--mixtouring-muted); border-radius: 0 8px 8px 0; font-size: 13px; line-height: 1.8; color:var(--mixtouring-muted-foreground); }
+.itinerary-notes dl { margin: 0; }
+.itinerary-note + .itinerary-note { margin-top: 8px; }
+.itinerary-note dt { font-weight: 600; color:var(--color-accent-text); }
+.itinerary-note dd { margin: 2px 0 0; overflow-wrap: anywhere; }
+.itinerary-day-details > summary { display: block; cursor: pointer; list-style: none; margin: 0 0 12px; }
+.itinerary-day-details > summary::-webkit-details-marker { display: none; }
+.day-expand, .day-collapse { color:var(--color-accent-text); font-size: 13px; line-height: 2; }
+.day-collapse { display: none; }
+.itinerary-day-details[open] > summary .day-expand, .itinerary-day-details[open] > summary .itinerary-day-preview { display: none; }
+.itinerary-day-details[open] > summary .day-collapse { display: inline; }
+.itinerary-day-full .itinerary-points li { margin-bottom: 18px; }
+.day-map-button { min-height: 44px; padding: 8px 14px; margin: 0 0 12px; border: 1px solid #d9c9ba; border-radius: 8px; background:var(--mixtouring-muted); color:var(--color-accent-text); cursor: pointer; font: inherit; font-size: 13px; }
+.day-poi-map { height: 260px; min-height: 260px; border-radius: 12px; }
+.day-map-caption { font-size: 12px; color:var(--mixtouring-muted-foreground); line-height: 1.7; }
+.day-map-search-links a { display: inline-block; margin: 2px 8px 0 0; color:var(--color-accent-text); text-decoration: underline; }
+.itinerary-place.is-map-focused { outline: 2px solid #a16a50; outline-offset: 2px; }
+.itinerary-day-details > summary:focus-visible { outline: 2px solid #a16a50; outline-offset: 4px; border-radius: 4px; }
+.itinerary-place { padding: 2px 6px; border-radius: 5px; background:var(--color-route-soft); color:var(--color-accent-text); box-decoration-break: clone; -webkit-box-decoration-break: clone; font-weight: 600; }
 .mt-route-card { background: var(--mixtouring-card); border: 1px solid var(--mixtouring-border); border-radius: 18px; padding: 20px; box-shadow: var(--shadow-card-soft); overflow-wrap: anywhere; }
 .mt-route-card h2, .mt-route-card h3 { font-size: 18px; font-weight: 400; margin: 8px 0 14px; }
-.mt-route-label { color: #82503F; font-size: 12px; margin: 0 0 8px; }
+.mt-route-label { color:var(--color-accent-text); font-size: 12px; margin: 0 0 8px; }
 .mt-route-path { font-size: 16px; line-height: 1.8; }
-.mt-route-muted { color: #626873; font-size: 13px; line-height: 1.8; }
-.mt-route-action { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-height: 44px; border-radius: 10px; padding: 10px 16px; background: var(--mixtouring-primary); color: #fff; text-decoration: none; font-size: 13px; }
+.mt-route-muted { color:var(--mixtouring-muted-foreground); font-size: 13px; line-height: 1.8; }
+.mt-route-action { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-height: 44px; border-radius: 10px; padding: 10px 16px; background: var(--mixtouring-primary); color:var(--mixtouring-primary-foreground); text-decoration: none; font-size: 13px; }
 .mt-route-card details { margin: 14px 0; font-size: 13px; line-height: 1.8; }
-.mt-route-card summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: #626873; }
-.mt-route-card a:not(.mt-route-action) { color: #82503F; }
+.mt-route-card summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color:var(--mixtouring-muted-foreground); }
+.mt-route-card a:not(.mt-route-action) { color:var(--color-accent-text); }
 .library-page { margin: 0; background: var(--mixtouring-background); color: var(--mixtouring-foreground); font-family: var(--mixtouring-font-sans); }
 .library-page .app-shell { box-sizing: border-box; max-width: 1160px; margin: 0 auto; padding: 32px 24px 110px; }
 .library-page h1 { font-size: 28px; font-weight: 400; margin: 8px 0; }
 .library-page .library-filters { display: flex; gap: 8px; flex-wrap: wrap; margin: 24px 0; }
-.library-page .library-filters button { min-height: 44px; border: 1px solid var(--mixtouring-border); background: #fff; border-radius: 24px; padding: 10px 20px; font: inherit; cursor: pointer; }
-.library-page .library-filters button[aria-pressed="true"] { background: #111; color: #fff; }
+.library-page .library-filters button { min-height: 44px; border: 1px solid var(--mixtouring-border); background:var(--mixtouring-card); border-radius: 24px; padding: 10px 20px; font: inherit; cursor: pointer; }
+.library-page .library-filters button[aria-pressed="true"] { background:var(--mixtouring-primary); color:var(--mixtouring-primary-foreground); }
 .library-page #tplList { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 310px), 1fr)); gap: 20px; align-items: start; }
 @media (max-width: 767px) { .library-page .app-shell { padding: 24px 16px 110px; } }
+
+.discovery-map.google-map-links { height: auto; min-height: 0; }
+.google-map-links ul { margin: 0; padding-left: 1.25rem; }
+.google-map-links li { padding: .5rem 0; }
+
+.google-static-map { display:block; width:100%; height:auto; object-fit:contain; }
+
+.day-transport { margin-top: 16px; }
+.day-travel-controls { display:flex; flex-wrap:wrap; gap:12px; align-items:end; }
+.day-travel-controls label { display:grid; gap:6px; font-size:13px; }
+.day-travel-controls select, .day-travel-controls input { min-height:44px; max-width:100%; padding:8px; }
+.day-travel-legs { padding-left:20px; }
+.day-travel-legs li { padding:10px 0; }
+.day-travel-legs strong, .day-travel-legs span { display:block; }
+.day-travel-basis { font-size:13px; line-height:1.6; }
+.day-schedule-check { margin-top:16px; border-top:1px solid var(--mixtouring-border); padding-top:12px; }
+.day-schedule-check summary { cursor:pointer; min-height:44px; display:flex; align-items:center; }
+.day-schedule-check form { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.day-schedule-check label { display:grid; gap:6px; font-size:13px; }
+.day-schedule-check input:not([type=checkbox]) { min-height:44px; width:100%; box-sizing:border-box; padding:8px; }
+.day-schedule-event { display:flex; gap:12px; align-items:center; }
+.day-schedule-event input[type=checkbox] { width:22px; height:22px; }
+.day-schedule-event label:last-child { min-height:44px; display:flex; align-items:center; }
+.day-schedule-result { font-size:13px; line-height:1.6; }
